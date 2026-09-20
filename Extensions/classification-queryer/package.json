@@ -1,0 +1,13 @@
+{
+  "name": "local-classification-queryer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pi extension for querying official IPC and CPC classifications.",
+  "pi": {
+    "extensions": ["./src/index.mjs"]
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}
