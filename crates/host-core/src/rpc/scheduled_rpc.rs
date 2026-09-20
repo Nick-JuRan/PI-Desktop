@@ -278,7 +278,9 @@ mod tests {
         let mut state = AppState::open(dir.path()).unwrap();
         let original_project = tempfile::tempdir().unwrap();
         let different_project = tempfile::tempdir().unwrap();
-        let original_path = state.workspace.set(original_project.path()).path;
+        let original_path =
+            crate::db::normalize_project_path(&state.workspace.set(original_project.path()).path)
+                .unwrap();
         let task = handle(
             &state,
             "scheduled.create",

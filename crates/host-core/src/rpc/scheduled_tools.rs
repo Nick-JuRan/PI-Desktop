@@ -208,7 +208,8 @@ mod tests {
         st.db
             .set_setting("app", &json!({"defaultPermissionMode":"auto"}))
             .unwrap();
-        let path = st.workspace.set(project.path()).path;
+        let path =
+            crate::db::normalize_project_path(&st.workspace.set(project.path()).path).unwrap();
         let session = sessions::create_session(
             &st.db,
             None,
