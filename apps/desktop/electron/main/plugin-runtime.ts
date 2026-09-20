@@ -4314,8 +4314,8 @@ export class PluginRuntime {
    * matched against the path relative to the folder that answered, and with the
    * same protected-path and credential guards every other request passes. No
    * file content travels back through this route: it asks the OS to show a file
-   * the user right-clicked. Null means it is not such a request, and the caller
-   * falls back to the ordinary rooted resolution and its refusal.
+   * the user right-clicked. A missing absolute path is reported as not found;
+   * only non-absolute or unsupported requests fall back to ordinary resolution.
    */
   private async resolveRegisteredFolderRequest(
     loaded: LoadedPlugin,
@@ -4345,7 +4345,10 @@ export class PluginRuntime {
         root: rootReal,
       });
     }
-    if (matches.length === 0) return null;
+    if (matches.length === 0) {
+      this.auditFs(loaded, "read", requestPath, "NOT_FOUND");
+      throw apiError("NOT_FOUND", `path not found: ${requestPath}`);
+    }
     // Folders may be nested in one another; the innermost is the one the user is
     // actually looking at.
     const hit = matches.reduce((best, current) => (current.rel.length < best.rel.length ? current : best));

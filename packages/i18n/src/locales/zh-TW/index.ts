@@ -1997,6 +1997,8 @@ sklm: {
       toolCatalogEmpty: "目前工作區沒有可選擇的 Skill、MCP 伺服器或外掛工具。",
       mcpAllTools: "選取後授予此伺服器發現的所有工具",
       mcpToolCount: "已載入 {{count}} 個工具",
+      mcpToolCount_one: "已載入 1 個工具",
+      mcpToolCount_other: "已載入 {{count}} 個工具",
       mcpStatusReady: "就緒",
       mcpStatusConnecting: "連線中",
       mcpStatusFailed: "失敗",

@@ -263,7 +263,11 @@ test("macOS DMG is a two-icon install; ZIP keeps the unsigned helper", () => {
   ]);
   assert.equal(dmgBackgroundRetina.readUInt32BE(16), 1440);
   assert.equal(dmgBackgroundRetina.readUInt32BE(20), 880);
-  assert.ok(macOpenScriptStat.mode & 0o111, "opening helper must be executable");
+  // Windows does not preserve POSIX executable bits on checkout. The helper
+  // mode is part of the macOS release artifact and is verified on Darwin.
+  if (process.platform === "darwin") {
+    assert.ok(macOpenScriptStat.mode & 0o111, "opening helper must be executable");
+  }
   assert.match(
     macOpenFixNote,
     /xattr -r -d com\.apple\.quarantine \/Applications\/PI-Desktop\.app/,

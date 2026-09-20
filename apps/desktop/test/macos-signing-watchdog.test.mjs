@@ -13,6 +13,8 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+const macosTest = process.platform === "darwin" ? test : test.skip;
+
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const watchdogPath = join(repoRoot, "scripts", "macos-signing-watchdog.mjs");
 
@@ -94,7 +96,7 @@ function summaryNumber(stdout, name) {
   return Number(match[1]);
 }
 
-test("forwards child output with a [sign] prefix and reports a clean exit", async () => {
+macosTest("forwards child output with a [sign] prefix and reports a clean exit", async () => {
   const { status, stdout } = await runWatchdog([
     "--label",
     "clean",
@@ -111,7 +113,7 @@ test("forwards child output with a [sign] prefix and reports a clean exit", asyn
   assert.match(summaryLine(stdout), /exit=0 /);
 });
 
-test("passes a non-zero child exit code through to the caller", async () => {
+macosTest("passes a non-zero child exit code through to the caller", async () => {
   const { status, stdout } = await runWatchdog([
     "--label",
     "failing",
@@ -125,7 +127,7 @@ test("passes a non-zero child exit code through to the caller", async () => {
   assert.match(summaryLine(stdout), /exit=7 /);
 });
 
-test("a silent signing stage produces a stall dump without failing the run", async () => {
+macosTest("a silent signing stage produces a stall dump without failing the run", async () => {
   const { status, stdout, elapsedMs } = await runWatchdog([
     "--label",
     "stall",
@@ -148,7 +150,7 @@ test("a silent signing stage produces a stall dump without failing the run", asy
   assert.ok(elapsedMs < 20_000, `watchdog took ${elapsedMs}ms`);
 });
 
-test("a hard timeout kills the process group, dumps diagnostics and exits 124", async () => {
+macosTest("a hard timeout kills the process group, dumps diagnostics and exits 124", async () => {
   const { status, stdout, elapsedMs } = await runWatchdog([
     "--label",
     "timeout",
@@ -174,7 +176,7 @@ test("a hard timeout kills the process group, dumps diagnostics and exits 124", 
   assert.ok(elapsedMs < 10_000, `timeout took ${elapsedMs}ms`);
 });
 
-test("redacts a short certificate password even below the length guard", async () => {
+macosTest("redacts a short certificate password even below the length guard", async () => {
   // The certificate password is the one value builder-util itself may print
   // unredacted, so it must be redacted at any length.
   const shortPassword = "pw12";
@@ -198,7 +200,7 @@ test("redacts a short certificate password even below the length guard", async (
   assert.match(stdout, /\[redacted\]/);
 });
 
-test("redacts secrets printed by the child and by codesign-style arguments", async () => {
+macosTest("redacts secrets printed by the child and by codesign-style arguments", async () => {
   const cscKeyPassword = "sentinel-csc-key-password-abcdef";
   const appSpecificPassword = "sentinel-apple-app-password-abcdef";
   const cscLink = "sentinel-csc-link-abcdef";
@@ -249,7 +251,7 @@ test("redacts secrets printed by the child and by codesign-style arguments", asy
   assert.match(stderr, /^\[sign\] stderr \[redacted\]$/m);
 });
 
-test(
+macosTest(
   "the injected codesign shim times calls and the summary classifies them",
   { skip: process.platform !== "darwin" ? "the codesign shim is macOS-only" : false },
   async (t) => {
@@ -303,7 +305,7 @@ test(
   },
 );
 
-test(
+macosTest(
   "a failing codesign call is reported as a failure, not as a silent retry",
   { skip: process.platform !== "darwin" ? "the codesign shim is macOS-only" : false },
   async (t) => {
@@ -337,7 +339,7 @@ test(
   },
 );
 
-test("--no-codesign-shim runs the command untouched and reports zero calls", async (t) => {
+macosTest("--no-codesign-shim runs the command untouched and reports zero calls", async (t) => {
   const root = await makeTempDir(t);
   const codesignLog = join(root, "unused-codesign-timing.log");
 
@@ -361,7 +363,7 @@ test("--no-codesign-shim runs the command untouched and reports zero calls", asy
   await assert.rejects(readFile(codesignLog, "utf8"));
 });
 
-test("a missing -- separator is a usage error", async () => {
+macosTest("a missing -- separator is a usage error", async () => {
   const withoutSeparator = await runWatchdog(["echo", "hi"]);
   assert.equal(withoutSeparator.status, 2);
   assert.match(withoutSeparator.stderr, /Usage: node scripts\/macos-signing-watchdog\.mjs/);
@@ -372,7 +374,7 @@ test("a missing -- separator is a usage error", async () => {
   assert.match(withoutCommand.stderr, /Usage: node scripts\/macos-signing-watchdog\.mjs/);
 });
 
-test("appends a markdown summary to GITHUB_STEP_SUMMARY", async (t) => {
+macosTest("appends a markdown summary to GITHUB_STEP_SUMMARY", async (t) => {
   const root = await makeTempDir(t);
   const stepSummary = join(root, "step-summary.md");
 
@@ -387,7 +389,7 @@ test("appends a markdown summary to GITHUB_STEP_SUMMARY", async (t) => {
   assert.match(markdown, /\| elapsed \| [0-9]+\.[0-9]s \|/);
 });
 
-test("recognizes signing phases from the builder output in order", async () => {
+macosTest("recognizes signing phases from the builder output in order", async () => {
   const script = [
     'console.log("Walking... /tmp/PI-Desktop.app/Contents");',
     'console.log("Signing... /tmp/PI-Desktop.app/Contents/MacOS/PI-Desktop");',

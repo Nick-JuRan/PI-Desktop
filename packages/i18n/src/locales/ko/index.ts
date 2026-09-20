@@ -2032,6 +2032,8 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       toolCatalogEmpty: "이 작업 공간에 선택할 수 있는 Skill, MCP 서버 또는 플러그인 도구가 없습니다.",
       mcpAllTools: "이 서버를 선택하면 검색된 모든 도구가 부여됩니다",
       mcpToolCount: "로드된 도구 {{count}}개",
+      mcpToolCount_one: "로드된 도구 1개",
+      mcpToolCount_other: "로드된 도구 {{count}}개",
       mcpStatusReady: "준비됨",
       mcpStatusConnecting: "연결 중",
       mcpStatusFailed: "실패",

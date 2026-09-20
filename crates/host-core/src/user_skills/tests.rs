@@ -179,7 +179,7 @@ fn skill_home(home: &Path) {
 }
 
 fn project_dir(project: &Path) -> String {
-    project.to_str().unwrap().to_string()
+    crate::agent_capabilities::normalize_project_path(project.to_str().unwrap())
 }
 
 fn record(id: &str, name: &str) -> UserSkillRecord {

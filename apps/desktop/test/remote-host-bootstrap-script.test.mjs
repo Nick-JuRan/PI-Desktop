@@ -9,6 +9,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+const posixShellTest = process.platform === "win32" ? test.skip : test;
+
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 
@@ -183,7 +185,7 @@ test("buildBootstrapScript interpolates every input as a quoted literal", () => 
   assert.deepEqual(interpolations, ["HOME:-"]);
 });
 
-test("the generated script is valid POSIX shell, even with hostile inputs", async () => {
+posixShellTest("the generated script is valid POSIX shell, even with hostile inputs", async () => {
   const { dir, cleanup } = await tempDir("pi-host-script-syntax-");
   try {
     const plain = join(dir, "plain.sh");
@@ -210,7 +212,7 @@ test("the generated script is valid POSIX shell, even with hostile inputs", asyn
   }
 });
 
-test("a hostile version stays one literal value when the assignments run", async () => {
+posixShellTest("a hostile version stays one literal value when the assignments run", async () => {
   const { dir, cleanup } = await tempDir("pi-host-script-quote-");
   try {
     const hostileVersion = "1.0.0'; touch \"$HOME/pwned\"; echo '";
@@ -232,7 +234,7 @@ test("a hostile version stays one literal value when the assignments run", async
   }
 });
 
-test("the generated script installs, starts, and prints the ready/pairing lines", async () => {
+posixShellTest("the generated script installs, starts, and prints the ready/pairing lines", async () => {
   const { dir, cleanup } = await tempDir("pi-host-script-run-");
   try {
     const sandbox = await prepareSandbox(dir);
@@ -259,7 +261,7 @@ test("the generated script installs, starts, and prints the ready/pairing lines"
   }
 });
 
-test("a checksum mismatch fails the script before anything is installed", async () => {
+posixShellTest("a checksum mismatch fails the script before anything is installed", async () => {
   const { dir, cleanup } = await tempDir("pi-host-script-digest-");
   try {
     const sandbox = await prepareSandbox(dir);

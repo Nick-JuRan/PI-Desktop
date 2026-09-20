@@ -6,6 +6,8 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+const macosShellTest = process.platform === "darwin" ? test : test.skip;
+
 // Both scripts are plain bash / node CLI tools with no dependencies, so these
 // tests drive them through a fake PATH and a temporary bundle fixture instead of
 // importing repository code.
@@ -239,7 +241,7 @@ async function writeBundleFixture(release) {
   return app;
 }
 
-test("diagnostics report an available Developer ID identity", async (t) => {
+macosShellTest("diagnostics report an available Developer ID identity", async (t) => {
   const root = await tempRoot(t, "pi-desktop-signing-diagnostics-");
   const bin = join(root, "bin");
   await writeDiagnosticsShims(bin, { identities: MATCHING_IDENTITY });
@@ -262,7 +264,7 @@ test("diagnostics report an available Developer ID identity", async (t) => {
   assert.doesNotMatch(result.stdout, /is not available/);
 });
 
-test("diagnostics fail closed when --require-identity finds no identity", async (t) => {
+macosShellTest("diagnostics fail closed when --require-identity finds no identity", async (t) => {
   const root = await tempRoot(t, "pi-desktop-signing-required-");
   const bin = join(root, "bin");
   await writeDiagnosticsShims(bin, { identities: NO_IDENTITIES });
@@ -279,7 +281,7 @@ test("diagnostics fail closed when --require-identity finds no identity", async 
   );
 });
 
-test("diagnostics treat a missing identity as a warning by default", async (t) => {
+macosShellTest("diagnostics treat a missing identity as a warning by default", async (t) => {
   const root = await tempRoot(t, "pi-desktop-signing-optional-");
   const bin = join(root, "bin");
   await writeDiagnosticsShims(bin, { identities: NO_IDENTITIES });
@@ -296,7 +298,7 @@ test("diagnostics treat a missing identity as a warning by default", async (t) =
   assert.doesNotMatch(result.stdout, /Developer ID identity available/);
 });
 
-test("diagnostics refuse to run off macOS", async (t) => {
+macosShellTest("diagnostics refuse to run off macOS", async (t) => {
   const root = await tempRoot(t, "pi-desktop-signing-linux-");
   const bin = join(root, "bin");
   await writeDiagnosticsShims(bin, { unameSystem: "Linux" });
@@ -307,7 +309,7 @@ test("diagnostics refuse to run off macOS", async (t) => {
   assert.match(result.stderr, /must run on macOS/);
 });
 
-test("diagnostics never echo signing secrets", async (t) => {
+macosShellTest("diagnostics never echo signing secrets", async (t) => {
   const root = await tempRoot(t, "pi-desktop-signing-redaction-");
   const bin = join(root, "bin");
   await writeDiagnosticsShims(bin, { leaky: true });
@@ -336,7 +338,7 @@ test("diagnostics never echo signing secrets", async (t) => {
   }
 });
 
-test("inventory counts the signing payload of a release directory", async (t) => {
+macosShellTest("inventory counts the signing payload of a release directory", async (t) => {
   const root = await tempRoot(t, "pi-desktop-bundle-inventory-");
   const release = join(root, "release");
   const app = await writeBundleFixture(release);

@@ -138,7 +138,8 @@ fn project_server_is_copied_and_state_is_pruned_after_removal() {
 #[test]
 fn a_global_server_moves_into_a_project_with_its_state() {
     let (home, app, project) = scaffolding();
-    let project_path = project.path().to_str().unwrap().to_string();
+    let project_path =
+        crate::agent_capabilities::normalize_project_path(project.path().to_str().unwrap());
     test_support::with_global_agents(home.path(), || {
         let mut registry = McpServerRegistry::new(app.path());
         let mut input = stdio("files");
