@@ -1649,11 +1649,15 @@ combines the same sources and applies the same exclusions; it does not scan
 `skills` contains active built-in, plugin, and user Skill ids with display
 metadata; `mcpServers` contains active user MCP records plus the latest cached
 connection state and discovered tool names; and `pluginTools` contains active
-plugin agent tools by full runtime name. The renderer persists Skill selections
-as `skill:<id>`, MCP selections as `mcp:<server-id>`, and plugin selections by
-their full name in the subagent `tools` array. The channel is a discovery
-surface only: delegation resolves those selectors again against the live
-sidecar catalog before constructing the child tool list.
+plugin agent tools and tools reported by trusted extensions through a session
+load or catalog probe. Ordinary
+plugin tools use their full runtime name. Trusted-extension rows carry a
+generated selector alongside the declared tool name, so the renderer persists
+the selector without hardcoding any extension tool name. The renderer persists
+Skill selections as `skill:<id>`, MCP selections as `mcp:<server-id>`, and
+plugin or trusted-extension selections in the subagent `tools` array. The
+channel is a discovery surface only: delegation resolves those selectors again
+against the live sidecar catalog before constructing the child tool list.
 
 ## 12d. Capability level and local activation
 

@@ -1622,6 +1622,28 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
   `apps/desktop/test/subagent-wiring.test.mjs`、`packages/agent-runtime/src/subagent-definitions.test.ts`、
   `packages/shared/src/subagent-presets.test.ts`）；完整 UI 旅程为草稿
 
+#### E2E-SUBAGENT-trusted-extension-tool-selection
+
+- **前置条件**：Agent 模式；一个已启用的插件声明可信的
+  `contributes.agentExtensions` 模块，模块代码注册任意工具名。当前项目在插件范围内；
+  不要求已有绑定提供商的会话加载，因为设置请求可以使用 sidecar 目录探测。
+- **步骤**：
+  1. 打开设置 → 智能体 → 子智能体，编辑一个用户自建的子智能体。
+  2. 展开“高级”，确认扩展报告的工具出现在插件工具分组中，源代码没有工具名列表。
+     选中它并保存；重新打开编辑器，确认选择仍然存在。
+  3. 开始新的 Agent 回合并委派给该子智能体。检查子代理工具目录，并要求它调用选中的扩展工具。
+  4. 禁用或卸载扩展，开始下一回合，再次检查目录。
+- **预期**：`subagent/tool-catalog` 在没有会话报告时使用 sidecar 目录探测，然后为每个实时
+  扩展工具暴露自动生成的选择器；渲染器把它显示为可单独选择的卡片。保存的定义包含选择器，
+  而不是硬编码的项目工具列表。委托时选择器解析为当前 sidecar 工具，子代理可以调用它；
+  禁用或卸载后，下一次目录和委托都会省略该工具。
+- **链接规格**：`03-runtime/01-ipc-protocol.md` §12c、`03-runtime/02-agent-runtime.md` §5f、
+  `03-runtime/03-tools-and-permissions.md` §11、`07-plugins/16-trusted-extensions.md` §7
+- **验收**：E（工具与权限）、G（Skill/MCP/插件激活）
+- **里程碑**：M6+
+- **状态**：`packages/shared`、`apps/desktop/test/subagent-tool-catalog.test.mjs` 和桌面接线测试已覆盖；
+  带已加载扩展的原生设置/sidecar 旅程仍需运行
+
 #### E2E-200：Linux RPM 保留 Wayland 桌面身份
 
 - **先决条件**：Linux x64 软件包验证运行或标签发布可以在 Ubuntu 22.04
@@ -5147,6 +5169,7 @@ IPC 请求无法关闭。
 | 品质（旧版子代理回合上限） | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 | M6+（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | M6+（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
+| E — 可信扩展工具授权 | E2E-SUBAGENT-trusted-extension-tool-selection |
 | E — 工具与权限（内置子智能体默认项） | E2E-SUBAGENT-settings-lists-builtin-defaults |
 | 品质（内置子智能体默认项） | E2E-SUBAGENT-settings-lists-builtin-defaults |
 | C — 对话与流式（不透明浮动表面） | E2E-CHAT-opaque-floating-decision-and-retry-surfaces |

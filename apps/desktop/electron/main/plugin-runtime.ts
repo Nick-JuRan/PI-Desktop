@@ -3056,9 +3056,10 @@ export class PluginRuntime {
    * `agent.prompt.inject` still loads — it just teaches the agent nothing.
    */
   /**
-   * Index `contributes.agentExtensions`. The modules are loaded by the agent
-   * sidecar at the next turn, so this only validates paths and records
-   * ownership. Without `agent.extension` the plugin loads but contributes no
+   * Index `contributes.agentExtensions`. The modules are normally loaded by
+   * the agent sidecar at the next turn; Settings can also request a sidecar
+   * catalog probe before a provider-bound turn so it can discover registered
+   * tools. Without `agent.extension` the plugin loads but contributes no
    * module, mirroring how skills behave without `agent.prompt.inject`.
    */
   private registerAgentExtensions(loaded: LoadedPlugin): void {
