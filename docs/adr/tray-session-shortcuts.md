@@ -31,8 +31,9 @@ or closed, so a renderer-only menu snapshot would become stale.
    (the existing 200-record inbox), consumes root agent lifecycle/status
    events, and refreshes after session/inbox mutations. It coalesces pending
    reads, rejects obsolete host generations, and clears shortcuts on a failed
-   refresh. Tray hover/right-click retries a failed read. It continues to
-   refresh with no renderer attached; deleting a
+   refresh. Windows/Linux hover/right-click retries a failed read. macOS does
+   not subscribe to mouse-enter, which would replace the native status item.
+   It continues to refresh with no renderer attached; deleting a
    session or archiving it or its project removes the shortcut.
 4. A session click restores/focuses the main window and sends
    `tray/event/sessionActivated { sessionId }` (`null` means View more) only after the renderer finishes
@@ -43,8 +44,9 @@ or closed, so a renderer-only menu snapshot would become stale.
    read. Single-click opens the attached menu; double-click and Open retain
    window restore behavior. Each overflowing group has View more, which
    restores the main window and expands the existing session sidebar. Titles are one
-   line and capped at 48 Unicode code points including an ellipsis; labels
-   use the active shipped locale. Quit retains confirmation and shutdown.
+   line and capped at 32 display columns including an ellipsis, counting an East
+   Asian wide or emoji code point as two; labels use the active shipped locale.
+   Quit retains confirmation and shutdown.
 
 ## Consequences
 

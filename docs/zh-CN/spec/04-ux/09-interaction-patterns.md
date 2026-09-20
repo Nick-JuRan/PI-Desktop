@@ -152,10 +152,12 @@
 - Empty groups are hidden. Archived sessions/projects and deleted sessions
   are excluded. Running/Pinned follow sidebar sorting; Unread follows the
   latest unread result per session, newest first, including failed results.
-- Long titles use one line and an ellipsis after at most 48 Unicode code
-  points. An overflowing group offers View more to restore the window and
-  expand session navigation. A session row restores/focuses its exact conversation,
-  activating its project through the existing selection flow.
+- Long titles use one line capped at 32 display columns including the
+  ellipsis; an East Asian wide or emoji code point counts as two, so a CJK
+  row stays as wide as a Latin one. An overflowing group offers View more to
+  restore the window and expand session navigation. A session row
+  restores/focuses its exact conversation, activating its project through the
+  existing selection flow.
 - macOS single-click opens the menu without restoring/focusing a conversation
   or marking it read. Entering a conversation uses normal acknowledgement.
   Open and double-click restore the window; Quit keeps its confirmation and
@@ -163,6 +165,8 @@
 - Start/finish, read, pin, rename, archive, delete, and backend restart update
   the menu. The menu remains available when the main window is hidden or
   closed, without creating another window until an explicit activation.
+- macOS 不监听托盘 mouse-enter：该事件会替换原生 status item 并让菜单栏图标消失。
+  Windows/Linux 仍可在悬停/右键时重试失败的 Host 读取；macOS 改由下一次会话或收件箱事件刷新。
 
 ### 1. 6 侧边栏项目和对话组织
 
@@ -726,6 +730,8 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
    `.pi/plan/*.md` 或 `.pi/goal/*.md` 工件，记录其 path/hash/size 并结构化
    title/question，渲染器显示共享合同审批卡
    只有标题和神器开启器；问题仍然是主机端合同数据。
+   打开器在该视图可启动时把这一路径交给内置文件视图，否则交给宿主机文件标签，
+   因此工件会在对话旁、与用户其它项目文件相同的视图中打开（D452）。
 4. 批准需要询问/接受编辑/自动选择。渲染器会记住
    该设备上最后选择的模式并将其用作下一个批准的模式
    默认。 Host-core提交批准，`mode = agent`，权限模式，

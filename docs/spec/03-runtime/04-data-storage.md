@@ -47,6 +47,12 @@ read time; their path-scoped memory and filesystem instructions remain readable.
 
 ## 2. File layout
 
+A packaged installation keeps this tree in `~/.pi-desktop`. A development build
+keeps the same tree in `~/.pi-desktop-dev`, because a shipped app and a
+`pnpm dev` host are two installations that have to run at the same time (D599,
+ADR 0094). `PI_DESKTOP_DATA_DIR` replaces either root outright and is resolved
+to an absolute path before it reaches host-core as a child-process variable.
+
 ```text
 ~/.pi-desktop/
  ├── pi.sqlite            # index database (WAL: + -wal/-shm) — host-core only
@@ -63,6 +69,8 @@ read time; their path-scoped memory and filesystem instructions remain readable.
  ├── plugins/             # code + data + registry.json (unchanged, spec 07-11)
  ├── logs/                # NDJSON app/<category>, host/<category>, agent/<category> logs
  ├── cache/               # disposable caches
+ ├── crash-dumps/         # local Crashpad minidumps (never uploaded; D602)
+ ├── crash-dumps.json     # last-reported dump mtime (best-effort marker)
  ├── review-changes/<sessionId>/<snapshotId>/
  │    ├── before          # bounded pre-tool bytes, when reversible
  │    └── meta.json       # path, hashes, diff state, and ownership
@@ -74,6 +82,8 @@ read time; their path-scoped memory and filesystem instructions remain readable.
 ```
 
 One database file keeps cross-entity writes transactional (e.g. session +
+turn + artifact in one commit). The DB stores **no large payloads**: message
+
 turn + artifact in one commit). The DB stores **no large payloads**: message
 content lives in `sessions/`, attachments and tool outputs beyond the limits
 of [16-tool-result-limits](16-tool-result-limits.md) live on disk, referenced
@@ -750,7 +760,16 @@ type Block =
       toolUsage?: ToolTokenUsage }
   | { type: "attachment"; kind: "image" | "file"; name: string;
       ref: string /* attachments/<sha256> or absolute path */;
-      mimeType?: string; size?: number };
+      mimeType?: string; size?: number }
+  | { type: "hostedSearch"; status: "searching" | "completed" | "failed";
+      rounds: Array<{ id: string;
+        status: "searching" | "completed" | "failed";
+        kind?: "search" | "openPage" | "findInPage";
+        query?: string; url?: string;
+        sources: Array<{ url: string; title?: string }> }>;
+      replay?: Array<{ type: "hostedSearch"; phase: string;
+        blockId?: string; name?: string; input?: unknown;
+        status?: string; isError?: boolean; wire?: unknown }> };
 ```
 
 - Tool results are stored **post-truncation** (16-tool-result-limits); full
@@ -1495,3 +1514,10 @@ the sidecar.
 The first slice has no projection cache or async scan bound; every list still
 reads/parses complete files. Caching by canonical path/file identity/size/mtime
 and bounded asynchronous scanning remain deferred performance work.
+
+### Provider display order
+
+`kv(ns="app", key="providers.order")` stores an ordered array of provider IDs.
+Host-core owns updates through `providers.reorder`; missing metadata preserves
+creation order, new IDs follow saved IDs, and deleted IDs are ignored. This
+preference does not rewrite provider configuration or require a schema migration.

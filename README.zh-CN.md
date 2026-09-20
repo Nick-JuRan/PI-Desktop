@@ -430,9 +430,9 @@ PI-Desktop 不要求注册账号，也没有强制的 PI-Desktop 云端中转层
 
 打包版本会检查 GitHub Releases，并在应用内提示新版本。
 
-Windows NSIS 与 Linux AppImage 可以在应用内下载并安装更新。
+Windows NSIS、Linux AppImage 与 macOS 可以在应用内下载并安装更新。
 
-macOS、Linux deb/rpm，以及 Windows Portable 版本会跳转到 Releases 页面。
+Linux deb/rpm 以及 Windows Portable 版本会跳转到 Releases 页面。
 
 <details>
 <summary><strong>Linux 兼容性说明</strong></summary>
@@ -465,42 +465,9 @@ electron PI-Desktop-<version>-linux-x64.asar
 
 </details>
 
-<details>
-<summary><strong>macOS 首次启动说明</strong></summary>
-
-<br />
-
-GitHub Release 上的正式 macOS 构建已使用 Developer ID 签名、公证并装订。将 `PI-Desktop.app` 移到 `/Applications` 后应可直接打开。
-
-本地或未签名的调试构建仍可能带有 Apple 隔离属性。如果 macOS 提示 App 已损坏或无法打开：
-
-1. 确认安装包来自可信的 PI-Desktop 来源
-2. 将 `PI-Desktop.app` 移动到 `/Applications`
-3. 运行：
-
-```bash
-xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app
-```
-
-4. 再次打开 PI-Desktop
-
-DMG 内包含 `If app won't open, read this.txt`。
-
-ZIP 包也包含 `PI-Desktop-macOS-open.command`，在应用移动到 Applications 后可以执行相同的 trusted-source fallback。
-
-这个命令只会移除 Apple 的 quarantine 属性。
-
-**不要对来源不可信的 App 使用。**
-
-已签名并公证的版本不需要这套 fallback。
-
-</details>
-
 ### 代码签名
 
-macOS GitHub Release 产物使用 Developer ID Application `XingYu Liu (DUV63RKYTW)` 签名，并由 Apple 公证。
-
-PI-Desktop 的 Windows Release 使用 [SignPath.io](https://signpath.io/) 提供的免费代码签名服务，并通过 [SignPath Foundation](https://signpath.org/) 的证书完成签名。
+macOS GitHub Release 产物使用 Developer ID Application `XingYu Liu (DUV63RKYTW)` 签名，并由 Apple 公证。将 `PI-Desktop.app` 移到 `/Applications` 后应可直接打开。
 
 ---
 

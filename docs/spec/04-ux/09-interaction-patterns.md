@@ -189,10 +189,12 @@ recency only breaks ties between equally relevant matches.
 - Empty groups are hidden. Archived sessions/projects and deleted sessions
   are excluded. Running/Pinned follow sidebar sorting; Unread follows the
   latest unread result per session, newest first, including failed results.
-- Long titles use one line and an ellipsis after at most 48 Unicode code
-  points. An overflowing group offers View more to restore the window and
-  expand session navigation. A session row restores/focuses its exact conversation,
-  activating its project through the existing selection flow.
+- Long titles use one line capped at 32 display columns including the
+  ellipsis; an East Asian wide or emoji code point counts as two, so a CJK
+  row stays as wide as a Latin one. An overflowing group offers View more to
+  restore the window and expand session navigation. A session row
+  restores/focuses its exact conversation, activating its project through the
+  existing selection flow.
 - macOS single-click opens the menu without restoring/focusing a conversation
   or marking it read. Entering a conversation uses normal acknowledgement.
   Open and double-click restore the window; Quit keeps its confirmation and
@@ -200,6 +202,10 @@ recency only breaks ties between equally relevant matches.
 - Start/finish, read, pin, rename, archive, delete, and backend restart update
   the menu. The menu remains available when the main window is hidden or
   closed, without creating another window until an explicit activation.
+- macOS does not listen for tray mouse-enter: that event replaces the native
+  status item and hides the extra. Windows/Linux still retry a failed Host
+  read on hover/right-click; macOS retries from the next session or inbox event.
+
 
 ### 1.6 Sidebar project and conversation organization
 
@@ -394,6 +400,13 @@ may be retained while exactly one workspace supplies the visible shell context.
   trigger unless the pattern explicitly retains input focus.
 - Native `<select>` popups remain platform-owned; this rule covers custom
   renderer surfaces only.
+- Pointer-anchored context menus (transcript rows, conversation
+  background, markdown links) are the same family: they portal to
+  `document.body` as a viewport-fixed layer, measure before reveal so
+  they never flash at the origin, clamp inside the viewport instead of
+  flipping, and close on outside press, Escape, Tab, window blur, or a
+  scroll of anything behind them. An empty item list never opens a
+  surface.
 
 ### 1.6 Local profile footer
 
@@ -794,17 +807,19 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 ### 4.2 Collapse indicator
 
-- Tool activity starts as a lightweight collapsed row; failed calls open
-  automatically so the error remains local to its invocation.
-- One assistant turn has one process disclosure containing thinking, tool calls
-  and intermediate progress text. The trailing answer streams outside it;
-  later activity moves that text into the process. The header updates elapsed
-  time once per second while active and shows the visible step count.
-- Detailed mode opens the active process and retains the latest thinking row's
-  automatic disclosure. Completed process areas collapse unless a click,
-  keyboard activation or search reveal has taken ownership. Tool details keep
-  their individual controls. Failed tool calls open an unclaimed active process so
-  their errors stay visible.
+- Tool activity starts as a lightweight collapsed row. Failed calls keep their
+  error in the row header; they do not auto-expand.
+- Compact mode gives one assistant turn one process disclosure containing
+  thinking, tool calls and intermediate progress text. The trailing answer
+  streams outside it; later activity moves that text into the process. The
+  header updates elapsed time once per second while active and shows the
+  visible step count.
+- Detailed mode does not wrap a process. Its last tool-call or hosted-search
+  row of the last activity group starts expanded; earlier tool details stay
+  collapsed. Compact completed process areas collapse unless a click, keyboard
+  activation or search reveal has taken ownership. Tool details keep their
+  individual controls. Failed tool calls open an unclaimed active process so
+  their errors stay visible even in compact mode.
 - Compact thinking mode shows only a status indicator while reasoning streams;
   when answer text starts or reasoning ends, the thought row disappears. Tools
   and progress text remain accessible, and a completed thinking-only process
@@ -877,6 +892,9 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
    `.pi/plan/*.md` or `.pi/goal/*.md` artifact, records its path/hash/size and structured
    title/question, and the renderer displays the shared contract approval card with
    only the title and artifact opener; the question remains host-side contract data.
+   The opener hands that path to the bundled file view when it is launchable and to
+   the host file tab otherwise, so the artifact opens beside the conversation in the
+   same view the user's other project files use (D452).
 4. Approve requires Ask / Accept edits / Auto selection. The renderer remembers
    the last selected mode on this device and uses it as the next approval's
    default. Host-core commits the approval, `mode = agent`, permission mode,

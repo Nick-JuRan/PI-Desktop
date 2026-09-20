@@ -75,6 +75,7 @@ import type {
   ScheduledTask,
   ProviderCreateInput,
   ProviderPublic,
+  ProviderReorderInput,
   ProviderUpdateInput,
   Result,
   SessionDetail,
@@ -569,7 +570,11 @@ export const api = {
       config,
     ).then((result) => ({ ...result, session: normalizeSession(result.session) })),
   scanImportSessions: () =>
-    invoke<{ sessions: ImportCandidate[] }>(IPC.invoke.sessionImportScan),
+    invoke<{
+      sessions: ImportCandidate[];
+      truncated?: Partial<Record<ImportSource, number>>;
+    }>(IPC.invoke.sessionImportScan),
+
   runImportSessions: (items: ImportCandidate[]) =>
     invoke<ImportRunResult>(IPC.invoke.sessionImportRun, items),
   scanImportModelConfigs: () =>
@@ -587,6 +592,8 @@ export const api = {
   listSystemFonts: () => invoke<string[]>(IPC.invoke.systemFontsList),
   listCommandShells: () =>
     invoke<CommandShellCatalog>(IPC.invoke.commandShellList),
+  reorderProviders: (input: ProviderReorderInput) =>
+    invoke<{ ok: boolean }>(IPC.invoke.providersReorder, input),
   listProviders: () =>
     invoke<{ providers: ProviderPublic[] }>(IPC.invoke.providersList),
   createProvider: (input: ProviderCreateInput) =>
@@ -1174,7 +1181,7 @@ export const api = {
           dependencies:
             | { state: "skipped"; reason: "no-package-json" | "no-dependencies" }
             | { state: "installed" }
-            | { state: "failed"; error: string };
+            | { state: "failed"; error: string; reason?: "npm-unavailable" };
         }
     >(IPC.invoke.pluginImportExtension),
   runExtensionCommand: (input: { sessionId: string; name: string; args: string }) =>
