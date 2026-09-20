@@ -87,9 +87,13 @@ test("the chained write step produces a package.json Node will treat as ESM", as
   try {
     await mkdir(join(workDir, "dist-bundle"), { recursive: true });
 
-    // Execute the real write command from package.json against a scratch
+    // Execute the real node write command from package.json against a scratch
     // dist-bundle so the payload (not just the source string) is validated.
-    execFileSync("bash", ["-c", writeStep], {
+    // Avoid a shell here: this contract test also runs on Windows, where bash
+    // is not a required development dependency.
+    const nodeWrite = writeStep.match(/^node\s+-e\s+"([\s\S]*)"$/);
+    assert.ok(nodeWrite, `expected a node -e write step, got: ${writeStep}`);
+    execFileSync(process.execPath, ["-e", nodeWrite[1]], {
       cwd: workDir,
       stdio: ["ignore", "pipe", "pipe"],
     });

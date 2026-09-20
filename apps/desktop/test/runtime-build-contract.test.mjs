@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const desktopPackageUrl = new URL("../package.json", import.meta.url);
-const dependencyBuild = "pnpm --filter '@pi-desktop/desktop^...' build";
+const dependencyBuild =
+  'pnpm --filter "@pi-desktop/desktop^..." --fail-if-no-match build';
 const depsScript = "pnpm run build:deps";
 
 const readScripts = async () => {

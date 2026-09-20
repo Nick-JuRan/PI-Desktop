@@ -163,7 +163,7 @@ test("chat renders one message-owned card immediately after its tool row", () =>
   assert.equal(transcriptSource.includes("review-changes-entry"), false);
   assert.match(
     transcriptSource,
-    /<ToolRow message=\{item\.message\} \/>[\s\S]*<ReviewChangeCard message=\{item\.message\} \/>/,
+    /<ToolRow\b[\s\S]*?message=\{item\.message\}[\s\S]*?\/>\s*<ReviewChangeCard message=\{item\.message\} \/>/,
   );
   assert.doesNotMatch(transcriptSource, /workspaceDiff|findWorkspaceChange/);
   assert.match(cardSource, /aria-expanded=\{open\}/);

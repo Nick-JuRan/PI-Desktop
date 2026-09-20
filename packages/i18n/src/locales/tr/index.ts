@@ -2032,6 +2032,8 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       toolCatalogEmpty: "Bu çalışma alanında seçilebilir Skill, MCP sunucusu veya eklenti aracı yok.",
       mcpAllTools: "Bu sunucuyu seçmek keşfedilen tüm araçları verir",
       mcpToolCount: "{{count}} araç yüklendi",
+      mcpToolCount_one: "1 araç yüklendi",
+      mcpToolCount_other: "{{count}} araç yüklendi",
       mcpStatusReady: "hazır",
       mcpStatusConnecting: "bağlanıyor",
       mcpStatusFailed: "başarısız",

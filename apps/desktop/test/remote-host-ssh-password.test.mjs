@@ -23,6 +23,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+const posixSshTest = process.platform === "win32" ? test.skip : test;
+
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 
@@ -139,7 +141,7 @@ test("sshCommonArgs relaxes BatchMode only for a password target", () => {
   assert.equal(args.at(-1), "deploy@remote.example");
 });
 
-test("a password target reaches ssh through the askpass helper and nowhere else", { timeout: TEST_TIMEOUT_MS }, async (t) => {
+posixSshTest("a password target reaches ssh through the askpass helper and nowhere else", { timeout: TEST_TIMEOUT_MS }, async (t) => {
   const binary = await writeFixture(t, FIXTURES.argvAndEnv, "ssh-askpass-probe");
   const transport = createSystemSshTransport(
     { host: "remote.example", user: "deploy", password: PASSWORD },
@@ -178,7 +180,7 @@ test("a password target reaches ssh through the askpass helper and nowhere else"
   await assert.rejects(stat(secretPath));
 });
 
-test("a key-authenticated transport is handed no askpass material", { timeout: TEST_TIMEOUT_MS }, async (t) => {
+posixSshTest("a key-authenticated transport is handed no askpass material", { timeout: TEST_TIMEOUT_MS }, async (t) => {
   const binary = await writeFixture(t, FIXTURES.argvAndEnv, "ssh-no-askpass");
   const transport = createSystemSshTransport({ host: "remote.example" }, { binary });
   t.after(() => transport.dispose());
@@ -196,7 +198,7 @@ test("a key-authenticated transport is handed no askpass material", { timeout: T
   assert.equal(read("HELPER_READS"), undefined);
 });
 
-test("each command gets its own credential, and none outlives it", { timeout: TEST_TIMEOUT_MS }, async (t) => {
+posixSshTest("each command gets its own credential, and none outlives it", { timeout: TEST_TIMEOUT_MS }, async (t) => {
   const binary = await writeFixture(t, FIXTURES.argvAndEnv, "ssh-per-command-secret");
   const transport = createSystemSshTransport(
     { host: "remote.example", password: PASSWORD },
@@ -216,7 +218,7 @@ test("each command gets its own credential, and none outlives it", { timeout: TE
   await assert.rejects(stat(secondSecret));
 });
 
-test("dispose removes credential material that no child has reclaimed", { timeout: TEST_TIMEOUT_MS }, async (t) => {
+posixSshTest("dispose removes credential material that no child has reclaimed", { timeout: TEST_TIMEOUT_MS }, async (t) => {
   const binary = await writeFixture(t, FIXTURES.argvAndEnv, "ssh-dispose-secret");
   const transport = createSystemSshTransport(
     { host: "remote.example", password: PASSWORD },
@@ -261,7 +263,7 @@ test("createSshAskpass refuses Windows instead of writing a helper that cannot r
   assert.deepEqual(await readdir(dir), []);
 });
 
-test("createSshAskpass writes a 0600 secret in a 0700 directory and cleans up", async (t) => {
+posixSshTest("createSshAskpass writes a 0600 secret in a 0700 directory and cleans up", async (t) => {
   const parent = await tmpDir(t);
   const material = await createSshAskpass(PASSWORD, { dir: parent });
   const secretPath = material.env[ASKPASS_SECRET_ENV];

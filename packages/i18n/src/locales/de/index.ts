@@ -1997,6 +1997,8 @@ sklm: {
       "toolCatalogEmpty": "In diesem Arbeitsbereich sind keine auswählbaren Skills, MCP-Server oder Plugin-Werkzeuge verfügbar.",
       "mcpAllTools": "Die Auswahl gewährt alle entdeckten Werkzeuge dieses Servers",
       "mcpToolCount": "{{count}} geladene Werkzeuge",
+      "mcpToolCount_one": "1 geladenes Werkzeug",
+      "mcpToolCount_other": "{{count}} geladene Werkzeuge",
       "mcpStatusReady": "bereit",
       "mcpStatusConnecting": "wird verbunden",
       "mcpStatusFailed": "fehlgeschlagen",

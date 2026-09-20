@@ -2034,6 +2034,8 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       toolCatalogEmpty: "No active Skills, MCP servers, or plugin tools are available in this workspace.",
       mcpAllTools: "Selecting this server grants all discovered tools",
       mcpToolCount: "{{count}} tools loaded",
+      mcpToolCount_one: "1 tool loaded",
+      mcpToolCount_other: "{{count}} tools loaded",
       mcpStatusReady: "ready",
       mcpStatusConnecting: "connecting",
       mcpStatusFailed: "failed",

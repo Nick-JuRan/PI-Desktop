@@ -200,7 +200,7 @@ function redactValueInternal(
 }
 
 function redactPath(value: string, options: RedactionOptions): string {
-  const safe = redactString(value, options);
+  const safe = redactString(value, options).replaceAll("\\", "/");
   if (
     /^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(value) &&
     !safe.startsWith("<home>") &&

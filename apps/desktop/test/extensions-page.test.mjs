@@ -144,7 +144,10 @@ test("the client hides development-only demo plugins from marketplace results", 
 test("Settings exposes three independent Agent capability destinations", () => {
   assert.match(settingsPageSrc, /tab === "skills" && <AgentSkillsPage \/>/);
   assert.match(settingsPageSrc, /tab === "mcp" && <AgentMcpPage \/>/);
-  assert.match(settingsPageSrc, /tab === "subagents" && <AgentSubagentsPage \/>/);
+  assert.match(
+    settingsPageSrc,
+    /tab === "subagents" && settings && \([\s\S]*<AgentSubagentsPage settings=\{settings\} saveSettings=\{saveSettings\} \/>/,
+  );
   assert.match(settingsComponents.get("AgentCapabilityLayout.tsx"), /AgentCapabilityPage/);
   assert.match(settingsComponents.get("AgentCapabilityLayout.tsx"), /agent-capability-list/);
   for (const name of ["AgentSkillsPage.tsx", "AgentMcpPage.tsx"]) {
