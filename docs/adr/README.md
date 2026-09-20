@@ -20,6 +20,7 @@ Each ADR includes:
 
 | ID | Title | Status |
 |---|---|---|
+| scheduled-desktop-automations | [Desktop automation scheduling](scheduled-desktop-automations.md) | Accepted for implementation |
 | subagent-model-fallback | [Ordered subagent model fallback](subagent-model-fallback.md) | Accepted for implementation |
 | subagent-model-opt-in | [Separate Subagent Model Opt-In from Definition Pins](subagent-model-opt-in.md) | Accepted for implementation |
 | 0001 | Use Electron as the desktop shell | Accepted |
@@ -328,3 +329,4 @@ Each ADR includes:
 | 0298 | [The app ships no fonts](0298-remove-bundled-fonts.md) | Accepted (D598; amends ADR 0083 / D232) |
 | turn-process-and-thinking-display | [Turn process and thinking presentation](turn-process-and-thinking-display.md) | Accepted |
 | provider-display-order | [Provider display order](provider-display-order.md) | Accepted |
+| provider-system-certificates | [Desktop sidecar uses OS-trusted certificates](provider-system-certificates.md) | Accepted |
