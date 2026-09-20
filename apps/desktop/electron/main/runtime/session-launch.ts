@@ -1,23 +1,5 @@
 import { join } from "node:path";
 import {
-  ErrorCodes as SharedErrorCodes,
-  isActiveInProject,
-  isCommandShellCatalog,
-  normalizeSubagentMaxDepth,
-  normalizeMode,
-  resolveBindingContextWindow,
-  trustedExtensionAgentKeyFromProviderId,
-  type CommandShellCatalog,
-  type McpServerRecord,
-  type ModelBinding,
-  type Mode,
-  type Risk,
-  type SessionThinkingLevel,
-  type SubagentToolCatalog,
-  type UserSkillRecord,
-  type UserSubagentRecord,
-} from "@pi-desktop/shared";
-import {
   capabilitiesFromModelConfig,
   clampThinkingLevel,
   genericModelConfig,
@@ -26,17 +8,40 @@ import {
   modelConfigWithBinding,
   optionalProviderHeaders,
   resolveSubagentProviders,
-  visionFromModelConfig,
   type UserSubagentDocument,
+  visionFromModelConfig,
 } from "@pi-desktop/agent-runtime";
-import { builtinSkills } from "../builtin-skills";
-import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import {
-  modelConfigFromModelsDev,
-  type ModelsDevCatalog,
-} from "../models-dev-catalog";
+  type CommandShellCatalog,
+  isActiveInProject,
+  isCommandShellCatalog,
+  type McpServerRecord,
+  type Mode,
+  type ModelBinding,
+  normalizeMode,
+  normalizeSubagentMaxDepth,
+  type Risk,
+  resolveBindingContextWindow,
+  type SessionThinkingLevel,
+  ErrorCodes as SharedErrorCodes,
+  type SubagentPluginToolOption,
+  type SubagentToolCatalog,
+  subagentExtensionToolSelector,
+  type TrustedExtensionLoadReport,
+  type TrustedExtensionSpec,
+  trustedExtensionAgentKeyFromProviderId,
+  type UserSkillRecord,
+  type UserSubagentRecord,
+} from "@pi-desktop/shared";
+import type { AgentExtensionBridge } from "../agent-extensions";
+import { builtinSkills } from "../builtin-skills";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
+import {
+  type ModelsDevCatalog,
+  modelConfigFromModelsDev,
+} from "../models-dev-catalog";
+import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { RuntimeState } from "./context";
@@ -55,6 +60,7 @@ export type SessionLaunchRuntimeDependencies = {
   logger: Logger;
   userMcp: UserMcpRuntime;
   plugins: PluginRuntime;
+  agentExtensions: AgentExtensionBridge;
   sessionProjects: Map<string, string | null>;
   dataDir: string;
   vendorOAuth: VendorOAuth;
@@ -88,6 +94,7 @@ export function createSessionLaunchRuntime({
   logger,
   userMcp,
   plugins,
+  agentExtensions,
   sessionProjects,
   dataDir,
   vendorOAuth,
@@ -140,6 +147,51 @@ export function createSessionLaunchRuntime({
       if (!isHostUnavailable(error)) {
         logger.app("plugin", "warn", "skills list failed", { data: String(error) });
       }
+      return [];
+    }
+  }
+
+  function trustedExtensionSpec(extension: ReturnType<PluginRuntime["getAgentExtensions"]>[number]): TrustedExtensionSpec {
+    return {
+      id: extension.id,
+      entry: extension.entry,
+      label: extension.pluginName,
+      source: "plugin",
+      root: extension.root,
+    };
+  }
+
+  function isTrustedExtensionLoadReport(value: unknown): value is TrustedExtensionLoadReport {
+    if (!value || typeof value !== "object") return false;
+    const report = value as Record<string, unknown>;
+    return (
+      typeof report.extensionId === "string" &&
+      (report.state === "loaded" || report.state === "error") &&
+      ["toolNames", "commandNames", "agentNames", "eventNames"].every(
+        (key) => Array.isArray(report[key]) && report[key].every((item) => typeof item === "string"),
+      )
+    );
+  }
+
+  async function probeTrustedExtensionReports(
+    specs: readonly TrustedExtensionSpec[],
+    projectPath: string | null,
+    reservedToolNames: readonly string[],
+  ): Promise<TrustedExtensionLoadReport[]> {
+    if (!runtimeState.sidecar || specs.length === 0) return [];
+    try {
+      const result = await runtimeState.sidecar.call<{ reports?: unknown }>("extensions.catalog", {
+        cwd: projectPath ?? undefined,
+        trustedExtensions: specs,
+        reservedToolNames,
+      });
+      return Array.isArray(result?.reports)
+        ? result.reports.filter(isTrustedExtensionLoadReport)
+        : [];
+    } catch (error) {
+      logger.app("plugin", "warn", "trusted extension tool discovery failed", {
+        data: String(error),
+      });
       return [];
     }
   }
@@ -199,7 +251,7 @@ export function createSessionLaunchRuntime({
           ...(status.message ? { message: status.message } : {}),
         };
       });
-    const pluginTools = plugins
+    const pluginTools: SubagentPluginToolOption[] = plugins
       .getTools()
       .filter((tool) => pluginActiveInProject(tool.pluginId, normalizedProject))
       .map((tool) => ({
@@ -209,7 +261,45 @@ export function createSessionLaunchRuntime({
         pluginId: tool.pluginId,
         pluginLabel: pluginNames.get(tool.pluginId) ?? tool.pluginId,
       }));
-    return { projectPath: normalizedProject, skills, mcpServers, pluginTools };
+    const activeExtensions = plugins
+      .getAgentExtensions()
+      .filter((entry) => pluginActiveInProject(entry.pluginId, normalizedProject));
+    const extensionsToProbe = activeExtensions.filter(
+      (extension) => !agentExtensions.hasReportForExtension(extension.id),
+    );
+    const probedReports = await probeTrustedExtensionReports(
+      extensionsToProbe.map(trustedExtensionSpec),
+      normalizedProject,
+      pluginTools.map((tool) => tool.name),
+    );
+    const probedToolNames = new Map<string, string[]>();
+    for (const report of probedReports) {
+      if (report.state !== "loaded") continue;
+      probedToolNames.set(report.extensionId, [...new Set(report.toolNames)].sort((a, b) => a.localeCompare(b)));
+    }
+    const extensionTools = new Map<string, SubagentPluginToolOption>();
+    for (const extension of activeExtensions) {
+      const names = agentExtensions.hasReportForExtension(extension.id)
+        ? agentExtensions.toolNamesForExtension(extension.id)
+        : probedToolNames.get(extension.id) ?? [];
+      for (const name of names) {
+        const selector = subagentExtensionToolSelector(name);
+        if (extensionTools.has(selector)) continue;
+        extensionTools.set(selector, {
+          name,
+          selector,
+          label: name,
+          pluginId: extension.pluginId,
+          pluginLabel: extension.pluginName,
+        });
+      }
+    }
+    return {
+      projectPath: normalizedProject,
+      skills,
+      mcpServers,
+      pluginTools: [...pluginTools, ...extensionTools.values()],
+    };
   }
 
   /**

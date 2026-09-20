@@ -106,6 +106,7 @@ import {
   proposalKindForMode,
   resolveSubagentSkillIds,
   resolveSubagentToolNames,
+  subagentExtensionToolSelector,
   subagentModelKey,
   subagentToolsLabel,
   type ProposalKind,
@@ -3752,10 +3753,15 @@ Delegation rules:
       if (!tool.mcpServerId) continue;
       (mcpToolsByServer[tool.mcpServerId] ??= []).push(tool.name);
     }
+    const extensionToolsBySelector: Record<string, string> = {};
+    for (const tool of this.extensionRunner?.getAgentTools() ?? []) {
+      extensionToolsBySelector[subagentExtensionToolSelector(tool.name)] = tool.name;
+    }
     return {
       mcpToolsByServer,
       availableSkillIds: this.pluginSkills.map((skill) => skill.id),
       skillToolName: SKILL_TOOL_NAME,
+      extensionToolsBySelector,
     };
   }
 

@@ -655,26 +655,29 @@ function DynamicToolPicker({
             <span>{catalog.pluginTools.length}</span>
           </div>
           <div className="ext-subagent-tool-options">
-            {catalog.pluginTools.map((tool) => (
-              <label
-                className={cx(
-                  "ext-subagent-tool-card",
-                  selected.has(tool.name) && "is-on",
-                )}
-                key={tool.name}
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.has(tool.name)}
-                  onChange={(event) => toggle(tool.name, event.target.checked)}
-                />
-                <span className="ext-subagent-tool-card-copy">
-                  <span className="ext-subagent-tool-card-title" title={tool.name}>
-                    {tool.label || tool.name}
+            {catalog.pluginTools.map((tool) => {
+              const selection = tool.selector ?? tool.name;
+              return (
+                <label
+                  className={cx(
+                    "ext-subagent-tool-card",
+                    selected.has(selection) && "is-on",
+                  )}
+                  key={selection}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(selection)}
+                    onChange={(event) => toggle(selection, event.target.checked)}
+                  />
+                  <span className="ext-subagent-tool-card-copy">
+                    <span className="ext-subagent-tool-card-title" title={tool.name}>
+                      {tool.label || tool.name}
+                    </span>
                   </span>
-                </span>
-              </label>
-            ))}
+                </label>
+              );
+            })}
           </div>
         </section>
       ) : null}

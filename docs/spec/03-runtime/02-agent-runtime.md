@@ -685,13 +685,14 @@ intentional override.
 
 **Dynamic capability grants.** The Subagents editor keeps the stable built-in
 tool checkboxes in the main **Available tools** group and exposes an **Advanced**
-disclosure for active Skills, user MCP servers, and plugin-contributed agent
-tools. A selected Skill is persisted as `skill:<skill-id>` and activates the
-generic `Skill` loader plus that Skill's catalog entry only. A selected user
-MCP server is persisted as `mcp:<server-id>` and activates every tool returned
-by that server's current handshake. Plugin tools are persisted by their full
-runtime name and are individually selectable. Electron supplies the editor
-with a project-scoped live catalog through
+disclosure for active Skills, user MCP servers, plugin-contributed agent tools,
+and tools reported by loaded trusted extensions. A selected Skill is persisted
+as `skill:<skill-id>` and activates the generic `Skill` loader plus that
+Skill's catalog entry only. A selected user MCP server is persisted as
+`mcp:<server-id>` and activates every tool returned by that server's current
+handshake. Ordinary plugin tools are persisted by their full runtime name and
+trusted-extension tools by generated selectors; both are individually
+selectable. Electron supplies the editor with a project-scoped live catalog through
 `pi-desktop/subagent/tool-catalog`; the runtime resolves selectors against the
 same session catalog at delegation time, so removed, disabled, or out-of-scope
 capabilities are not exposed. The delegated `Skill` call also carries the

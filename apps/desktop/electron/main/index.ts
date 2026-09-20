@@ -703,6 +703,7 @@ const createdSessionLaunchRuntime = createSessionLaunchRuntime({
   logger,
   userMcp,
   plugins,
+  agentExtensions,
   sessionProjects,
   dataDir,
   vendorOAuth,

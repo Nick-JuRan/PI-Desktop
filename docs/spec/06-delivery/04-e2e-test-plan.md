@@ -6226,6 +6226,38 @@ identify the platform validation still needed.
   `apps/desktop/test/subagent-wiring.test.mjs`); real Settings/sidecar journey
   remains to be run with the user's active Skill, MCP, and plugin fixtures.
 
+#### E2E-SUBAGENT-trusted-extension-tool-selection
+
+- **Preconditions**: Agent mode; an enabled plugin declares a trusted
+  `contributes.agentExtensions` module whose code registers an arbitrary tool
+  name. The active project is in the plugin's scope; no provider-bound session
+  load is required because the Settings request can use the sidecar catalog
+  probe.
+- **Steps**:
+  1. Open Settings → Agent → Subagents and edit a user-owned subagent.
+  2. Expand **Advanced** and confirm the extension's reported tool appears in
+     the plugin-tools group without a source-code tool-name list. Select it and
+     save; reopen the editor and verify the selection persists.
+  3. Start a new Agent turn and delegate to the edited subagent. Inspect the
+     child tool catalog and ask it to call the selected extension tool.
+  4. Disable or unload the extension, start the next turn, and inspect the
+     catalog again.
+- **Expected**: `subagent/tool-catalog` uses the sidecar catalog probe when no
+  session report exists, then exposes each live extension tool with a generated
+  selector and the renderer displays it as an individually optional card. The
+  saved definition contains the selector, not a hardcoded project tool list.
+  Delegation resolves the selector to the current sidecar tool and the child
+  can call it; after disable/unload the next catalog and delegation omit it.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` §12c,
+  `03-runtime/02-agent-runtime.md` §5f, `03-runtime/03-tools-and-permissions.md`
+  §11, `07-plugins/16-trusted-extensions.md` §7
+- **Acceptance**: E (tools & permissions), G (Skill/MCP/plugin activation)
+- **Milestone**: M6+
+- **Status**: Unit/source-contract covered by `packages/shared`,
+  `apps/desktop/test/subagent-tool-catalog.test.mjs`, and the desktop wiring
+  tests; the native Settings/sidecar journey remains to be run with a loaded
+  extension fixture.
+
 #### E2E-145: Tool results read as structured blocks, never JSON
 
 - **Preconditions**: A project-bound Agent session with permissions allowed for
@@ -7910,6 +7942,7 @@ identify the platform validation still needed.
 | Quality (legacy subagent turn limit) | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 | M6+ (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | M6+ (capability level move) | E2E-CAPABILITY-move-across-levels |
+| E — Trusted extension tool grants | E2E-SUBAGENT-trusted-extension-tool-selection |
 | E — Tools & permissions (builtin subagent defaults) | E2E-SUBAGENT-settings-lists-builtin-defaults |
 | Quality (builtin subagent defaults) | E2E-SUBAGENT-settings-lists-builtin-defaults |
 | C — Conversation & stream (opaque floating surfaces) | E2E-CHAT-opaque-floating-decision-and-retry-surfaces |

@@ -18,6 +18,10 @@ import {
   type RuntimePromptAttachment,
   type RuntimeProviderConfig,
 } from "./runtime.js";
+import {
+  TrustedExtensionRunner,
+  type TrustedExtensionBridge,
+} from "./extensions/runner.js";
 import type { PluginSkillDef } from "./plugin-skills-prompt.js";
 import type { SessionMessageOrigin, TrustedExtensionSpec } from "@pi-desktop/shared";
 import type { ProjectInstructions } from "./project-instructions.js";
@@ -56,6 +60,68 @@ type RuntimeMap = Map<string, DesktopAgentRuntime>;
 const runtimes: RuntimeMap = new Map();
 const hostProxy = new ParentHostProxy();
 const testRuntimeIds = new WeakMap<DesktopAgentRuntime, string>();
+
+/**
+ * Extension factories are the only source of truth for ExtensionAPI tool
+ * names. A catalog probe runs that factory in the already isolated sidecar,
+ * without creating a provider-bound agent runtime or exposing host/session
+ * capabilities to the extension.
+ */
+function catalogProbeBridge(cwd: string): TrustedExtensionBridge {
+  return {
+    sessionId: "extension-catalog-probe",
+    cwd,
+    getModel: () => undefined,
+    setModel: async () => false,
+    getThinkingLevel: () => "off",
+    setThinkingLevel: () => undefined,
+    isIdle: () => true,
+    abort: () => undefined,
+    hasPendingMessages: () => false,
+    getContextUsage: () => undefined,
+    compact: () => undefined,
+    getSystemPrompt: () => "",
+    getActiveTools: () => [],
+    getAllTools: () => [],
+    setActiveTools: () => undefined,
+    getSessionName: () => undefined,
+    setSessionName: () => undefined,
+    sendUserMessage: () => undefined,
+    waitForIdle: async () => undefined,
+    newSession: async () => ({ cancelled: true }),
+    fork: async () => ({ cancelled: true }),
+    requestUi: async (_extension, request) => {
+      switch (request.kind) {
+        case "confirm":
+          return { kind: "confirm", value: false };
+        case "select":
+          return { kind: "select", value: undefined };
+        case "input":
+          return { kind: "input", value: undefined };
+        case "notify":
+          return { kind: "notify" };
+        case "setStatus":
+          return { kind: "setStatus" };
+        case "setWorkingMessage":
+          return { kind: "setWorkingMessage" };
+      }
+    },
+    publishCommands: () => undefined,
+    publishDiagnostics: () => undefined,
+  };
+}
+
+function validCatalogSpecs(value: unknown): TrustedExtensionSpec[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is TrustedExtensionSpec => {
+    if (!item || typeof item !== "object") return false;
+    const spec = item as Record<string, unknown>;
+    return ["id", "entry", "label", "root"].every(
+      (key) => typeof spec[key] === "string" && Boolean((spec[key] as string).trim()),
+    ) && spec.source === "plugin";
+  });
+}
+
 function testRuntimeIdentity(sessionId: string) {
   if (process.env.PI_DESKTOP_PLAN_UI_PROBE !== "1") {
     throw Object.assign(new Error("test runtime identity RPC is unavailable"), {
@@ -467,6 +533,27 @@ async function handle(method: string, params: any): Promise<unknown> {
         applyNodeNetworkProxy(normalizeNetworkProxy(params.networkProxy));
       }
       return { ok: true, mode: "host-proxy" };
+    }
+    case "extensions.catalog": {
+      const specs = validCatalogSpecs(params?.trustedExtensions);
+      if (specs.length === 0) return { reports: [] };
+      const cwd =
+        typeof params?.cwd === "string" && params.cwd.trim()
+          ? resolve(params.cwd)
+          : process.cwd();
+      const reserved = new Set<string>(
+        Array.isArray(params?.reservedToolNames)
+          ? params.reservedToolNames.filter((name: unknown): name is string => typeof name === "string")
+          : [],
+      );
+      const runner = new TrustedExtensionRunner({
+        specs,
+        bridge: catalogProbeBridge(cwd),
+        reservedToolNames: () => reserved,
+      });
+      const reports = await runner.load();
+      await runner.dispose();
+      return { reports };
     }
     case "sidecar.health":
       return { ok: true, runtimes: runtimes.size };

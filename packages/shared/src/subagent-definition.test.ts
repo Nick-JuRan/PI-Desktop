@@ -21,6 +21,7 @@ import {
   subagentToolsLabel,
   type SubagentDefinition,
 } from "./subagent-definition.js";
+import { subagentExtensionToolSelector } from "./subagent-tools.js";
 
 function parse(raw: string, fallbackName = "reviewer") {
   return parseSubagentDefinition(raw, { source: "user", fallbackName });
@@ -581,6 +582,25 @@ describe("resolveSubagentToolNames", () => {
     expect(resolveSubagentSkillIds({ tools: ["skill:notes", "skill:missing"] }, ["notes"])).toEqual([
       "notes",
     ]);
+  });
+
+  it("resolves a selected trusted-extension tool through its live selector", () => {
+    const selector = subagentExtensionToolSelector("classification_query");
+    expect(selector).toBe("extension_classification_query");
+    expect(
+      resolveSubagentToolNames(
+        { tools: [selector] },
+        ["Read", "classification_query"],
+        { extensionToolsBySelector: { [selector]: "classification_query" } },
+      ),
+    ).toEqual(["classification_query"]);
+    expect(
+      resolveSubagentToolNames(
+        { tools: [selector] },
+        ["Read"],
+        { extensionToolsBySelector: { [selector]: "classification_query" } },
+      ),
+    ).toEqual([]);
   });
 
   it("does not hand a delegate nested Task tools", () => {

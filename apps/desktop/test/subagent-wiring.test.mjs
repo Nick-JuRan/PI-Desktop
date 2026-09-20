@@ -56,6 +56,10 @@ test("subagent tool grants resolve through the live Skill, MCP, and plugin catal
   assert.match(sessionLaunchSource, /activeUserSkills\(projectPath/);
   assert.match(sessionLaunchSource, /\.listRecords\(\)/);
   assert.match(sessionLaunchSource, /\.getTools\(\)/);
+  assert.match(sessionLaunchSource, /\.getAgentExtensions\(\)/);
+  assert.match(sessionLaunchSource, /toolNamesForExtension\(/);
+  assert.match(sessionLaunchSource, /extensions\.catalog/);
+  assert.match(sessionLaunchSource, /subagentExtensionToolSelector\(/);
   assert.match(sessionLaunchSource, /source: "plugin"/);
   assert.match(sessionLaunchSource, /source: "mcp"/);
   assert.match(skillsIpcSource, /IPC\.invoke\.subagentToolCatalog/);
@@ -64,8 +68,11 @@ test("subagent tool grants resolve through the live Skill, MCP, and plugin catal
   assert.match(editorSource, /DynamicToolPicker/);
   assert.match(editorSource, /subagentSkillSelector\(skill\.id\)/);
   assert.match(editorSource, /subagentMcpSelector\(/);
+  assert.match(editorSource, /tool\.selector \?\? tool\.name/);
   assert.match(editorSource, /settings\.advanced/);
   assert.match(editorSource, /isSubagentDynamicSelection/);
+  assert.match(sidecarSource, /case "extensions\.catalog"/);
+  assert.match(sidecarSource, /TrustedExtensionRunner/);
 });
 
 test("subagent models use the exact stored binding for thinking capability", () => {

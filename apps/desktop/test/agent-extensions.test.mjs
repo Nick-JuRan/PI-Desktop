@@ -214,6 +214,8 @@ test("session publications drive the plugin's agent-extension status and the com
   const status = b.statusForPlugin(ids);
   assert.equal(status.state, "loaded", "the other plugin's error does not leak in");
   assert.deepEqual(status.toolNames, ["fx_add", "fx_two"]);
+  assert.deepEqual(b.toolNamesForExtension("/p/a.ts"), ["fx_add"]);
+  assert.deepEqual(b.toolNamesForExtension("/p/b.ts"), ["fx_two"]);
   assert.deepEqual(status.commandNames, ["greet"]);
   // A custom agent a module registered reaches the plugin row (spec §11).
   assert.deepEqual(status.agentNames, ["commandcode"]);
@@ -223,6 +225,7 @@ test("session publications drive the plugin's agent-extension status and the com
 
   b.publishDiagnostics("s1", [], [{ extensionId: "/p/a.ts", state: "error", toolNames: [], commandNames: [], agentNames: [], eventNames: [] }]);
   assert.equal(b.statusForPlugin(ids).state, "error");
+  assert.deepEqual(b.toolNamesForExtension("/p/a.ts"), []);
   b.clearSession("s1");
   b.clearSession("s2");
   assert.deepEqual(b.allCommands(), []);

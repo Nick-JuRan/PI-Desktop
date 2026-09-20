@@ -141,7 +141,12 @@ export function resolveSubagentToolNames(
   const skillToolName = context.skillToolName ?? "Skill";
   const parent = new Set(parentToolNames);
   const mcpToolsByServer = context.mcpToolsByServer ?? {};
+  const extensionToolsBySelector = context.extensionToolsBySelector ?? {};
   const resolveDeclared = (name: string): string[] => {
+    const extensionToolName = extensionToolsBySelector[name];
+    if (extensionToolName) {
+      return parent.has(extensionToolName) ? [extensionToolName] : [];
+    }
     const skillId = subagentSkillIdFromSelector(name);
     if (skillId) {
       if (
@@ -179,6 +184,8 @@ export type SubagentToolResolutionContext = {
   availableSkillIds?: readonly string[];
   /** Runtime name of the generic skill loader. */
   skillToolName?: string;
+  /** Persisted trusted-extension selectors mapped to live runtime tool names. */
+  extensionToolsBySelector?: Readonly<Record<string, string>>;
 };
 
 /** Resolve the Skill ids selected by a definition for prompt and execution gates. */

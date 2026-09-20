@@ -39,6 +39,7 @@ test("launch resolves definition-only pins without granting Task.model selection
     } },
     logger: { app() {} }, userMcp: { setRecords() {}, toolsForProject: async () => [] },
     plugins: { listLoaded: () => [], getSkills: () => [], getTools: () => [], getAgentExtensions: () => [] },
+    agentExtensions: { toolNamesForExtension: () => [] },
     sessionProjects: new Map(), dataDir: root, vendorOAuth: {},
     modelsDevCatalog: { ensureLoaded: async () => {}, findModel: () => undefined },
     getWorkspacePath: () => root, pluginActiveInProject: () => true,

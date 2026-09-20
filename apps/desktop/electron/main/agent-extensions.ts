@@ -136,6 +136,30 @@ export class AgentExtensionBridge {
     return status;
   }
 
+  /**
+   * Return the tool names from the most recent session that reported one
+   * extension. ExtensionAPI tools are registered by code inside the sidecar,
+   * so this live report is the source of truth for Settings discovery.
+   */
+  toolNamesForExtension(extensionId: string): string[] {
+    let latest: string[] | undefined;
+    for (const session of this.sessions.values()) {
+      const reports = session.reports.filter((report) => report.extensionId === extensionId);
+      if (!reports.length) continue;
+      latest = reports
+        .filter((report) => report.state === "loaded")
+        .flatMap((report) => report.toolNames);
+    }
+    return [...new Set(latest ?? [])].sort((a, b) => a.localeCompare(b));
+  }
+
+  /** Whether any live sidecar session has published a report for this module. */
+  hasReportForExtension(extensionId: string): boolean {
+    return [...this.sessions.values()].some((session) =>
+      session.reports.some((report) => report.extensionId === extensionId),
+    );
+  }
+
   // --- UI bridge ------------------------------------------------------------------
 
   async requestUi(envelope: TrustedExtensionUiRequestEnvelope): Promise<TrustedExtensionUiResponse> {
