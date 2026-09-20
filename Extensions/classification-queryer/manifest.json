@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "local.classification-queryer",
+  "name": "分类号查询器",
+  "version": "0.1.0",
+  "description": "Query the local official IPC/CPC service from an Agent extension.",
+  "main": "main.cjs",
+  "permissions": ["agent.extension"],
+  "contributes": {
+    "agentExtensions": ["src/index.mjs"]
+  },
+  "engines": {
+    "piDesktop": ">=0.15.1"
+  }
+}
