@@ -1,16 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
+  DEFAULT_SUBAGENT_MAX_DEPTH,
   DEFAULT_SUBAGENT_MAX_DURATION_SECONDS,
   DEFAULT_SUBAGENT_TOOLS,
   MAX_SUBAGENT_DEFINITIONS,
+  MAX_SUBAGENT_DEPTH,
   MAX_SUBAGENT_MAX_TOKENS,
+  MIN_SUBAGENT_MAX_DEPTH,
   SUBAGENT_ASSIGNABLE_TOOLS,
   SUBAGENT_INHERIT_DENY_TOOLS,
   mergeSubagentDefinitions,
+  normalizeSubagentMaxDepth,
   normalizeSubagentName,
   parseSubagentDefinition,
   resolveSubagentToolNames,
+  resolveSubagentSkillIds,
   subagentCanMutate,
   subagentPinnedProviders,
   subagentToolsLabel,
@@ -210,6 +215,24 @@ Read it.`);
       'ignoring unknown tool "A2A"',
       'ignoring unknown tool "Peer"',
     ]);
+  });
+
+  it("preserves dynamic capability selections", () => {
+    const result = parse(`---
+description: Uses selected capabilities.
+tools: [Read, skill:notes, mcp:docs, plugin_demo_lookup]
+---
+Use the selected tools.`);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.definition.tools).toEqual([
+      "Read",
+      "skill:notes",
+      "mcp:docs",
+      "plugin_demo_lookup",
+    ]);
+    expect(result.warnings).toEqual([]);
   });
 
   it("rejects a tools list where nothing survives", () => {
@@ -535,6 +558,31 @@ describe("resolveSubagentToolNames", () => {
     expect(resolved.filter((n) => n === "Read")).toHaveLength(1);
   });
 
+  it("expands selected Skills and MCP servers against the live catalog", () => {
+    const resolved = resolveSubagentToolNames(
+      {
+        tools: ["Read", "skill:notes", "mcp:docs", "plugin_demo_lookup"],
+      },
+      ["Read", "Skill", "mcp_docs_search", "mcp_docs_open", "plugin_demo_lookup"],
+      {
+        availableSkillIds: ["notes", "other"],
+        mcpToolsByServer: {
+          docs: ["mcp_docs_search", "mcp_docs_open"],
+        },
+      },
+    );
+    expect(resolved).toEqual([
+      "Read",
+      "Skill",
+      "mcp_docs_search",
+      "mcp_docs_open",
+      "plugin_demo_lookup",
+    ]);
+    expect(resolveSubagentSkillIds({ tools: ["skill:notes", "skill:missing"] }, ["notes"])).toEqual([
+      "notes",
+    ]);
+  });
+
   it("does not hand a delegate nested Task tools", () => {
     const resolved = resolveSubagentToolNames(
       { tools: [...SUBAGENT_ASSIGNABLE_TOOLS], inheritTools: true },
@@ -567,6 +615,23 @@ describe("normalizeSubagentName", () => {
       "code-reviewer",
     );
     expect(normalizeSubagentName("reviewer")).toBe("reviewer");
+  });
+});
+
+describe("normalizeSubagentMaxDepth", () => {
+  it("defaults to direct delegation and accepts bounded integer levels", () => {
+    expect(normalizeSubagentMaxDepth(undefined)).toBe(DEFAULT_SUBAGENT_MAX_DEPTH);
+    expect(normalizeSubagentMaxDepth(2)).toBe(2);
+    expect(normalizeSubagentMaxDepth(MIN_SUBAGENT_MAX_DEPTH)).toBe(0);
+    expect(normalizeSubagentMaxDepth(MAX_SUBAGENT_DEPTH)).toBe(
+      MAX_SUBAGENT_DEPTH,
+    );
+  });
+
+  it("rejects fractional, non-numeric, and out-of-range values", () => {
+    for (const value of ["2", 1.5, -1, MAX_SUBAGENT_DEPTH + 1, null]) {
+      expect(normalizeSubagentMaxDepth(value)).toBe(DEFAULT_SUBAGENT_MAX_DEPTH);
+    }
   });
 });
 

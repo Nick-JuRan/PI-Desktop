@@ -90,6 +90,7 @@ import type {
   UserSubagentInput,
   UserSubagentRecord,
   SubagentDefinition,
+  SubagentToolCatalog,
   WorkspaceDiff,
   AppMenuCommand,
   AppNotification,
@@ -118,10 +119,12 @@ import {
   IPC,
   isCommandShellId,
   normalizeLargePasteThreshold,
+  normalizeSubagentMaxDepth,
   normalizeMode,
   normalizeNetworkProxy,
   resolveFontScale,
   normalizeChatContentMaxWidth,
+  isValidSubagentMaxDepth,
   validateNetworkProxy,
   validateSpeechSettings,
 } from "@pi-desktop/shared";
@@ -350,6 +353,9 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
     largePasteThreshold: normalizeLargePasteThreshold(
       (settings as { largePasteThreshold?: unknown }).largePasteThreshold,
     ),
+    maxSubagentDepth: normalizeSubagentMaxDepth(
+      (settings as { maxSubagentDepth?: unknown }).maxSubagentDepth,
+    ),
     fontScale: resolveFontScale(settings),
     networkProxy: normalizeNetworkProxy(
       (settings as { networkProxy?: unknown }).networkProxy,
@@ -372,6 +378,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     largePasteThreshold?: unknown;
     fontScale?: unknown;
     chatContentMaxWidth?: unknown;
+    maxSubagentDepth?: unknown;
     networkProxy?: unknown;
   };
   if (
@@ -396,6 +403,14 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     resolveFontScale({ fontScale: value.fontScale }) !== value.fontScale
   ) {
     throw Object.assign(new Error("fontScale is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "maxSubagentDepth") &&
+    !isValidSubagentMaxDepth(value.maxSubagentDepth)
+  ) {
+    throw Object.assign(new Error("maxSubagentDepth is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
   }
@@ -1039,6 +1054,8 @@ export const api = {
       diagnostics: string[];
       projectPath: string | null;
     }>(IPC.invoke.subagentCatalog),
+  subagentToolCatalog: () =>
+    invoke<SubagentToolCatalog>(IPC.invoke.subagentToolCatalog),
   createUserSubagent: (subagent: UserSubagentInput) =>
     invoke<{ subagent: UserSubagentRecord }>(IPC.invoke.subagentCreate, subagent),
   updateUserSubagent: (id: string, subagent: Omit<UserSubagentInput, "id">) =>

@@ -31,6 +31,7 @@ import {
   formatFileInsert,
   isCommandShellOption,
   MAX_INLINE_IMAGE_BYTES,
+  normalizeSubagentMaxDepth,
   normalizeMode,
   normalizeNetworkProxy,
   OAUTH_AUTH_KIND,
@@ -107,6 +108,8 @@ type RuntimeParams = {
   subagentProviders?: Record<string, RuntimeProviderConfig>;
   /** Opted-in override keys, separate from definition-only pinned bindings. */
   subagentModelKeys?: string[];
+  /** Maximum number of delegated subagent levels. */
+  maxSubagentDepth?: number;
   scratchDir?: string;
   /** Session-bound workspace root supplied by Electron main. */
   projectPath?: string;
@@ -298,6 +301,7 @@ async function runtimeFor(
   const trustedExtensions = params.trustedExtensions ?? [];
   const subagents = params.subagents ?? [];
   const subagentModelKeys = params.subagentModelKeys ?? [];
+  const maxSubagentDepth = normalizeSubagentMaxDepth(params.maxSubagentDepth);
   const subagentProviders = Object.fromEntries(
     Object.entries(params.subagentProviders ?? {}).map(([key, pinned]) => [
       key,
@@ -333,6 +337,7 @@ async function runtimeFor(
     subagents,
     subagentProviders,
     subagentModelKeys,
+    maxSubagentDepth,
     projectInstructions: params.projectInstructions,
     projectMemory: params.projectMemory,
     projectPath: params.projectPath,
@@ -391,6 +396,7 @@ async function runtimeFor(
     subagents,
     subagentProviders,
     subagentModelKeys,
+    maxSubagentDepth,
     projectPath: params.projectPath,
     projectInstructions: params.projectInstructions,
     projectMemory: params.projectMemory,

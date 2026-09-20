@@ -27,6 +27,8 @@ export type AppSettings = {
   /** Host speech bindings. Absent means voice actions stay disabled. */
   speech?: SpeechSettings;
   defaultMode: Mode;
+  /** Maximum number of delegated subagent levels; 1 preserves direct-only delegation. */
+  maxSubagentDepth?: number;
   /** Configured command shell for the agent Bash protocol tool. */
   defaultCommandShell?: CommandShellId;
   /**

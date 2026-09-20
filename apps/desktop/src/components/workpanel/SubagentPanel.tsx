@@ -4,6 +4,8 @@ import type { UiMessage } from "@pi-desktop/shared";
 import {
   buildTranscriptEntries,
   type AssistantActivityItem,
+  type SubagentRun,
+  type SubagentRunItem,
 } from "../../lib/assistant-turns";
 import {
   collectDelegationFailures,
@@ -30,6 +32,37 @@ type SelectedSubagent = {
   turnActivityItems: AssistantActivityItem[];
 };
 
+function delegationItemFromRunItem(
+  item: SubagentRunItem,
+): DelegationActivityItem | null {
+  if (item.kind !== "tool") return null;
+  return item.delegate
+    ? { kind: "tool", message: item.message, delegate: item.delegate }
+    : { kind: "tool", message: item.message };
+}
+
+function findSelectedInRun(
+  run: SubagentRun,
+  delegationId: string,
+): DelegationActivityItem | null {
+  for (const item of run.items) {
+    if (item.kind !== "tool") continue;
+    const candidate = delegationItemFromRunItem(item);
+    if (!candidate) continue;
+    if (
+      isDelegationActivityItem(candidate) &&
+      delegationIdForMessage(candidate.message) === delegationId
+    ) {
+      return candidate;
+    }
+    if (item.delegate) {
+      const nested = findSelectedInRun(item.delegate, delegationId);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
 function findSelectedSubagent(
   messages: UiMessage[],
   delegationId: string,
@@ -40,12 +73,17 @@ function findSelectedSubagent(
     const turnActivityItems = entry.parts.flatMap((part) =>
       part.kind === "activity" ? part.items : [],
     );
-    const item = turnActivityItems.find(
-      (candidate): candidate is DelegationActivityItem =>
+    for (const candidate of turnActivityItems) {
+      if (
         isDelegationActivityItem(candidate) &&
-        delegationIdForMessage(candidate.message) === delegationId,
-    );
-    if (item) return { item, turnActivityItems };
+        delegationIdForMessage(candidate.message) === delegationId
+      ) {
+        return { item: candidate, turnActivityItems };
+      }
+      if (candidate.kind !== "tool" || !candidate.delegate) continue;
+      const nested = findSelectedInRun(candidate.delegate, delegationId);
+      if (nested) return { item: nested, turnActivityItems };
+    }
   }
   return null;
 }

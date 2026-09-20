@@ -11,6 +11,7 @@ import { formatToolDuration } from "../../../lib/tool-display";
 import { toolResultPayload } from "../../../lib/tool-presentation";
 import {
   delegationIsCreating,
+  nestedDelegationItems,
   subagentOutcome,
   summarizeSubagentActivity,
   type DelegationActivityItem,
@@ -324,11 +325,51 @@ export function SubagentDetail({
   );
 }
 
+function SubagentTopologyNode({
+  item,
+  delegationStatuses,
+  delegationTimings,
+  onUserInteraction,
+}: {
+  item: DelegationActivityItem;
+  delegationStatuses?: ReadonlyMap<string, SubagentOutcome>;
+  delegationTimings?: ReadonlyMap<string, SubagentTiming>;
+  onUserInteraction?: () => void;
+}) {
+  const children = nestedDelegationItems(item.delegate);
+  return (
+    <div className="subagent-topology-branch" role="listitem">
+      <ToolRow
+        message={item.message}
+        {...(item.delegate ? { delegate: item.delegate } : {})}
+        variant="topology"
+        onUserInteraction={onUserInteraction}
+        {...(delegationStatuses ? { delegationStatuses } : {})}
+        {...(delegationTimings ? { delegationTimings } : {})}
+      />
+      {children.length > 0 ? (
+        <div className="subagent-topology-children" role="list">
+          {children.map((child) => (
+            <SubagentTopologyNode
+              key={child.message.id}
+              item={child}
+              delegationStatuses={delegationStatuses}
+              delegationTimings={delegationTimings}
+              onUserInteraction={onUserInteraction}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /**
- * A truthful one-level graph of one parent fan-out (ADR 0062).
+ * A truthful delegation graph (ADR 0062).
  *
- * The runtime has no delegate-to-delegate edges, so this deliberately stops at
- * main agent -> Task nodes instead of implying dependencies that do not exist.
+ * Each Task card owns the rows emitted by its delegate. When a delegate emits
+ * another Task, that child run is rendered as a connected nested branch using
+ * the same card and side-panel interaction as a first-level node.
  */
 export function SubagentTopology({
   items,
@@ -365,14 +406,12 @@ export function SubagentTopology({
         aria-label={t("chat.subagentTopology")}
       >
         {items.map((item) => (
-          <ToolRow
+          <SubagentTopologyNode
             key={item.message.id}
-            message={item.message}
-            {...(item.delegate ? { delegate: item.delegate } : {})}
-            variant="topology"
+            item={item}
+            delegationStatuses={delegationStatuses}
+            delegationTimings={delegationTimings}
             onUserInteraction={onUserInteraction}
-            {...(delegationStatuses ? { delegationStatuses } : {})}
-            {...(delegationTimings ? { delegationTimings } : {})}
           />
         ))}
       </div>

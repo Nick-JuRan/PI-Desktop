@@ -1291,6 +1291,15 @@ schema field. Host settings reads normalize a missing, malformed, or
 out-of-range value to 600, and settings writes validate the integer range of
 1–1,000,000. Existing databases therefore gain the default lazily without a
 destructive migration or a second settings store.
+The `maxSubagentDepth` setting follows the same additive JSON path: reads
+normalize missing or malformed values to 1, writes validate `0..5`, and no
+database schema migration is required. Existing settings therefore retain the
+direct-only default while new settings can opt into nested delegation.
+Subagent documents persist dynamic capability grants in their existing
+frontmatter `tools` array (`skill:<id>`, `mcp:<server-id>`, or a full plugin
+tool name). Host-core preserves these namespaced entries during normalization;
+the live Electron/sidecar catalog validates them at delegation time, so adding
+the selectors does not require a database or document-version migration.
 - Plan and Goal artifacts are never reconstructed from transcript content. On
   startup,
   one transaction marks every `pending` approval and every `queued` or

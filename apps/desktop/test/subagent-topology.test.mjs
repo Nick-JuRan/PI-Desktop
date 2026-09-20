@@ -16,6 +16,7 @@ const {
   delegationRosterSummary,
   delegationTimingBounds,
   isDelegationActivityItem,
+  nestedDelegationItems,
   lifecycleKindOf,
   subagentOutcome,
   summarizeSubagentActivity,
@@ -90,6 +91,64 @@ test("detects exact delegation activities without absorbing ordinary tools", () 
     }),
     false,
   );
+});
+
+test("deduplicates replayed nested Task snapshots by delegation id", () => {
+  const first = task("child-start", "success", "running");
+  first.message.toolResult.details.delegationId = "child-delegation";
+  const replay = {
+    ...first,
+    message: {
+      ...first.message,
+      id: "child-replayed",
+      toolCallId: "child-replayed-call",
+      toolResult: {
+        details: {
+          delegationId: "child-delegation",
+          status: "completed",
+        },
+      },
+    },
+  };
+  const separate = task("separate-child", "success", "completed");
+  separate.message.toolResult.details.delegationId = "separate-delegation";
+
+  const children = nestedDelegationItems({ items: [first, replay, separate] });
+  assert.equal(children.length, 2);
+  assert.equal(children[0].message.id, "child-replayed");
+  assert.equal(children[1].message.id, "separate-child");
+});
+
+test("collapses resumed nested Task rounds into the latest topology node", () => {
+  const first = task("child-round-1", "success", "completed");
+  first.message.toolArgs = {
+    agent: "explorer",
+    description: "Round 1",
+    task: "First question",
+  };
+  first.message.toolResult.details.delegationId = "child-delegation-1";
+
+  const second = task("child-round-2", "success", "completed");
+  second.message.toolArgs = {
+    agent: "explorer",
+    description: "Round 2",
+    task: "Second question",
+    resume: "child-delegation-1",
+  };
+  second.message.toolResult.details.delegationId = "child-delegation-2";
+
+  const third = task("child-round-3", "success", "completed");
+  third.message.toolArgs = {
+    agent: "explorer",
+    description: "Round 3",
+    task: "Third question",
+    resume: "child-delegation-2",
+  };
+  third.message.toolResult.details.delegationId = "child-delegation-3";
+
+  const children = nestedDelegationItems({ items: [first, second, third] });
+  assert.equal(children.length, 1);
+  assert.equal(children[0].message.id, "child-round-3");
 });
 
 test("prefers the structured delegate outcome over the transport status", () => {
@@ -179,6 +238,35 @@ test("uses delegation lifecycle timestamps instead of the immediate Task duratio
     startedAt: 1_000,
     completedAt: 4_250,
   });
+});
+
+test("collects status and timing rows from nested delegation runs", () => {
+  const child = task("child", "success", "running", { startedAt: 2_000 });
+  const childWait = lifecycle("TaskWait", {
+    delegations: [
+      {
+        delegationId: "child",
+        agent: "implementer",
+        status: "completed",
+        startedAt: 2_000,
+        completedAt: 6_000,
+      },
+    ],
+  });
+  const parent = task("parent", "success", "running", { startedAt: 1_000 });
+  parent.delegate = {
+    agentName: "architect",
+    items: [child, childWait],
+  };
+
+  const statuses = collectDelegationStatuses([parent], { turnLive: true });
+  const timings = collectDelegationTimings([parent]);
+  assert.equal(statuses.get("child"), "completed");
+  assert.deepEqual(timings.get("child"), {
+    startedAt: 2_000,
+    completedAt: 6_000,
+  });
+  assert.equal(subagentOutcome(child.message, statuses), "completed");
 });
 
 test("reads settled delegation status from a persisted TaskWait result", () => {

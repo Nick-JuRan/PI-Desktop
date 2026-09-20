@@ -152,6 +152,7 @@ function createRuntime(
     subagents: SubagentDefinition[];
     subagentProviders: Record<string, RuntimeProviderConfig>;
     subagentModelKeys: string[];
+    maxSubagentDepth: number;
     pluginSkills: import("./plugin-skills-prompt.js").PluginSkillDef[];
     commandShell: CommandShellOption;
     turnId: string;
@@ -177,6 +178,7 @@ function createRuntime(
     subagents: overrides.subagents,
     subagentProviders: overrides.subagentProviders,
     subagentModelKeys: overrides.subagentModelKeys,
+    maxSubagentDepth: overrides.maxSubagentDepth,
     projectInstructions: overrides.projectInstructions,
     projectMemory: overrides.projectMemory,
     pluginSkills: overrides.pluginSkills,
@@ -225,6 +227,7 @@ function runtimeMatches(
     subagents: (runtime as any).subagents,
     subagentProviders: (runtime as any).subagentProviders,
     subagentModelKeys: [...(runtime as any).subagentModelKeys],
+    maxSubagentDepth: (runtime as any).maxSubagentDepth,
     ...overrides,
   });
 }
@@ -6009,6 +6012,276 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(subagentRuns.calls[0].systemPrompt).toContain("You may change files");
     expect(taskTool(runtime).description).toContain("(tools: inherit)");
 
+    await runtime.dispose();
+  });
+
+  it("activates only the selected Skill, MCP server, and plugin tools", async () => {
+    const selectedSkill = {
+      id: "demo.notes/release-notes",
+      name: "Release notes",
+      description: "Draft release notes.",
+    };
+    const otherSkill = {
+      id: "demo.notes/other",
+      name: "Other skill",
+      description: "Should stay hidden.",
+    };
+    const worker: SubagentDefinition = {
+      name: "worker",
+      description: "Uses a checked capability set.",
+      tools: ["Read", "skill:demo.notes/release-notes", "mcp:docs", "plugin_demo_lookup"],
+      prompt: "Use only the selected capabilities.",
+      source: "user",
+    };
+    const host = { call: vi.fn().mockResolvedValue({ ok: true, content: "loaded" }) };
+    const runtime = createRuntime({
+      host,
+      subagents: [worker],
+      pluginSkills: [selectedSkill, otherSkill],
+      pluginTools: [
+        {
+          name: "plugin_demo_lookup",
+          description: "Look up a value.",
+          parameters: {},
+        },
+        {
+          name: "plugin_demo_hidden",
+          description: "Must not be exposed.",
+          parameters: {},
+        },
+        {
+          name: "mcp_docs_search",
+          description: "Search the docs MCP server.",
+          parameters: {},
+          source: "mcp",
+          mcpServerId: "docs",
+        },
+        {
+          name: "mcp_docs_open",
+          description: "Open a docs MCP page.",
+          parameters: {},
+          source: "mcp",
+          mcpServerId: "docs",
+        },
+        {
+          name: "mcp_other_ping",
+          description: "Must not be exposed.",
+          parameters: {},
+          source: "mcp",
+          mcpServerId: "other",
+        },
+      ],
+    });
+    subagentRuns.calls.length = 0;
+    subagentRuns.deferred = false;
+
+    await taskTool(runtime).execute("selected", {
+      agent: "worker",
+      task: "Use the selected capabilities.",
+    });
+
+    const child = subagentRuns.calls[0];
+    expect(child.tools.map((tool: { name: string }) => tool.name)).toEqual(
+      expect.arrayContaining([
+        "Read",
+        "Skill",
+        "mcp_docs_search",
+        "mcp_docs_open",
+        "plugin_demo_lookup",
+      ]),
+    );
+    expect(child.tools.map((tool: { name: string }) => tool.name)).not.toContain(
+      "plugin_demo_hidden",
+    );
+    expect(child.tools.map((tool: { name: string }) => tool.name)).not.toContain(
+      "mcp_other_ping",
+    );
+    expect(child.systemPrompt).toContain("demo.notes/release-notes");
+    expect(child.systemPrompt).not.toContain("demo.notes/other");
+
+    const skill = child.tools.find((tool: { name: string }) => tool.name === "Skill");
+    await skill.execute("selected-skill", { id: selectedSkill.id });
+    expect(host.call).toHaveBeenCalledWith(
+      "tools.execute",
+      expect.objectContaining({
+        toolName: "Skill",
+        allowedSkillIds: [selectedSkill.id],
+      }),
+    );
+
+    await runtime.dispose();
+  });
+
+  it("scopes nested delegation to the direct parent and supports repeated child rounds", async () => {
+    const runtime = createRuntime({
+      subagents: [explorer],
+      maxSubagentDepth: 2,
+    });
+    subagentRuns.calls.length = 0;
+    subagentRuns.instances.length = 0;
+    subagentRuns.deferred = true;
+    subagentRuns.resolveRun = undefined;
+
+    const rootTask = taskTool(runtime);
+    const firstStarted = await rootTask.execute("root-task", {
+      agent: "explorer",
+      task: "Coordinate the child review.",
+    });
+    const firstId = firstStarted.details.delegationId as string;
+    const firstOptions = subagentRuns.calls[0];
+    expect(firstOptions.tools.map((tool: { name: string }) => tool.name)).toEqual(
+      expect.arrayContaining(["Task", "TaskWait", "TaskList", "TaskStop"]),
+    );
+    expect(firstOptions.systemPrompt).toContain("child reports return through TaskWait");
+
+    const firstTask = firstOptions.tools.find(
+      (tool: { name: string }) => tool.name === "Task",
+    );
+    const firstWait = firstOptions.tools.find(
+      (tool: { name: string }) => tool.name === "TaskWait",
+    );
+    const firstList = firstOptions.tools.find(
+      (tool: { name: string }) => tool.name === "TaskList",
+    );
+    expect(firstTask).toBeDefined();
+    expect(firstWait).toBeDefined();
+    expect(firstList).toBeDefined();
+
+    const childStarted = await firstTask.execute("child-task", {
+      agent: "explorer",
+      task: "Inspect the implementation and report once.",
+    });
+    const childId = childStarted.details.delegationId as string;
+    const childOptions = subagentRuns.calls[1];
+    const childToolNames = childOptions.tools.map(
+      (tool: { name: string }) => tool.name,
+    );
+    expect(childToolNames).not.toContain("Task");
+    expect(childToolNames).not.toContain("TaskWait");
+    expect(childOptions.systemPrompt).toContain("your direct parent subagent");
+    expect(childOptions.systemPrompt).toContain(
+      "Do not attempt to contact the main agent directly",
+    );
+    expect((runtime as any).delegations.get(childId)).toMatchObject({
+      parentDelegationId: firstId,
+      depth: 2,
+    });
+
+    const rootList = (runtime as any).agent.state.tools.find(
+      (tool: { name: string }) => tool.name === "TaskList",
+    );
+    const rootListResult = await rootList.execute("root-list", {});
+    expect(rootListResult.details.delegations.map((item: { delegationId: string }) => item.delegationId)).toEqual([
+      firstId,
+    ]);
+    const firstListResult = await firstList.execute("first-list", {});
+    expect(firstListResult.details.delegations.map((item: { delegationId: string }) => item.delegationId)).toEqual([
+      childId,
+    ]);
+    const rootWait = (runtime as any).agent.state.tools.find(
+      (tool: { name: string }) => tool.name === "TaskWait",
+    );
+    const rootWaitResult = await rootWait.execute("root-wait-child", {
+      delegationIds: [childId],
+    });
+    expect(rootWaitResult.details.delegations).toEqual([]);
+    expect(rootWaitResult.content[0].text).toContain(
+      "None of the requested delegation ids exist",
+    );
+
+    const settleInstance = (index: number, result: unknown) => {
+      const instance = subagentRuns.instances[index];
+      expect(instance).toBeDefined();
+      instance.settled = true;
+      instance.resolve(result);
+    };
+    const completedChild = {
+      agentName: "explorer",
+      status: "completed",
+      report: "First child report.",
+      turns: 1,
+      toolCalls: 0,
+    };
+    settleInstance(1, completedChild);
+    await vi.waitFor(() =>
+      expect((runtime as any).delegations.get(childId).status).toBe("completed"),
+    );
+
+    const childWait = await firstWait.execute("first-wait", {
+      delegationIds: [childId],
+    });
+    expect(childWait.content[0].text).toContain("First child report.");
+
+    // Give the resumed child one transcript row so the real chain replay path
+    // is exercised instead of only starting a fresh child.
+    childOptions.onEvent({
+      sessionId: "session-1",
+      turnId: "turn-1",
+      ts: Date.now(),
+      parentToolCallId: "child-task",
+      agentName: "explorer",
+      event: {
+        type: "message_end",
+        message: {
+          id: "child-report-row",
+          role: "assistant",
+          content: "I checked the first pass.",
+          createdAt: new Date().toISOString(),
+          status: "complete",
+        },
+      },
+    });
+    const resumed = await firstTask.execute("child-resume", {
+      agent: "explorer",
+      task: "Re-check the changed line and report the delta.",
+      resume: childId,
+    });
+    expect(resumed.details.resumedFrom).toBe(childId);
+    expect(subagentRuns.calls).toHaveLength(3);
+    expect(subagentRuns.calls[2].parentToolCallId).toBe("child-resume");
+    expect((runtime as any).delegations.get(resumed.details.delegationId)).toMatchObject({
+      parentDelegationId: firstId,
+      depth: 2,
+    });
+
+    settleInstance(2, {
+      agentName: "explorer",
+      status: "completed",
+      report: "Second child report.",
+      turns: 1,
+      toolCalls: 0,
+    });
+    await vi.waitFor(() =>
+      expect(
+        (runtime as any).delegations.get(resumed.details.delegationId).status,
+      ).toBe("completed"),
+    );
+
+    await runtime.dispose();
+    subagentRuns.deferred = false;
+  });
+
+  it("keeps the legacy direct-only behavior at depth one", async () => {
+    const runtime = createRuntime({ subagents: [explorer], maxSubagentDepth: 1 });
+    subagentRuns.calls.length = 0;
+    subagentRuns.deferred = false;
+    await taskTool(runtime).execute("depth-one", {
+      agent: "explorer",
+      task: "Report the current state.",
+    });
+    expect(subagentRuns.calls[0].tools.map((tool: { name: string }) => tool.name)).not.toContain(
+      "Task",
+    );
+    await runtime.dispose();
+  });
+
+  it("removes delegation controls when the maximum depth is zero", async () => {
+    const runtime = createRuntime({ subagents: [explorer], maxSubagentDepth: 0 });
+    const names = (runtime as any).agent.state.tools.map(
+      (tool: { name: string }) => tool.name,
+    );
+    expect(names).not.toContain("Task");
+    expect(names).not.toContain("TaskWait");
     await runtime.dispose();
   });
 

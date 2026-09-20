@@ -397,6 +397,122 @@
 .ext-tool-opt.is-on.is-mutating {
   background: color-mix(in oklab, var(--ds-warning) 16%, transparent);
 }
+
+/* Dynamic capability grants stay in the Advanced drawer so the common
+ * built-in tool choices remain compact and extension rows stay scannable. */
+.ext-subagent-tools-advanced {
+  margin-top: 8px;
+  border-top: 1px solid var(--ds-border-subtle);
+  padding-top: 8px;
+}
+
+.ext-subagent-tools-count {
+  min-width: 18px;
+  border-radius: var(--radius-full);
+  padding: 1px 5px;
+  background: color-mix(in oklab, var(--ds-accent) 16%, transparent);
+  color: var(--ds-text-primary);
+  font-size: var(--text-2xs);
+  text-align: center;
+}
+
+.ext-subagent-dynamic-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ext-subagent-dynamic-hint {
+  margin: 0;
+}
+
+.ext-subagent-tool-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ext-subagent-tool-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+}
+
+.ext-subagent-tool-group-head span {
+  border-radius: var(--radius-full);
+  padding: 1px 6px;
+  background: var(--ds-tile-hover);
+  color: var(--ds-text-tertiary);
+  font-size: var(--text-2xs);
+}
+
+.ext-subagent-tool-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 5px;
+}
+
+.ext-subagent-tool-card {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 6px 8px;
+  background: var(--ds-tile-hover);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-out),
+    background var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.ext-subagent-tool-card:hover {
+  border-color: var(--ds-border-strong);
+  background: var(--ds-tile-deep);
+}
+
+.ext-subagent-tool-card.is-on {
+  border-color: color-mix(in oklab, var(--ds-accent) 55%, var(--ds-border-subtle));
+  background: color-mix(in oklab, var(--ds-accent) 10%, var(--ds-tile-hover));
+  color: var(--ds-text-primary);
+}
+
+.ext-subagent-tool-card input {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.ext-subagent-tool-card-copy {
+  display: block;
+  min-width: 0;
+}
+
+.ext-subagent-tool-card-title {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 4px;
+  overflow: hidden;
+  color: var(--ds-text-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-row);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ext-subagent-tool-card-detail {
+  overflow: hidden;
+  color: var(--ds-text-tertiary);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* ----------------------------------------------------------- preset picker */
 /*
  * Issue #60: the subagent editor offers built-in templates (explorer /

@@ -6034,6 +6034,38 @@ identify the platform validation still needed.
 - **Milestone**: M6+
 - **Status**: Automated by `test:e2e:subagents` (host-core create/read/on-disk/active/loader inherit round-trip) and `test:e2e:subagent-models` (real sidecar/local transport Task spawn, inherited Skill/plugin catalog minus the deny list, and builtin explorer isolation). Unit coverage remains in `packages/shared`, `packages/agent-runtime`, and host-core `user_subagents`; the UI inherit-checkbox journey remains Draft. Required suites: `test:e2e`, `test:e2e:subagents`, `test:e2e:subagent-models`.
 
+#### E2E-SUBAGENT-explicit-capability-selection
+
+- **Preconditions**: Agent mode; one active user Skill and one active user MCP
+  server have been added in Settings → Agent; the MCP fixture advertises at
+  least two tools; a plugin with at least two agent tools is enabled.
+- **Steps**:
+  1. Open Settings → Agent → Subagents and edit a user-owned subagent.
+  2. Under **Available tools**, expand **Advanced** and confirm the active Skill,
+     MCP server, and plugin tools appear as separate grouped checkbox cards with
+     source/status text. Select the Skill, the MCP server, and exactly one of the
+     plugin tools; leave the other plugin tool unchecked. Save and reopen the
+     editor to verify the selections persist.
+  3. Start a new Agent turn and delegate to the edited subagent. Inspect the
+     child tool catalog and prompt, then ask it to load the selected Skill and
+     call the selected plugin tool.
+  4. Ask the child to load the unselected Skill or call the unselected plugin
+     tool, and ask the child to use both discovered MCP tools.
+- **Expected**: The editor loads its catalog through the host-backed IPC path.
+  The child receives `Skill`, only the checked Skill id in its Skill prompt,
+  every tool from the checked MCP server, and only the checked plugin tool.
+  The unselected plugin tool is absent from the child tool list. The selected
+  Skill loads successfully; a manually requested unselected Skill returns a
+  bounded grant error. A disabled or out-of-scope capability disappears from
+  the next catalog/runtime resolution rather than remaining callable.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
+  `04-ux/06-settings-ia.md` §7, `07-plugins/03-plugin-api.md`, ADR 0038
+- **Acceptance**: E (tools & permissions), G (Skill/MCP/plugin activation)
+- **Milestone**: M6+
+- **Status**: Unit-covered (`packages/shared`, `packages/agent-runtime`,
+  `apps/desktop/test/subagent-wiring.test.mjs`); real Settings/sidecar journey
+  remains to be run with the user's active Skill, MCP, and plugin fixtures.
+
 #### E2E-145: Tool results read as structured blocks, never JSON
 
 - **Preconditions**: A project-bound Agent session with permissions allowed for
@@ -13427,7 +13459,8 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   to detailed restores reasoning from unchanged messages. Saved mode survives
   application restart; an older settings blob without the field uses detailed.
 - **Automation:** `test:e2e:transcript` covers the mounted renderer interactions,
-  settings control and unchanged-group performance. `test:e2e:transcript-disclosure`
+  nested delegation topology rendering, settings control and unchanged-group
+  performance. `test:e2e:transcript-disclosure`
   covers scroll anchoring; `test:e2e:theme-surfaces` covers the shared theme
   controls. Isolated Host `settings.set/get` checks verify both modes across
   process restart and preservation during unrelated partial settings writes.
@@ -13453,3 +13486,40 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Acceptance:** A (runtime), C (sessions).
 - **Milestone:** M6+.
 - **Status:** Automated; run against the task/PR integration candidate.
+
+#### E2E-SUBAGENT-nested-depth-direct-parent-rounds: Nested delegation is depth-bounded and resumes through the direct parent
+
+- **Preconditions**: A deterministic Agent runtime fixture has at least one
+  enabled subagent definition and a local provider fixture. Settings → Agent →
+  Subagents is reachable.
+- **Steps**: 1) Set **Maximum subagent depth** to `1` and start a root `Task`;
+  confirm the first-level tool set has no `Task` control tools. 2) Set it to
+  `2`, start a root `Task`, then have that first-level delegate start a child
+  `Task`. 3) From the first-level delegate, use `TaskWait` and read the child
+  report. 4) Resume the settled child with its `delegationId` from the same
+  first-level parent and complete a second round. 5) Attempt to list, wait for,
+  or resume the nested child from the main agent. 6) In the conversation UI,
+  expand the delegation card, select the first-level node, then select its
+  second-level child node. 7) Set the value to `0` and start a new root prompt.
+- **Expected**: At depth `1`, only the main agent can create direct children.
+  At depth `2`, the first-level delegate can create and repeatedly resume its
+  own direct child, while `TaskWait`, `TaskList`, and `TaskStop` expose only
+  that direct-parent scope. The second-level delegate's prompt has no main-agent
+  or user channel, and the main agent cannot consume its report directly.
+  The conversation graph shows the main-agent root, the first-level node, and
+  a connected second-level child node in order. The child has the same status,
+  model, duration, step-count and side-panel behavior as the first-level node;
+  selecting it opens its own live process and repeated child rounds. A replayed
+  `Task` snapshot with the same `delegationId` does not create a second visual
+  child card; the latest snapshot remains connected to the existing process.
+  Depth `0`
+  removes delegation controls from the root runtime. A parent that finishes
+  without waiting aborts unfinished descendants, so no orphaned child remains.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
+  `04-ux/06-settings-ia.md` Agent capability destinations
+- **Acceptance**: C (conversation), Quality (bounded delegation and lifecycle)
+- **Status**: Runtime and prompt boundaries are covered by
+  `packages/agent-runtime/src/runtime.test.ts` and
+  `packages/agent-runtime/src/subagent.test.ts`; settings persistence is
+  covered by the host-core RPC test. The full Electron UI journey remains
+  pending and should run only in the repository's integration environment.

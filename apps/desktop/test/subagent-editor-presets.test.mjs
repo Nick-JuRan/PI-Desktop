@@ -20,6 +20,10 @@ const editorSource = await readFile(
   new URL("../src/components/settings/SubagentEditorSheet.tsx", import.meta.url),
   "utf8",
 );
+const presetCopySource = await readFile(
+  new URL("../src/components/settings/subagent-presets.ts", import.meta.url),
+  "utf8",
+);
 const sharedPresets = await readFile(
   new URL("../../../packages/shared/src/subagent-presets.ts", import.meta.url),
   "utf8",
@@ -138,13 +142,13 @@ test("the editor styles ship with the picker", () => {
 test("hyphenated preset ids map to catalog keys instead of capitalizing the id", () => {
   // `capitalize("code-reviewer")` produced `presetCode-reviewerName`, which is
   // not in the catalog and rendered as a raw key. The map is the contract.
-  assert.match(editorSource, /export const SUBAGENT_PRESET_COPY/);
+  assert.match(presetCopySource, /export const SUBAGENT_PRESET_COPY/);
   assert.match(
-    editorSource,
+    presetCopySource,
     /"code-reviewer": \{ name: "presetReviewerName", desc: "presetReviewerDesc" \}/,
   );
   assert.match(
-    editorSource,
+    presetCopySource,
     /"test-runner": \{ name: "presetTestRunnerName", desc: "presetTestRunnerDesc" \}/,
   );
   assert.doesNotMatch(editorSource, /capitalize\(preset\.id\)/);

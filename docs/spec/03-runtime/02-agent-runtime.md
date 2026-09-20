@@ -683,6 +683,38 @@ not override the parent session by default: they follow `auto` completely
 their normal approval behavior. An explicit builtin or user scope remains an
 intentional override.
 
+**Dynamic capability grants.** The Subagents editor keeps the stable built-in
+tool checkboxes in the main **Available tools** group and exposes an **Advanced**
+disclosure for active Skills, user MCP servers, and plugin-contributed agent
+tools. A selected Skill is persisted as `skill:<skill-id>` and activates the
+generic `Skill` loader plus that Skill's catalog entry only. A selected user
+MCP server is persisted as `mcp:<server-id>` and activates every tool returned
+by that server's current handshake. Plugin tools are persisted by their full
+runtime name and are individually selectable. Electron supplies the editor
+with a project-scoped live catalog through
+`pi-desktop/subagent/tool-catalog`; the runtime resolves selectors against the
+same session catalog at delegation time, so removed, disabled, or out-of-scope
+capabilities are not exposed. The delegated `Skill` call also carries the
+selected Skill ids to the host bridge, which rejects a manually requested
+unselected id. Existing `tools: inherit` documents keep their
+backwards-compatible parent-catalog semantics; explicit dynamic selectors are
+the least-privilege mode for a definition that does not opt into inheritance.
+
+**Depth and routing.** Settings → Agent → Subagents stores
+`maxSubagentDepth` (default `1`, bounded to `0..5`). `0` disables delegation
+tools, `1` preserves the direct-only main-agent flow, and `2` allows a first-
+level delegate to create second-level delegates. Every delegation records its
+one-based depth and direct `parentDelegationId`. A delegate receives scoped
+`Task`, `TaskWait`, `TaskList`, and `TaskStop` tools only while its depth is
+below the configured maximum; those tools address only its own direct
+children. A nested report therefore returns to the first-level parent, never
+directly to the main agent, and a second-level delegate has no user or main-
+agent communication path. A parent must `TaskWait` for child reports before it
+finishes; terminal parent settlement aborts any remaining descendants rather
+than leaving an orphaned run. Resume is likewise restricted to the direct
+parent that started the delegation, so repeated child rounds stay on that
+parent-to-child channel.
+
 **Tools (ADR 0089).** Delegation is a four-tool lifecycle, built only in Agent
 mode and only when the catalog is non-empty, and all four belong to the Agent
 core set rather than the on-demand catalog of §7.1:
@@ -690,9 +722,12 @@ core set rather than the on-demand catalog of §7.1:
 - `Task(agent, task, description?, model?, resume?)` — validates its arguments (an
   unknown `agent`, an empty `task`, an unresolvable model pin and a definition
   whose tools are all unavailable each return a tool error explaining the
-  failure rather than throwing), starts the delegate **in the background**, and
-  returns immediately with a `delegationId`. Starting fails with a tool error
-  when the session already runs `MAX_SUBAGENT_CONCURRENCY` (10) delegates.
+  failure rather than throwing), starts a direct child of the calling agent
+  **in the background**, and returns immediately with a `delegationId`.
+  Starting fails with a tool error when the session already runs
+  `MAX_SUBAGENT_CONCURRENCY` (10) delegates. `resume` must refer to a settled
+  chain owned by the same direct parent; a root parent cannot resume a nested
+  chain by id.
 
   The `Task` tool accepts an optional `model` parameter
   (`"provider/modelId"`) that overrides the delegate's model for that run.
@@ -722,7 +757,8 @@ core set rather than the on-demand catalog of §7.1:
   capability clamping; `omit` records that no provider thinking override was
   sent.
 - `TaskWait(delegationIds?, mode?, minCompleted?, timeoutSeconds?)` — converges
-  on running delegations (defaults to all of them) and returns their reports;
+  on the calling agent's direct children (defaults to all of them) and returns
+  their reports;
   `mode: "any"` with `minCompleted` converges as soon as the first N settle.
   Settled delegations return immediately, so re-reading a report by id is
   cheap. The joined result is bounded to `MAX_TASKWAIT_RESULT_CHARS` (50k); if
@@ -734,10 +770,13 @@ core set rather than the on-demand catalog of §7.1:
   heartbeat (agent, status, elapsed, turns, last tool) plus any finished
   reports. The runtime keeps the parent turn open and delivers remaining
   reports when they finish, even if the parent already stopped calling tools.
-  Only `TaskStop` or user Stop aborts a delegate.
-- `TaskList()` — reports every delegation of the session with status and a
-  running heartbeat.
-- `TaskStop(delegationIds?)` — stops running delegations (defaults to all);
+  Only `TaskStop` or user Stop aborts a delegate. A nested wait does not expose
+  the child's siblings or ancestors, and a main-agent wait never consumes a
+  second-level report directly.
+- `TaskList()` — reports the calling agent's direct delegations with status and
+  a running heartbeat.
+- `TaskStop(delegationIds?)` — stops the calling agent's running direct children
+  (defaults to all) and their descendants;
   waits for each abort to settle, then persists `status: "stopped"` with
   `completedAt` on `details.stopped[]`. Stopped delegations read as `stopped`.
 
@@ -791,6 +830,11 @@ delegation views do not re-derive them from definitions or parent settings.
 truth for renderer delegation duration; the immediate `Task` tool-call
 duration only covers starting the background work.
 
+Nested delegates receive a prompt naming their direct parent and explicitly
+excluding the user and main agent. A delegate that may create children is told
+to use the scoped four-tool lifecycle and to wait for those reports before
+returning its own report.
+
 **Delegate lifetime (D328).** The runtime does not idle-timeout or
 duration-timeout a delegate. `idle-timeout` / `max-duration` frontmatter still
 parses so old documents load, but those values are not armed. A delegate runs
@@ -842,8 +886,8 @@ evicts least-recently-active ones whenever a delegation settles; a chain that is
 still working is never evicted, so the bound counts reusable chains and a live
 chain may sit above it until it settles.
 
-Resume is strictly same-session and never queues: resuming a running
-delegation is a tool error telling the parent to converge with `TaskWait`
+Resume is strictly same-session and direct-parent scoped, and never queues:
+resuming a running delegation is a tool error telling the parent to converge with `TaskWait`
 first, and a chain has at most one live record at a time. `model` and `resume`
 together are rejected, and a resumed run keeps the chain's recorded binding:
 the `providerId/modelId` key it resolved is preferred, a chain rebuilt from the

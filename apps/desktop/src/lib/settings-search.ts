@@ -183,6 +183,9 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     titleKey: "settings.subagents",
     group: "agent",
     keywordKeys: [
+      "settings.subagentExecutionTitle",
+      "settings.subagentDepthTitle",
+      "settings.subagentDepthDesc",
       "settings.subagentsGlobalPath",
       "settings.subagentsOnlyGlobal",
       "settings.globalScopeDescription",

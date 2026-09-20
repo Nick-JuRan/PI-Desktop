@@ -1,5 +1,5 @@
 import { dialog, shell } from "electron";
-import { ErrorCodes, IPC, type ActivationScope, type AgentCapabilityMove, type AgentCapabilityQuery, type UserSkillRecord, type UserSubagentRecord } from "@pi-desktop/shared";
+import { ErrorCodes, IPC, type ActivationScope, type AgentCapabilityMove, type AgentCapabilityQuery, type SubagentToolCatalog, type UserSkillRecord, type UserSubagentRecord } from "@pi-desktop/shared";
 import { loadSubagentDefinitions, type UserSubagentDocument } from "@pi-desktop/agent-runtime";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
@@ -23,6 +23,7 @@ export type SkillsIpcDependencies = {
   activeUserSubagentDocuments: (projectPath: string | undefined) => Promise<UserSubagentDocument[]>;
   /** Handles whose shipped definition the user turned off (builtin activation). */
   disabledBuiltinSubagents: () => Promise<string[]>;
+  subagentToolCatalog: (projectPath?: string | null) => Promise<SubagentToolCatalog>;
   stripWinLongPrefix: (path: string) => string;
   sendToRenderer: (channel: string, payload?: unknown) => void;
   searchSkillMarket: (query: string, sources: { id: string; name: string; url: string }[]) => Promise<SkillMarketSearchResult>;
@@ -37,6 +38,7 @@ export function registerSkillsIpc({
   optionalWorkspaceRoot,
   activeUserSubagentDocuments,
   disabledBuiltinSubagents,
+  subagentToolCatalog,
   stripWinLongPrefix,
   sendToRenderer,
   searchSkillMarket,
@@ -316,6 +318,11 @@ export function registerSkillsIpc({
       diagnostics,
       projectPath: projectPath ?? null,
     };
+  });
+
+  handle(IPC.invoke.subagentToolCatalog, async () => {
+    const projectPath = (await optionalWorkspaceRoot()) ?? null;
+    return subagentToolCatalog(projectPath);
   });
 
   handle(IPC.invoke.subagentCreate, async (subagent: Record<string, unknown>) => {

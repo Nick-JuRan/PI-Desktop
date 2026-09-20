@@ -21,6 +21,8 @@ export type LocalToolHandler = (input: {
   sessionId: string;
   toolCallId: string;
   args: unknown;
+  /** Present for a delegated Skill call; absent for the parent agent. */
+  allowedSkillIds?: string[];
 }) => Promise<LocalToolResult>;
 
 export type ProjectInstructionResolver = (input: {
@@ -527,10 +529,13 @@ export class AgentSidecar {
                   content: `${toolName} is unavailable in Plan mode.`,
                 }
               : await this.runLocalTool(localTool, {
-                  sessionId: String(params.sessionId ?? ""),
-                  toolCallId: String(params.toolCallId ?? ""),
-                  args: params.args,
-                });
+                sessionId: String(params.sessionId ?? ""),
+                toolCallId: String(params.toolCallId ?? ""),
+                args: params.args,
+                allowedSkillIds: Array.isArray(params.allowedSkillIds)
+                  ? params.allowedSkillIds.filter((id): id is string => typeof id === "string")
+                  : undefined,
+              });
           this.writeToChild(
             JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n",
           );

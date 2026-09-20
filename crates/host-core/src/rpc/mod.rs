@@ -576,6 +576,9 @@ fn drop_session_side_data(st: &AppState, id: &str) {
 const DEFAULT_LARGE_PASTE_THRESHOLD: i64 = 600;
 const MIN_LARGE_PASTE_THRESHOLD: i64 = 1;
 const MAX_LARGE_PASTE_THRESHOLD: i64 = 1_000_000;
+const DEFAULT_SUBAGENT_MAX_DEPTH: i64 = 1;
+const MIN_SUBAGENT_MAX_DEPTH: i64 = 0;
+const MAX_SUBAGENT_DEPTH: i64 = 5;
 /// Upper bound for one stored prompt-enhancement template, in characters.
 /// Mirrored by `PROMPT_ENHANCEMENT_TEMPLATE_MAX_LENGTH` in
 /// `packages/shared/src/prompt-enhancement.ts`; keep the two in step.
@@ -633,6 +636,16 @@ fn normalize_settings_value(mut value: Value) -> Value {
             object.insert(
                 "largePasteThreshold".into(),
                 Value::Number(DEFAULT_LARGE_PASTE_THRESHOLD.into()),
+            );
+        }
+        let valid_subagent_max_depth = object
+            .get("maxSubagentDepth")
+            .and_then(Value::as_i64)
+            .is_some_and(|depth| (MIN_SUBAGENT_MAX_DEPTH..=MAX_SUBAGENT_DEPTH).contains(&depth));
+        if !valid_subagent_max_depth {
+            object.insert(
+                "maxSubagentDepth".into(),
+                Value::Number(DEFAULT_SUBAGENT_MAX_DEPTH.into()),
             );
         }
         // A blank override means "use the built-in default", and an unusable
@@ -703,6 +716,24 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
                 1002,
                 format!(
                     "largePasteThreshold must be between {MIN_LARGE_PASTE_THRESHOLD} and {MAX_LARGE_PASTE_THRESHOLD}"
+                ),
+                "INVALID_PARAMS",
+            ));
+        }
+    }
+    if let Some(depth_value) = object.get("maxSubagentDepth") {
+        let Some(depth) = depth_value.as_i64() else {
+            return Err(rpc_err(
+                1002,
+                "maxSubagentDepth must be an integer",
+                "INVALID_PARAMS",
+            ));
+        };
+        if !(MIN_SUBAGENT_MAX_DEPTH..=MAX_SUBAGENT_DEPTH).contains(&depth) {
+            return Err(rpc_err(
+                1002,
+                format!(
+                    "maxSubagentDepth must be between {MIN_SUBAGENT_MAX_DEPTH} and {MAX_SUBAGENT_DEPTH}"
                 ),
                 "INVALID_PARAMS",
             ));
@@ -1777,6 +1808,7 @@ async fn handle_request(
                     "theme": "dark",
                     "enterToSend": true,
                     "largePasteThreshold": DEFAULT_LARGE_PASTE_THRESHOLD,
+                    "maxSubagentDepth": DEFAULT_SUBAGENT_MAX_DEPTH,
                     "contextCompaction": {
                         "enabled": true,
                         "reserveTokens": 16384,
@@ -6164,6 +6196,48 @@ mod tests {
         );
         assert!(catalog["choices"].is_array());
         assert!(catalog["effective"].is_object() || catalog["effective"].is_null());
+    }
+
+    #[tokio::test]
+    async fn settings_set_round_trips_and_validates_subagent_max_depth() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let tx = mpsc::unbounded_channel().0;
+
+        let defaults = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            defaults["maxSubagentDepth"],
+            super::DEFAULT_SUBAGENT_MAX_DEPTH
+        );
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "maxSubagentDepth": 2 }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let updated = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(updated["maxSubagentDepth"], 2);
+
+        let invalid = handle_request(
+            state,
+            "settings.set",
+            json!({
+                "maxSubagentDepth": super::MAX_SUBAGENT_DEPTH + 1
+            }),
+            tx,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(invalid.data.unwrap()["errorCode"], "INVALID_PARAMS");
     }
 
     #[tokio::test]

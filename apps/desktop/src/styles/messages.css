@@ -1995,6 +1995,30 @@
   content: "";
 }
 
+.subagent-topology-branch {
+  min-width: 0;
+}
+
+.subagent-topology-children {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  margin-left: 24px;
+  padding: 10px 0 0 14px;
+}
+
+.subagent-topology-children::before {
+  position: absolute;
+  top: 0;
+  bottom: 36px;
+  left: 0;
+  width: 2px;
+  border-radius: var(--radius-full);
+  background: var(--ds-tile-deep);
+  content: "";
+}
+
 .subagent-topology-node {
   position: relative;
   min-width: 0;
@@ -2210,6 +2234,10 @@
 
   .subagent-topology-node::before {
     width: 14px;
+  }
+
+  .subagent-topology-children {
+    margin-left: 14px;
   }
 }
 
@@ -2531,8 +2559,8 @@
 }
 
 /*
- * What a delegate did, one level inside its `Task` row. The tile marks the
- * boundary: everything inside it happened in the delegate's own context.
+ * What a delegate did, inside its `Task` row. The tile marks the boundary:
+ * everything inside it happened in the delegate's own context.
  */
 .subagent-run {
   position: relative;

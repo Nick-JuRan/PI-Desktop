@@ -205,6 +205,103 @@ test("nests delegate rows under the Task call that spawned them", () => {
   );
 });
 
+test("links a second-level Task run to its first-level Task row", () => {
+  const { entries } = buildTranscriptEntries([
+    message("user", "user", "Inspect the architecture"),
+    message("root-task", "tool", "started", {
+      toolName: "Task",
+      toolCallId: "root-task",
+    }),
+    message("level1-note", "assistant", "I will delegate the runtime check.", {
+      parentToolCallId: "root-task",
+      agentName: "architect",
+    }),
+    message("child-task", "tool", "started", {
+      toolName: "Task",
+      toolCallId: "child-task",
+      parentToolCallId: "root-task",
+    }),
+    message("level2-read", "tool", "runtime.ts", {
+      toolName: "Read",
+      toolCallId: "level2-read",
+      parentToolCallId: "child-task",
+      agentName: "implementer",
+    }),
+    message("level2-report", "assistant", "The delegation boundary is sound.", {
+      parentToolCallId: "child-task",
+      agentName: "implementer",
+    }),
+    message("level1-report", "assistant", "The nested check is complete.", {
+      parentToolCallId: "root-task",
+      agentName: "architect",
+    }),
+    message("final", "assistant", "The architecture is ready."),
+  ]);
+
+  const root = entries[1].parts[0].items[0].delegate;
+  const child = root.items.find(
+    (item) => item.kind === "tool" && item.message.id === "child-task",
+  );
+  assert.ok(child);
+  assert.equal(child.delegate.agentName, "implementer");
+  assert.deepEqual(
+    child.delegate.items.map((item) => item.message.id),
+    ["level2-read", "level2-report"],
+  );
+});
+
+test("keeps a resumed nested conversation on its latest child topology node", () => {
+  const { entries } = buildTranscriptEntries([
+    message("user", "user", "Run two nested rounds"),
+    message("root-task", "tool", "started", {
+      toolName: "Task",
+      toolCallId: "root-task",
+    }),
+    message("child-task-1", "tool", "started", {
+      toolName: "Task",
+      toolCallId: "child-task-1",
+      parentToolCallId: "root-task",
+      toolArgs: { agent: "implementer", task: "First round" },
+      toolResult: { details: { delegationId: "child-delegation-1" } },
+    }),
+    message("round-1", "assistant", "First round complete.", {
+      parentToolCallId: "child-task-1",
+      agentName: "implementer",
+    }),
+    message("child-task-2", "tool", "started", {
+      toolName: "Task",
+      toolCallId: "child-task-2",
+      parentToolCallId: "root-task",
+      toolArgs: {
+        agent: "implementer",
+        task: "Second round",
+        resume: "child-delegation-1",
+      },
+      toolResult: { details: { delegationId: "child-delegation-2" } },
+    }),
+    message("round-2", "assistant", "Second round complete.", {
+      parentToolCallId: "child-task-2",
+      agentName: "implementer",
+    }),
+    message("final", "assistant", "Nested rounds complete."),
+  ]);
+
+  const root = entries[1].parts[0].items[0].delegate;
+  const first = root.items.find(
+    (item) => item.kind === "tool" && item.message.id === "child-task-1",
+  );
+  const latest = root.items.find(
+    (item) => item.kind === "tool" && item.message.id === "child-task-2",
+  );
+  assert.ok(first);
+  assert.ok(latest);
+  assert.equal(first.delegate, undefined);
+  assert.deepEqual(
+    latest.delegate.items.map((item) => item.message.id),
+    ["round-1", "round-2"],
+  );
+});
+
 test("parallel delegate nodes keep parent Task order when child rows interleave", () => {
   const { entries } = buildTranscriptEntries([
     message("user", "user", "Fan out"),
@@ -441,6 +538,25 @@ test("delegate runs compare by rows so memoized groups still update", () => {
       run([{ kind: "tool", message: rowA }], "planner"),
     ),
     false,
+  );
+  assert.equal(
+    subagentRunsEqual(
+      run([
+        {
+          kind: "tool",
+          message: rowA,
+          delegate: run([{ kind: "tool", message: rowB }], "nested"),
+        },
+      ]),
+      run([
+        {
+          kind: "tool",
+          message: rowA,
+          delegate: run([{ kind: "tool", message: rowB }], "nested"),
+        },
+      ]),
+    ),
+    true,
   );
 });
 

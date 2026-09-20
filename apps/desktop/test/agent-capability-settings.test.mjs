@@ -34,7 +34,10 @@ const styles = await loadStyles();
 test("agent settings have three independent destinations and extensions have two tabs", () => {
   assert.match(settingsPage, /tab === "skills" && <AgentSkillsPage \/>/);
   assert.match(settingsPage, /tab === "mcp" && <AgentMcpPage \/>/);
-  assert.match(settingsPage, /tab === "subagents" && <AgentSubagentsPage \/>/);
+  assert.match(
+    settingsPage,
+    /tab === "subagents"\s*&&\s*settings\s*&&\s*\(/,
+  );
   assert.match(pluginsPage, /type TabId = "installed" \| "market"/);
   assert.doesNotMatch(pluginsPage, /plugins-(?:tab|panel)-(?:mcp|skills|subagents)/);
 });

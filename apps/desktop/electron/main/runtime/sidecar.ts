@@ -521,13 +521,21 @@ export function createSidecarRuntime({
   // Plugin skills (D174): the model loads a declared skill document by id.
   // Served in main because the plugin runtime — and the plugin directories —
   // live here, not in host-core.
-  s.setLocalTool("Skill", async ({ args, sessionId }) => {
+  s.setLocalTool("Skill", async ({ args, sessionId, allowedSkillIds }) => {
     const id = String((args as { id?: unknown })?.id ?? "").trim();
     if (!id) {
       return {
         ok: false,
         isError: true,
         content: "Skill: `id` is required. Use an id from the Skills section.",
+      };
+    }
+    if (allowedSkillIds && !allowedSkillIds.includes(id)) {
+      return {
+        ok: false,
+        isError: true,
+        errorCode: "SKILL_NOT_GRANTED",
+        content: `Skill: ${id} is not granted to this subagent. Select it in Settings > Subagents > Available tools > Advanced.`,
       };
     }
     const projectPath = sessionProjects.get(sessionId) ?? null;

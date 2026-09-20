@@ -122,3 +122,20 @@ test("inherit grant helpers keep the inherit token out of the checkbox list", ()
   assert.match(editorSource, /inheritTools: grant\.inheritTools/);
   assert.match(editorSource, /SUBAGENT_INHERIT_TOKEN/);
 });
+
+test("the editor round-trips namespaced dynamic capability selections", () => {
+  const start = editorSource.indexOf("export function splitSubagentToolGrant");
+  const end = editorSource.indexOf("/** Frontmatter `tools` list", start);
+  const helper = editorSource.slice(start, end);
+  assert.match(helper, /isSubagentAssignableTool\(name\)/);
+  assert.match(helper, /isSubagentDynamicSelection\(name\)/);
+  assert.match(editorSource, /skill:<skill-id>|subagentSkillSelector/);
+  assert.match(editorSource, /subagentMcpSelector/);
+});
+
+test("the advanced capability picker keeps rows compact", () => {
+  assert.match(editorSource, /\{skill\.name \|\| skill\.id\}/);
+  assert.match(editorSource, /mcpToolCount/);
+  assert.match(editorSource, /\{tool\.label \|\| tool\.name\}/);
+  assert.doesNotMatch(editorSource, /toolCatalogHint[\s\S]*?tool\.description/);
+});

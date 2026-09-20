@@ -6,6 +6,7 @@ import test from "node:test";
 const sessionLaunchSource = await readMainModule("runtime/session-launch.ts");
 const providerCatalogSource = await readMainModule("runtime/provider-catalog.ts");
 const desktopSidecarSource = await readMainModule("runtime/sidecar.ts");
+const skillsIpcSource = await readMainModule("ipc/skills-ipc.ts");
 const eventPersistenceSource = await readMainModule("runtime/event-persistence.ts");
 const hostRuntimeSource = await readMainModule("runtime/host.ts");
 const sidecarSource = await readFile(
@@ -18,6 +19,10 @@ const hostSessionsSource = await readFile(
 );
 const pageSource = await readFile(
   new URL("../src/components/settings/AgentSubagentsPage.tsx", import.meta.url),
+  "utf8",
+);
+const editorSource = await readFile(
+  new URL("../src/components/settings/SubagentEditorSheet.tsx", import.meta.url),
   "utf8",
 );
 const hostCollectionSource = await readFile(
@@ -46,6 +51,23 @@ test("every launch resolves the subagent catalog and its pinned models", () => {
   assert.match(sessionLaunchSource, /"subagent definitions have problems"/);
 });
 
+test("subagent tool grants resolve through the live Skill, MCP, and plugin catalog", () => {
+  assert.match(sessionLaunchSource, /async function subagentToolCatalog\(/);
+  assert.match(sessionLaunchSource, /activeUserSkills\(projectPath/);
+  assert.match(sessionLaunchSource, /\.listRecords\(\)/);
+  assert.match(sessionLaunchSource, /\.getTools\(\)/);
+  assert.match(sessionLaunchSource, /source: "plugin"/);
+  assert.match(sessionLaunchSource, /source: "mcp"/);
+  assert.match(skillsIpcSource, /IPC\.invoke\.subagentToolCatalog/);
+  assert.match(pageSource, /api\.subagentToolCatalog\(\)/);
+  assert.match(pageSource, /toolCatalog=\{toolCatalog\}/);
+  assert.match(editorSource, /DynamicToolPicker/);
+  assert.match(editorSource, /subagentSkillSelector\(skill\.id\)/);
+  assert.match(editorSource, /subagentMcpSelector\(/);
+  assert.match(editorSource, /settings\.advanced/);
+  assert.match(editorSource, /isSubagentDynamicSelection/);
+});
+
 test("subagent models use the exact stored binding for thinking capability", () => {
   assert.match(providerCatalogSource, /const effectiveSubagentModelConfig = \(/);
   assert.match(
@@ -69,6 +91,9 @@ test("the sidecar forwards subagent bindings and the independent override opt-in
     /subagentProviders\?: Record<string, RuntimeProviderConfig>;/,
   );
   assert.match(sidecarSource, /subagentModelKeys\?: string\[\];/);
+  assert.match(sidecarSource, /maxSubagentDepth\?: number;/);
+  assert.match(sessionLaunchSource, /maxSubagentDepth: normalizeSubagentMaxDepth/);
+  assert.match(pageSource, /settings\.subagentDepthTitle/);
   assert.match(sessionLaunchSource, /subagentModelKeys,/);
   // Once for the reuse check, once for the constructor: a changed catalog must
   // rebuild the runtime rather than silently keep the old delegates.

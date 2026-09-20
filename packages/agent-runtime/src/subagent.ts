@@ -153,6 +153,10 @@ export function composeSubagentSystemPrompt(options: {
   guidance?: string[];
   /** Spawn-time tool names after inherit resolution. */
   toolNames?: readonly string[];
+  /** The agent that receives this run's report. */
+  parentLabel?: string;
+  /** Whether this run may create direct child subagents. */
+  canDelegate?: boolean;
 }): string {
   const { definition } = options;
   const resolved = options.toolNames;
@@ -160,13 +164,25 @@ export function composeSubagentSystemPrompt(options: {
     resolved && resolved.length > 0
       ? resolved.join(", ")
       : subagentToolsLabel(definition);
+  const parentLabel = options.parentLabel ?? "the main agent";
+  const delegationBoundary = options.canDelegate
+    ? `You cannot see the user or communicate with agents outside your direct parent and direct children. You may delegate further only through the Task, TaskWait, TaskList, and TaskStop tools provided to you; finish with a report for ${parentLabel}.`
+    : `You cannot see the user, ask questions, or delegate further. Finish the task with the tools you have: ${toolList}.`;
   const framing = [
-    `You are the \"${definition.name}\" subagent inside PI-Desktop, working on one task delegated by the main agent.`,
-    `You cannot see the user, ask questions, or delegate further. Finish the task with the tools you have: ${toolList}.`,
+    `You are the \"${definition.name}\" subagent inside PI-Desktop, working on one task delegated by ${parentLabel}.`,
+    delegationBoundary,
+    ...(options.canDelegate
+      ? [
+          "Your direct child reports return through TaskWait and may be resumed through Task with their delegation id. Do not attempt to contact the main agent directly.",
+        ]
+      : []),
+    ...(!options.canDelegate && parentLabel !== "the main agent"
+      ? ["Do not attempt to contact the main agent directly."]
+      : []),
     subagentCanMutate(definition, resolved)
       ? "You may change files, but only the ones the task is about; leave everything else untouched."
       : "You have no tools that change files or run commands, so never report an edit you could not have made.",
-    "Your final message is the report the main agent receives when you finish. Make it self-contained: what you did, what you found with exact paths and line numbers, and anything you could not finish.",
+    `Your final message is the report your direct parent receives when you finish. Make it self-contained: what you did, what you found with exact paths and line numbers, and anything you could not finish.`,
     "Keep the report tight. Report findings, not narration, and never pad it with a summary of your own process.",
   ].join("\n");
   return [framing, definition.prompt, ...(options.guidance ?? [])]

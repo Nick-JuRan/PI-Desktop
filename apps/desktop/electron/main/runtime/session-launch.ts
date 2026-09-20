@@ -3,6 +3,7 @@ import {
   ErrorCodes as SharedErrorCodes,
   isActiveInProject,
   isCommandShellCatalog,
+  normalizeSubagentMaxDepth,
   normalizeMode,
   resolveBindingContextWindow,
   trustedExtensionAgentKeyFromProviderId,
@@ -12,6 +13,7 @@ import {
   type Mode,
   type Risk,
   type SessionThinkingLevel,
+  type SubagentToolCatalog,
   type UserSkillRecord,
   type UserSubagentRecord,
 } from "@pi-desktop/shared";
@@ -140,6 +142,74 @@ export function createSessionLaunchRuntime({
       }
       return [];
     }
+  }
+
+  /** Build the live capability picker used by the subagent editor. */
+  async function subagentToolCatalog(
+    projectPath: string | null | undefined = getWorkspacePath(),
+  ): Promise<SubagentToolCatalog> {
+    const normalizedProject = projectPath ?? null;
+    const userSkills = await activeUserSkills(projectPath ?? undefined);
+    await refreshUserMcp(projectPath);
+    const statuses = new Map(userMcp.listStatuses().map((status) => [status.serverId, status]));
+    const pluginNames = new Map(
+      plugins.listLoaded().map((loaded) => [loaded.manifest.id, loaded.manifest.name]),
+    );
+    const skills = [
+      ...builtinSkills({
+        workspacePath: normalizedProject,
+        pluginPaths: plugins.listLoaded().map((loaded) => loaded.path),
+      }).map((skill) => ({
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        source: "builtin" as const,
+        sourceLabel: "PI-Desktop",
+      })),
+      ...plugins
+        .getSkills()
+        .filter((skill) => pluginActiveInProject(skill.pluginId, normalizedProject))
+        .map((skill) => ({
+          id: skill.id,
+          name: skill.name,
+          description: skill.description,
+          source: "plugin" as const,
+          sourceLabel: pluginNames.get(skill.pluginId) ?? skill.pluginId,
+        })),
+      ...userSkills.map((skill) => ({
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        source: "user" as const,
+        sourceLabel: "User",
+      })),
+    ];
+    const mcpServers = userMcp
+      .listRecords()
+      .filter((record) => isActiveInProject(record, normalizedProject))
+      .map((record) => {
+        const status = statuses.get(record.id) ?? userMcp.statusFor(record.id);
+        return {
+          id: record.id,
+          label: record.label || record.id,
+          description: record.description,
+          state: status.state,
+          toolCount: status.toolCount,
+          toolNames: [...(status.toolNames ?? [])],
+          ...(status.message ? { message: status.message } : {}),
+        };
+      });
+    const pluginTools = plugins
+      .getTools()
+      .filter((tool) => pluginActiveInProject(tool.pluginId, normalizedProject))
+      .map((tool) => ({
+        name: tool.fullName,
+        label: tool.name || tool.fullName,
+        description: tool.description,
+        pluginId: tool.pluginId,
+        pluginLabel: pluginNames.get(tool.pluginId) ?? tool.pluginId,
+      }));
+    return { projectPath: normalizedProject, skills, mcpServers, pluginTools };
   }
 
   /**
@@ -607,6 +677,7 @@ export function createSessionLaunchRuntime({
         ),
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
+        maxSubagentDepth: normalizeSubagentMaxDepth(settings.maxSubagentDepth),
         commandShell,
         scratchDir: join(dataDir, "scratch", sessionId),
         attachmentsDir: join(dataDir, "attachments"),
@@ -637,6 +708,8 @@ export function createSessionLaunchRuntime({
               name: tool.fullName,
               description: tool.description,
               parameters: tool.schema ?? { type: "object", properties: {} },
+              source: "plugin" as const,
+              pluginId: tool.pluginId,
               ...(tool.risk === "low" || tool.risk === "medium" || tool.risk === "high"
                 ? { risk: tool.risk as Risk }
                 : {}),
@@ -650,6 +723,8 @@ export function createSessionLaunchRuntime({
             name: tool.fullName,
             description: tool.description,
             parameters: tool.schema ?? { type: "object", properties: {} },
+            source: "mcp" as const,
+            mcpServerId: tool.serverId,
           })),
         ],
         // Plugin skills (D174): only the catalog crosses to the sidecar; the
@@ -677,6 +752,7 @@ export function createSessionLaunchRuntime({
   return {
     refreshUserMcp,
     activeUserSkills,
+    subagentToolCatalog,
     activeUserSubagentDocuments,
     disabledBuiltinSubagents,
     loadUserSkillBody,

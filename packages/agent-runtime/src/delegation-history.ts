@@ -49,6 +49,8 @@ export type DelegationChain = {
   toolCallIds: string[];
   /** Every `delegationId` issued on this chain, oldest first. */
   delegationIds: string[];
+  /** Direct parent delegation; undefined means the main agent owns the chain. */
+  parentDelegationId?: string;
   agentName: string;
   /** Read-only tool targets, accumulated across the whole chain. */
   readFiles: string[];
@@ -401,6 +403,7 @@ export type RebuiltTaskCall = {
   objective: string;
   task?: string;
   modelId?: string;
+  parentDelegationId?: string;
   createdAt: number;
   /** Settled status this call's `Task` row recorded, when it recorded one. */
   status?: string;
@@ -468,6 +471,10 @@ export function rebuildChainsFromTranscript(
     const task = typeof args?.task === "string" ? args.task.trim() : "";
     const modelId =
       typeof details?.modelId === "string" ? details.modelId : undefined;
+    const parentDelegationId =
+      typeof details?.parentDelegationId === "string"
+        ? details.parentDelegationId
+        : undefined;
     const call: RebuiltTaskCall = {
       toolCallId: row.toolCallId,
       delegationId,
@@ -476,6 +483,7 @@ export function rebuildChainsFromTranscript(
       objective: taskObjectiveFromArgs(args),
       ...(task ? { task } : {}),
       ...(modelId ? { modelId } : {}),
+      ...(parentDelegationId ? { parentDelegationId } : {}),
       status: chainStatusFromDetail(details, row),
       createdAt: timestampMs(row.createdAt) || Date.now(),
     };
@@ -532,6 +540,9 @@ export function rebuildChainsFromTranscript(
       toolCallIds,
       delegationIds: ordered.map((call) => call.delegationId),
       agentName: root.agentName,
+      ...(root.parentDelegationId
+        ? { parentDelegationId: root.parentDelegationId }
+        : {}),
       readFiles: reads.files,
       readLineCount: reads.lineCount,
       originalTask: root.task,

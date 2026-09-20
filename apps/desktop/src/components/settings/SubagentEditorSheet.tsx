@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   DEFAULT_SUBAGENT_TOOLS,
+  EMPTY_SUBAGENT_TOOL_CATALOG,
   GLOBAL_SCOPE,
   MAX_SUBAGENT_MAX_TOKENS,
   SUBAGENT_ASSIGNABLE_TOOLS,
@@ -10,12 +11,16 @@ import {
   SUBAGENT_THINKING_LEVELS,
   findSubagentPreset,
   isSubagentAssignableTool,
+  isSubagentDynamicSelection,
   isSubagentMutatingTool,
+  subagentMcpSelector,
+  subagentSkillSelector,
   resolveScope,
   type ActivationScope,
   type SubagentDefinition,
   type SubagentPreset,
   type SubagentThinkingLevel,
+  type SubagentToolCatalog,
   type UserSubagentRecord,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
@@ -31,6 +36,7 @@ import {
 import { SubagentModelPicker } from "./SubagentModelPicker";
 import { SubagentFallbackModels } from "./SubagentFallbackModels";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
+import { subagentPresetCopyKey } from "./subagent-presets";
 
 /** Hard cap host-core enforces on a definition document. */
 export const MAX_SUBAGENT_BYTES = 32 * 1024;
@@ -64,7 +70,9 @@ export function splitSubagentToolGrant(tools: readonly string[]): {
   tools: string[];
 } {
   const inheritTools = tools.some((name) => name === SUBAGENT_INHERIT_TOKEN);
-  const assignable = tools.filter((name) => isSubagentAssignableTool(name));
+  const assignable = tools.filter(
+    (name) => isSubagentAssignableTool(name) || isSubagentDynamicSelection(name),
+  );
   return {
     inheritTools,
     tools:
@@ -106,29 +114,6 @@ Anything you must not do.
 
 /** A "blank" starter so users who ignore the preset chips are not stuck. */
 export const BLANK_SUBAGENT_PRESET_ID = "" as const;
-
-/**
- * Catalog keys for each built-in preset. Hyphenated ids (`code-reviewer`)
- * cannot be turned into keys by capitalizing the first letter — the hyphen
- * stays in the middle of the key, which is not in the catalog.
- */
-export const SUBAGENT_PRESET_COPY = {
-  explorer: { name: "presetExplorerName", desc: "presetExplorerDesc" },
-  "code-reviewer": { name: "presetReviewerName", desc: "presetReviewerDesc" },
-  "test-runner": { name: "presetTestRunnerName", desc: "presetTestRunnerDesc" },
-  fixer: { name: "presetFixerName", desc: "presetFixerDesc" },
-  "ui-designer": { name: "presetUiDesignerName", desc: "presetUiDesignerDesc" },
-} as const satisfies Record<SubagentPreset["id"], { name: string; desc: string }>;
-
-/** Full i18n path for a preset chip, or null when `id` is blank / unknown. */
-export function subagentPresetCopyKey(
-  id: string,
-  kind: "name" | "desc",
-): string | null {
-  if (!Object.hasOwn(SUBAGENT_PRESET_COPY, id)) return null;
-  const entry = SUBAGENT_PRESET_COPY[id as keyof typeof SUBAGENT_PRESET_COPY];
-  return `extensions.subagents.${entry[kind]}`;
-}
 
 export function emptySubagentDraft(): SubagentDraft {
   return {
@@ -544,6 +529,156 @@ function AdvancedFields({
   );
 }
 
+function DynamicToolPicker({
+  draft,
+  setDraft,
+  catalog,
+  loading,
+}: {
+  draft: SubagentDraft;
+  setDraft: (next: SubagentDraft) => void;
+  catalog: SubagentToolCatalog;
+  loading: boolean;
+}) {
+  const { t } = useTranslation();
+  const selected = new Set(draft.tools.filter(isSubagentDynamicSelection));
+  const toggle = (selection: string, checked: boolean) => {
+    const next = new Set(selected);
+    if (checked) next.add(selection);
+    else next.delete(selection);
+    setDraft({
+      ...draft,
+      tools: [
+        ...draft.tools.filter((tool) => !isSubagentDynamicSelection(tool)),
+        ...[...next].sort(),
+      ],
+    });
+  };
+  const hasOptions =
+    catalog.skills.length > 0 ||
+    catalog.mcpServers.length > 0 ||
+    catalog.pluginTools.length > 0;
+
+  if (loading) {
+    return <p className="ext-field-hint">{t("extensions.subagents.toolCatalogLoading")}</p>;
+  }
+  if (!hasOptions) {
+    return <p className="ext-field-hint">{t("extensions.subagents.toolCatalogEmpty")}</p>;
+  }
+  return (
+    <div className="ext-subagent-dynamic-tools">
+      <p className="ext-field-hint ext-subagent-dynamic-hint">
+        {t("extensions.subagents.toolCatalogHint")}
+      </p>
+      {catalog.skills.length > 0 ? (
+        <section className="ext-subagent-tool-group">
+          <div className="ext-subagent-tool-group-head">
+            <strong>{t("extensions.subagents.toolCatalogSkills")}</strong>
+            <span>{catalog.skills.length}</span>
+          </div>
+          <div className="ext-subagent-tool-options">
+            {catalog.skills.map((skill) => {
+              const selection = subagentSkillSelector(skill.id);
+              return (
+                <label
+                  className={cx(
+                    "ext-subagent-tool-card",
+                    selected.has(selection) && "is-on",
+                  )}
+                  key={selection}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(selection)}
+                    onChange={(event) => toggle(selection, event.target.checked)}
+                  />
+                  <span className="ext-subagent-tool-card-copy">
+                    <span className="ext-subagent-tool-card-title">
+                      {skill.name || skill.id}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+      {catalog.mcpServers.length > 0 ? (
+        <section className="ext-subagent-tool-group">
+          <div className="ext-subagent-tool-group-head">
+            <strong>{t("extensions.subagents.toolCatalogMcp")}</strong>
+            <span>{catalog.mcpServers.length}</span>
+          </div>
+          <div className="ext-subagent-tool-options">
+            {catalog.mcpServers.map((server) => {
+              const selection = subagentMcpSelector(server.id);
+              return (
+                <label
+                  className={cx(
+                    "ext-subagent-tool-card",
+                    selected.has(selection) && "is-on",
+                  )}
+                  key={selection}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(selection)}
+                    onChange={(event) => toggle(selection, event.target.checked)}
+                  />
+                  <span className="ext-subagent-tool-card-copy">
+                    <span
+                      className="ext-subagent-tool-card-title"
+                      title={server.label || server.id}
+                    >
+                      {server.label || server.id}
+                      <span className="ext-subagent-tool-card-detail">
+                        {" - "}
+                        {t("extensions.subagents.mcpToolCount", {
+                          count: server.toolCount,
+                        })}
+                      </span>
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+      {catalog.pluginTools.length > 0 ? (
+        <section className="ext-subagent-tool-group">
+          <div className="ext-subagent-tool-group-head">
+            <strong>{t("extensions.subagents.toolCatalogPlugins")}</strong>
+            <span>{catalog.pluginTools.length}</span>
+          </div>
+          <div className="ext-subagent-tool-options">
+            {catalog.pluginTools.map((tool) => (
+              <label
+                className={cx(
+                  "ext-subagent-tool-card",
+                  selected.has(tool.name) && "is-on",
+                )}
+                key={tool.name}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(tool.name)}
+                  onChange={(event) => toggle(tool.name, event.target.checked)}
+                />
+                <span className="ext-subagent-tool-card-copy">
+                  <span className="ext-subagent-tool-card-title" title={tool.name}>
+                    {tool.label || tool.name}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * Create/edit sheet for one subagent definition.
  *
@@ -562,6 +697,8 @@ export function SubagentEditorSheet({
   onClose,
   onSave,
   onReveal,
+  toolCatalog,
+  toolCatalogLoading,
 }: {
   draft: SubagentDraft;
   setDraft: (next: SubagentDraft) => void;
@@ -572,6 +709,8 @@ export function SubagentEditorSheet({
   onClose: () => void;
   onSave: () => void;
   onReveal?: () => void;
+  toolCatalog?: SubagentToolCatalog;
+  toolCatalogLoading?: boolean;
 }) {
   const { t } = useTranslation();
   const providers = useAppStore((state) => state.providers);
@@ -581,6 +720,8 @@ export function SubagentEditorSheet({
     copiedPreset && initialPresetId ? initialPresetId : BLANK_SUBAGENT_PRESET_ID,
   );
   const [advancedOpen, setAdvancedOpen] = useState(!!editing);
+  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(!!editing);
+  const effectiveToolCatalog = toolCatalog ?? EMPTY_SUBAGENT_TOOL_CATALOG;
   const errorKey = subagentDraftError(draft);
   const pristine = !editing && !draft.name.trim() && !draft.description.trim();
   const bytes = new TextEncoder().encode(draft.body).length;
@@ -619,9 +760,12 @@ export function SubagentEditorSheet({
       on
         ? // Keep the canonical order, so the document reads the same however the
           // boxes were clicked.
-          SUBAGENT_ASSIGNABLE_TOOLS.filter(
-            (candidate) => candidate === tool || draft.tools.includes(candidate),
-          )
+          [
+            ...SUBAGENT_ASSIGNABLE_TOOLS.filter(
+              (candidate) => candidate === tool || draft.tools.includes(candidate),
+            ),
+            ...draft.tools.filter(isSubagentDynamicSelection).sort(),
+          ]
         : draft.tools.filter((candidate) => candidate !== tool),
     );
 
@@ -742,6 +886,35 @@ export function SubagentEditorSheet({
             ) : (
               <p className="ext-field-hint">{t("extensions.subagents.toolsHint")}</p>
             )}
+            <div className="ext-sheet-advanced ext-subagent-tools-advanced">
+              <button
+                type="button"
+                className="ext-sheet-advanced-toggle"
+                aria-expanded={advancedToolsOpen}
+                aria-controls="subagent-sheet-tools-advanced"
+                onClick={() => setAdvancedToolsOpen((current) => !current)}
+              >
+                <IconChevronRight size={12} aria-hidden />
+                {t("settings.advanced")}
+                {draft.tools.some(isSubagentDynamicSelection) ? (
+                  <span className="ext-subagent-tools-count">
+                    {draft.tools.filter(isSubagentDynamicSelection).length}
+                  </span>
+                ) : null}
+              </button>
+              <div
+                id="subagent-sheet-tools-advanced"
+                className="ext-sheet-advanced-body"
+                hidden={!advancedToolsOpen}
+              >
+                <DynamicToolPicker
+                  draft={draft}
+                  setDraft={setDraft}
+                  catalog={effectiveToolCatalog}
+                  loading={toolCatalogLoading ?? false}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="ext-field-group">

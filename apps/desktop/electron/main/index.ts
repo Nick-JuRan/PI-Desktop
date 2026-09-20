@@ -722,6 +722,7 @@ sessionLaunchRuntime = createdSessionLaunchRuntime;
 const {
   refreshUserMcp,
   activeUserSkills,
+  subagentToolCatalog,
   activeUserSubagentDocuments,
   disabledBuiltinSubagents,
   loadUserSkillBody,
@@ -1291,6 +1292,7 @@ function registerIpc() {
     bindingForModel,
     agentExtensions,
     activeUserSkills,
+    subagentToolCatalog,
     pluginActiveInProject,
     getWorkPanelReservationWidth: () => requestedWorkPanelReservation,
     setWorkPanelReservationWidth: (width: number) => {

@@ -251,6 +251,7 @@ export const IPC = {
     skillReveal: "pi-desktop/skill/reveal",
     subagentList: "pi-desktop/subagent/list",
     subagentCatalog: "pi-desktop/subagent/catalog",
+    subagentToolCatalog: "pi-desktop/subagent/tool-catalog",
     subagentCreate: "pi-desktop/subagent/create",
     subagentUpdate: "pi-desktop/subagent/update",
     subagentRead: "pi-desktop/subagent/read",

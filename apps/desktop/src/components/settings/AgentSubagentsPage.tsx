@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { SubagentDefinition, UserSubagentRecord } from "@pi-desktop/shared";
+import {
+  MAX_SUBAGENT_DEPTH,
+  EMPTY_SUBAGENT_TOOL_CATALOG,
+  normalizeSubagentMaxDepth,
+  type AppSettings,
+  type SubagentDefinition,
+  type SubagentToolCatalog,
+  type UserSubagentRecord,
+} from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
 import { useHostCollection } from "../../hooks/use-host-collection";
@@ -24,9 +32,9 @@ import {
   draftFromRecord,
   emptySubagentDraft,
   mergeSubagentToolGrant,
-  subagentPresetCopyKey,
   type SubagentDraft,
 } from "./SubagentEditorSheet";
+import { subagentPresetCopyKey } from "./subagent-presets";
 import {
   EMPTY_SUBAGENT_PAGE,
   fetchSubagentPageData,
@@ -41,6 +49,8 @@ import {
   IconTrash,
 } from "../icons";
 import { TooltipButton } from "../ui";
+import { SettingsMenuSelect } from "./SettingsMenuSelect";
+import { SettingsCard, SettingsRow } from "../../features/settings/primitives";
 const GLOBAL_SUBAGENTS_PATH = "~/.agents/subagents";
 
 type SubagentEditorState = {
@@ -58,7 +68,13 @@ function builtinDisplayName(
   return key ? t(key) : id;
 }
 
-export function AgentSubagentsPage() {
+export function AgentSubagentsPage({
+  settings,
+  saveSettings,
+}: {
+  settings: AppSettings;
+  saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
+}) {
   const { t } = useTranslation();
   const showToast = useAppStore((state) => state.showToast);
   const {
@@ -75,8 +91,24 @@ export function AgentSubagentsPage() {
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [editor, setEditor] = useState<SubagentEditorState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [toolCatalog, setToolCatalog] = useState<SubagentToolCatalog>(
+    EMPTY_SUBAGENT_TOOL_CATALOG,
+  );
+  const [toolCatalogLoading, setToolCatalogLoading] = useState(false);
   const { armed, setArmed } = useArmedDelete();
   const ownedHandles = useMemo(() => new Set(owned.map((row) => row.id)), [owned]);
+
+  const refreshToolCatalog = async () => {
+    setToolCatalogLoading(true);
+    try {
+      setToolCatalog(await api.subagentToolCatalog());
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+      setToolCatalog(EMPTY_SUBAGENT_TOOL_CATALOG);
+    } finally {
+      setToolCatalogLoading(false);
+    }
+  };
 
   /**
    * The switch flips locally first and only reverts if the host refuses, so one
@@ -154,6 +186,7 @@ export function AgentSubagentsPage() {
     setBusyId(subagent.id);
     try {
       const result = await api.readUserSubagent(subagent.id);
+      void refreshToolCatalog();
       setEditor({
         draft: draftFromRecord(result.subagent ?? subagent, result.body ?? ""),
         editing: result.subagent ?? subagent,
@@ -166,6 +199,7 @@ export function AgentSubagentsPage() {
   };
 
   const copyBuiltin = (definition: SubagentDefinition) => {
+    void refreshToolCatalog();
     setEditor({
       draft: draftFromDefinition(definition),
       editing: null,
@@ -254,7 +288,10 @@ export function AgentSubagentsPage() {
     [builtins, search, t],
   );
 
-  const openCreate = () => setEditor({ draft: emptySubagentDraft(), editing: null });
+  const openCreate = () => {
+    void refreshToolCatalog();
+    setEditor({ draft: emptySubagentDraft(), editing: null });
+  };
   const searching = Boolean(search.trim());
   const noMatches = searching && visibleOwned.length === 0 && visibleBuiltins.length === 0;
   const showOwnedGroup = !searching || visibleOwned.length > 0;
@@ -397,6 +434,17 @@ export function AgentSubagentsPage() {
       {t("extensions.subagents.add")}
     </CapabilityButton>
   );
+  const maxDepth = normalizeSubagentMaxDepth(settings.maxSubagentDepth);
+  const depthOptions = Array.from(
+    { length: MAX_SUBAGENT_DEPTH + 1 },
+    (_, depth) => ({
+      id: String(depth),
+      label:
+        depth === 0
+          ? t("settings.subagentDepthDisabled")
+          : t("settings.subagentDepthLevel", { depth }),
+    }),
+  );
 
   return (
     <AgentCapabilityPage
@@ -410,6 +458,23 @@ export function AgentSubagentsPage() {
         />
       }
     >
+      <div className="settings-stack">
+        <SettingsCard title={t("settings.subagentExecutionTitle")}>
+          <SettingsRow
+            title={t("settings.subagentDepthTitle")}
+            description={t("settings.subagentDepthDesc")}
+          >
+            <SettingsMenuSelect
+              label={t("settings.subagentDepthTitle")}
+              value={String(maxDepth)}
+              options={depthOptions}
+              onChange={(value) =>
+                void saveSettings({ maxSubagentDepth: Number(value) })
+              }
+            />
+          </SettingsRow>
+        </SettingsCard>
+      </div>
       <CapabilityPanel
         loading={loading}
         refreshing={refreshing}
@@ -465,6 +530,8 @@ export function AgentSubagentsPage() {
           }}
           onSave={() => void save()}
           onReveal={editor.editing ? () => void reveal(editor.editing!) : undefined}
+          toolCatalog={toolCatalog}
+          toolCatalogLoading={toolCatalogLoading}
         />
       ) : null}
     </AgentCapabilityPage>

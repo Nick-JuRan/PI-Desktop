@@ -24,6 +24,7 @@ export type ChainLookupError =
   | { kind: "running"; delegationId: string }
   | { kind: "not-resumable"; status: string }
   | { kind: "agent-mismatch"; expected: string; actual: string }
+  | { kind: "parent-mismatch" }
   | { kind: "over-budget" };
 
 export class DelegationChainRegistry {
@@ -48,6 +49,7 @@ export class DelegationChainRegistry {
     resume: string;
     agentName: string;
     runningDelegationIds: ReadonlySet<string>;
+    parentDelegationId?: string;
   }): { ok: true; chain: DelegationChain } | { ok: false; error: ChainLookupError } {
     const chain = this.lookup(options.resume);
     if (!chain) return { ok: false, error: { kind: "unknown" } };
@@ -60,6 +62,9 @@ export class DelegationChainRegistry {
           actual: options.agentName,
         },
       };
+    }
+    if (chain.parentDelegationId !== options.parentDelegationId) {
+      return { ok: false, error: { kind: "parent-mismatch" } };
     }
     const latest = chain.latestDelegationId;
     if (latest && options.runningDelegationIds.has(latest)) {
@@ -91,6 +96,8 @@ export class DelegationChainRegistry {
     latestModelId?: string;
     /** `providerId/modelId` key that resolved, so a resume can re-resolve it. */
     latestModelKey?: string;
+    /** Direct parent delegation; omitted for the main agent's delegates. */
+    parentDelegationId?: string;
     resumedFrom?: DelegationChain;
   }): DelegationChain {
     const existing = options.resumedFrom
@@ -122,6 +129,9 @@ export class DelegationChainRegistry {
           latestModelKey: options.latestModelKey,
           latestStatus: "running",
           lastActivityAt: Date.now(),
+          ...(options.parentDelegationId
+            ? { parentDelegationId: options.parentDelegationId }
+            : {}),
         };
     this.install(chain);
     return chain;
@@ -181,9 +191,11 @@ export class DelegationChainRegistry {
 
   resumableList(options: {
     runningDelegationIds: ReadonlySet<string>;
+    parentDelegationId?: string;
   }): ResumableChain[] {
     const listed: ResumableChain[] = [];
     for (const chain of this.chains.values()) {
+      if (chain.parentDelegationId !== options.parentDelegationId) continue;
       const latest = chain.latestDelegationId;
       if (!latest) continue;
       if (options.runningDelegationIds.has(latest)) continue;
@@ -202,6 +214,7 @@ export class DelegationChainRegistry {
 
   promptBlock(options: {
     runningDelegationIds: ReadonlySet<string>;
+    parentDelegationId?: string;
   }): string {
     return formatResumableList(this.resumableList(options));
   }

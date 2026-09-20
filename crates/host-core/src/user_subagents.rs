@@ -29,6 +29,17 @@ const ASSIGNABLE_TOOLS: [&str; 7] = [
     "Edit",
     "Write",
 ];
+
+fn is_dynamic_tool_selection(value: &str) -> bool {
+    let trimmed = value.trim();
+    let selector = trimmed
+        .strip_prefix("skill:")
+        .or_else(|| trimmed.strip_prefix("mcp:"));
+    selector.is_some_and(|id| !id.trim().is_empty())
+        || trimmed.starts_with("plugin_")
+        || trimmed.starts_with("mcp_")
+        || trimmed.starts_with("extension_")
+}
 const THINKING_LEVELS: [&str; 8] = [
     "off", "minimal", "low", "medium", "high", "xhigh", "max", "omit",
 ];
@@ -134,6 +145,13 @@ fn normalize_tools(requested: Option<&Vec<String>>) -> Vec<String> {
             if !result.iter().any(|value: &String| value == canonical) {
                 result.push((*canonical).to_string());
             }
+        } else if is_dynamic_tool_selection(trimmed)
+            && !result.iter().any(|value: &String| value == trimmed)
+        {
+            // Dynamic capability names are validated against the live sidecar
+            // catalog when a delegate starts. Host-core only preserves the
+            // user's explicit selector in the definition document.
+            result.push(trimmed.to_string());
         }
     }
     if inherit {
@@ -576,6 +594,24 @@ mod tests {
         assert_eq!(
             normalize_tools(Some(&vec!["inherit".into(), "Bash".into(), "Nope".into()])),
             vec!["inherit".to_string(), "Bash".to_string()]
+        );
+    }
+
+    #[test]
+    fn dynamic_capability_selections_are_preserved_for_runtime_resolution() {
+        assert_eq!(
+            normalize_tools(Some(&vec![
+                "Read".into(),
+                "skill:notes".into(),
+                "mcp:docs".into(),
+                "plugin_demo_lookup".into(),
+            ])),
+            vec![
+                "Read".to_string(),
+                "skill:notes".to_string(),
+                "mcp:docs".to_string(),
+                "plugin_demo_lookup".to_string(),
+            ]
         );
     }
 

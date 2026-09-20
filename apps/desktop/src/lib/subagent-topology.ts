@@ -1,5 +1,10 @@
 import type { UiMessage } from "@pi-desktop/shared";
-import type { AssistantActivityItem } from "./assistant-turns";
+import {
+  chainLatestCalls,
+  type AssistantActivityItem,
+  type SubagentRun,
+  type SubagentRunItem,
+} from "./assistant-turns";
 import {
   delegationLifecycleKind,
   getToolAction,
@@ -27,6 +32,31 @@ export type SubagentTiming = {
   completedAt?: number;
 };
 
+type ToolActivityItem = Extract<AssistantActivityItem, { kind: "tool" }>;
+
+/** Visit every tool row in a delegation tree, including nested delegates. */
+function forEachToolActivityItem(
+  items: readonly AssistantActivityItem[],
+  visit: (item: ToolActivityItem) => void,
+): void {
+  const visitRun = (run: SubagentRun) => {
+    for (const item of run.items) {
+      if (item.kind !== "tool") continue;
+      const activity: ToolActivityItem = item.delegate
+        ? { kind: "tool", message: item.message, delegate: item.delegate }
+        : { kind: "tool", message: item.message };
+      visit(activity);
+      if (item.delegate) visitRun(item.delegate);
+    }
+  };
+
+  for (const item of items) {
+    if (item.kind !== "tool") continue;
+    visit(item);
+    if (item.delegate) visitRun(item.delegate);
+  }
+}
+
 export function isDelegationActivityItem(
   item: AssistantActivityItem,
 ): item is DelegationActivityItem {
@@ -38,6 +68,65 @@ export function isDelegationActivityItem(
     isDelegationStartTool(item.message.toolName) &&
     getToolAction(item.message.toolName) === "delegate"
   );
+}
+
+function topologyDelegationFromRunItem(
+  item: SubagentRunItem,
+): DelegationActivityItem | null {
+  if (item.kind !== "tool") return null;
+  const candidate: DelegationActivityItem = item.delegate
+    ? { kind: "tool", message: item.message, delegate: item.delegate }
+    : { kind: "tool", message: item.message };
+  return isDelegationActivityItem(candidate) ? candidate : null;
+}
+
+function topologyDelegationKey(item: DelegationActivityItem): string {
+  const payload = asRecord(toolResultPayload(item.message));
+  const delegationId = payload?.delegationId;
+  if (typeof delegationId === "string" && delegationId) {
+    return `delegation:${delegationId}`;
+  }
+  return `call:${item.message.toolCallId || item.message.id}`;
+}
+
+/**
+ * Nested Task rows can be replayed as the parent stream is refreshed. They
+ * describe one delegation when their structured delegation id is the same,
+ * so keep the latest snapshot as one topology card rather than rendering a
+ * duplicate child card.
+ */
+export function nestedDelegationItems(
+  run?: SubagentRun,
+): DelegationActivityItem[] {
+  if (!run) return [];
+  const latestCall = chainLatestCalls(
+    run.items
+      .filter((item): item is Extract<SubagentRunItem, { kind: "tool" }> =>
+        item.kind === "tool",
+      )
+      .map((item) => item.message),
+  );
+  const byKey = new Map<string, DelegationActivityItem>();
+  for (const item of run.items) {
+    const candidate = topologyDelegationFromRunItem(item);
+    if (!candidate) continue;
+    // A resumed Task is a new transport call for the same child session. The
+    // child conversation is attached to the latest call by collectSubagentRuns;
+    // older calls must not become additional topology cards.
+    const toolCallId = candidate.message.toolCallId;
+    if (toolCallId && latestCall(toolCallId) !== toolCallId) continue;
+    const key = topologyDelegationKey(candidate);
+    const previous = byKey.get(key);
+    // A refreshed row may momentarily lose its attached child while the
+    // transcript is being rebuilt. Preserve an already-linked child run.
+    byKey.set(
+      key,
+      previous?.delegate && !candidate.delegate
+        ? { ...candidate, delegate: previous.delegate }
+        : candidate,
+    );
+  }
+  return [...byKey.values()];
 }
 
 const DELEGATION_STATUSES = new Set<SubagentOutcome>([
@@ -124,10 +213,9 @@ export function collectDelegationTimings(
   items: readonly AssistantActivityItem[],
 ): ReadonlyMap<string, SubagentTiming> {
   const timings = new Map<string, SubagentTiming>();
-  for (const item of items) {
-    if (item.kind !== "tool") continue;
+  forEachToolActivityItem(items, (item) => {
     const payload = asRecord(toolResultPayload(item.message));
-    if (!payload) continue;
+    if (!payload) return;
     if (isDelegationActivityItem(item)) addTiming(timings, payload);
     const delegations = [
       ...(Array.isArray(payload.delegations) ? payload.delegations : []),
@@ -136,7 +224,7 @@ export function collectDelegationTimings(
     for (const delegation of delegations) {
       addTiming(timings, delegation);
     }
-  }
+  });
   return timings;
 }
 
@@ -192,8 +280,9 @@ export function collectDelegationStatuses(
   options?: { turnLive?: boolean },
 ): ReadonlyMap<string, SubagentOutcome> {
   const statuses = new Map<string, SubagentOutcome>();
-  for (const item of items) {
-    if (item.kind !== "tool") continue;
+  const toolItems: ToolActivityItem[] = [];
+  forEachToolActivityItem(items, (item) => toolItems.push(item));
+  for (const item of toolItems) {
     // Read the row before the guard narrows `item` away: every tool item is a
     // potential delegation node, so excluding them leaves TS with `never`.
     const { message } = item;
@@ -206,7 +295,7 @@ export function collectDelegationStatuses(
   // The runtime refreshes Task itself as soon as its delegate settles. This
   // terminal snapshot outranks an older TaskList/TaskWait running snapshot,
   // even though those lifecycle rows appear later in transcript order.
-  for (const item of items) {
+  for (const item of toolItems) {
     if (!isDelegationActivityItem(item)) continue;
     const payload = asRecord(toolResultPayload(item.message));
     const status = asDelegationStatus(payload?.status);
@@ -216,8 +305,8 @@ export function collectDelegationStatuses(
     }
   }
   if (options?.turnLive === false) {
-    for (const item of items) {
-      if (item.kind !== "tool" || !isDelegationActivityItem(item)) continue;
+    for (const item of toolItems) {
+      if (!isDelegationActivityItem(item)) continue;
       const payload = asRecord(toolResultPayload(item.message));
       const id = payload?.delegationId;
       if (typeof id !== "string" || !id) continue;
@@ -265,8 +354,9 @@ export function collectDelegationFailures(
   items: readonly AssistantActivityItem[],
 ): ReadonlyMap<string, DelegationFailure> {
   const failures = new Map<string, DelegationFailure>();
-  for (const item of items) {
-    if (item.kind !== "tool") continue;
+  const toolItems: ToolActivityItem[] = [];
+  forEachToolActivityItem(items, (item) => toolItems.push(item));
+  for (const item of toolItems) {
     // Read the row before the guard narrows `item` away: every tool item is a
     // potential delegation node, so excluding them leaves TS with `never`.
     const { message } = item;
@@ -284,7 +374,7 @@ export function collectDelegationFailures(
       }
     }
   }
-  for (const item of items) {
+  for (const item of toolItems) {
     if (!isDelegationActivityItem(item)) continue;
     const payload = asRecord(toolResultPayload(item.message));
     const id = payload?.delegationId;

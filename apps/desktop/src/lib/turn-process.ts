@@ -1,5 +1,9 @@
 import type { AppSettings, UiMessage } from "@pi-desktop/shared";
-import type { AssistantTurnEntry, AssistantTurnPart } from "./assistant-turns";
+import type {
+  AssistantTurnEntry,
+  AssistantTurnPart,
+  SubagentRun,
+} from "./assistant-turns";
 
 type ThinkingDisplayMode = NonNullable<AppSettings["thinkingDisplayMode"]>;
 
@@ -28,13 +32,22 @@ export function processContainsMessage(
   parts: readonly AssistantTurnPart[],
   messageId: string,
 ): boolean {
+  const runContainsMessage = (run: SubagentRun): boolean =>
+    run.items.some((row) => {
+      if (row.message.id === messageId) return true;
+      return (
+        row.kind === "tool" &&
+        Boolean(row.delegate && runContainsMessage(row.delegate))
+      );
+    });
+
   return parts.some((part) => {
     if (part.kind === "message") return part.message.id === messageId;
     return part.items.some((item) => {
       if (item.message.id === messageId) return true;
       return (
         item.kind === "tool" &&
-        Boolean(item.delegate?.items.some((row) => row.message.id === messageId))
+        Boolean(item.delegate && runContainsMessage(item.delegate))
       );
     });
   });

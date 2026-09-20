@@ -10,7 +10,7 @@ import test from "node:test";
 const transcriptSource = await readTranscriptSource();
 const detailSource = transcriptSource.slice(
   transcriptSource.indexOf("function delegateTaskDescription"),
-  transcriptSource.indexOf("/**\n * A truthful one-level graph", transcriptSource.indexOf("function delegateTaskDescription")),
+  transcriptSource.indexOf("function SubagentTopologyNode", transcriptSource.indexOf("function delegateTaskDescription")),
 );
 const runtimeSource = await readFile(
   new URL("../../../packages/agent-runtime/src/runtime.ts", import.meta.url),
@@ -228,7 +228,7 @@ test("memoized activity rows compare delegate runs by their rows", () => {
   assert.equal(transcriptSource.match(/activityItemsEqual\(/g)?.length, 3);
 });
 
-test("the nested run is visibly one level inside the call", () => {
+test("the nested run is visibly inside the call", () => {
   // D297: the run is a soft tile; the collapse rail draws nothing at rest and
   // only shows its bar as a hover/focus affordance.
   assert.match(messagesCss, /\.subagent-run \{[^}]*background: var\(--ds-tile\)/);
@@ -282,6 +282,24 @@ test("every Task row renders as one accessible delegation topology", () => {
     /state\.subagentPanel\?\.sessionId === sessionId[\s\S]*?state\.subagentPanel\.delegationId === id[\s\S]*?set\(\{ subagentPanel: null \}\)/,
   );
   assert.match(transcriptSource, /const inlineOpen = variant !== "topology" && open;/);
+});
+
+test("nested Task rows render as connected topology nodes with the same behavior", () => {
+  assert.match(topologySource, /export function nestedDelegationItems\(/);
+  assert.match(topologySource, /const byKey = new Map<string, DelegationActivityItem>\(\)/);
+  assert.match(topologySource, /delegation:\$\{delegationId\}/);
+  assert.match(transcriptSource, /const children = nestedDelegationItems\(item\.delegate\)/);
+  assert.match(transcriptSource, /function SubagentTopologyNode\(/);
+  assert.match(transcriptSource, /className="subagent-topology-children" role="list"/);
+  assert.match(transcriptSource, /<SubagentTopologyNode/);
+  assert.match(transcriptSource, /className="subagent-topology-children"/);
+  assert.match(transcriptSource, /variant="topology"/);
+  assert.match(transcriptSource, /toggleSubagentPanel\(panelSelectionId\)/);
+  assert.match(messagesCss, /\.subagent-topology-children \{[^}]*margin-left: 24px/);
+  assert.match(
+    messagesCss,
+    /\.subagent-topology-children::before \{[^}]*background: var\(--ds-tile-deep\)/,
+  );
 });
 
 test("the aggregate label counts, so a lone delegation is not called plural", () => {
@@ -388,6 +406,12 @@ test("an expanded delegate run follows the latest output while pinned (D302)", (
     /className=\{`subagent-run-rows\$\{scrollable \? "" : " is-panel-flow"\}`\}[\s\S]*?onScroll=\{scrollable \? handleScroll : undefined\}/,
   );
   assert.match(transcriptSource, /className="subagent-run-follow"/);
+  // A nested Task is already inside the parent's follow scroller. It must
+  // remain flow content instead of creating a second competing scroll owner.
+  assert.match(
+    transcriptSource,
+    /<SubagentRunRows\s*[\s\S]*?run=\{delegate\}[\s\S]*?onCollapse=\{collapseRow\}[\s\S]*?scrollable=\{false\}/,
+  );
   assert.match(
     transcriptSource,
     /className="jump-latest-btn"[\s\S]*?onClick=\{jumpToLatest\}/,

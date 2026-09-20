@@ -229,7 +229,13 @@ export function SettingsPage() {
 
   const activeTitleKey =
     navItems.find((item) => item.id === tab)?.titleKey ?? "settings.title";
-  const tabNeedsSettings = ["general", "ai", "shortcuts", "agent"].includes(tab);
+  const tabNeedsSettings = [
+    "general",
+    "ai",
+    "shortcuts",
+    "agent",
+    "subagents",
+  ].includes(tab);
 
   return (
     <div className="settings-shell settings-shell-full">
@@ -465,7 +471,9 @@ export function SettingsPage() {
 
           {tab === "mcp" && <AgentMcpPage />}
 
-          {tab === "subagents" && <AgentSubagentsPage />}
+          {tab === "subagents" && settings && (
+            <AgentSubagentsPage settings={settings} saveSettings={saveSettings} />
+          )}
 
           {tab === "instructions" && <AgentInstructionsSection />}
 

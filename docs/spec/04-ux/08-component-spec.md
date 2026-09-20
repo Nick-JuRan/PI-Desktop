@@ -2238,10 +2238,16 @@ in place:
   `createdAt` instead of waiting for the handle — so the creation phase never
   reads as stalled. Once the result arrives the node transitions to the normal
   `running` presentation and continues from its real `startedAt`.
-- The expanded card renders a low-noise dotted canvas with one main-agent root
-  connected to the `Task` nodes in parent-row order. The runtime exposes no
-  delegate dependencies and forbids nested `Task`, so the renderer must not
-  invent delegate-to-delegate edges or a downstream summary node.
+- The expanded card renders a low-noise connector graph with one main-agent
+  root connected to the `Task` nodes in parent-row order. When a delegate emits
+  another `Task`, that row becomes a child branch directly after its parent
+  node. The child uses the same agent/model/description/status/runtime/step
+  treatment and the same side-panel selection behavior as a first-level node.
+  Ordinary delegate tools remain process rows rather than topology nodes, and
+  the rendered branch depth follows the configured maximum subagent depth.
+  Replayed `Task` snapshots with the same `delegationId` remain one topology
+  node; the latest snapshot supplies the visible status while retaining the
+  linked child process.
 - Each node shows the definition name, effective model id, short description,
   explicit outcome, runtime duration and step count. The duration uses the
   delegation registry's

@@ -218,6 +218,109 @@ globalThis.transcriptRenderProbe = async () => {
       "Task completion timing did not update to 4s",
     );
 
+    const nestedStart = Date.now() - 6_000;
+    render([
+      message("nested-user", "user", "Inspect the nested delegation"),
+      message("nested-root-task", "tool", "started", {
+        toolName: "Task",
+        toolCallId: "nested-root-call",
+        toolStatus: "success",
+        toolArgs: { agent: "architect", task: "Delegate a child check" },
+        toolResult: {
+          details: {
+            delegationId: "nested-root-delegation",
+            status: "completed",
+            startedAt: nestedStart,
+            completedAt: nestedStart + 5_000,
+          },
+        },
+      }),
+      message("nested-level1-note", "assistant", "I am delegating the child check.", {
+        parentToolCallId: "nested-root-call",
+        agentName: "architect",
+      }),
+      message("nested-child-task", "tool", "started", {
+        toolName: "Task",
+        toolCallId: "nested-child-call",
+        parentToolCallId: "nested-root-call",
+        toolStatus: "success",
+        toolArgs: { agent: "implementer", task: "Inspect the nested path" },
+        toolResult: {
+          details: {
+            delegationId: "nested-child-delegation",
+            status: "completed",
+            startedAt: nestedStart + 1_000,
+            completedAt: nestedStart + 4_000,
+          },
+        },
+      }),
+      // The renderer can receive a replayed Task snapshot for the same child
+      // delegation while the parent stream is refreshed. It must remain one
+      // topology card, not create a second identical child card.
+      message("nested-child-replayed", "tool", "started", {
+        toolName: "Task",
+        toolCallId: "nested-child-replayed-call",
+        parentToolCallId: "nested-root-call",
+        toolStatus: "success",
+        toolArgs: { agent: "implementer", task: "Inspect the nested path" },
+        toolResult: {
+          details: {
+            delegationId: "nested-child-delegation",
+            status: "completed",
+            startedAt: nestedStart + 1_000,
+            completedAt: nestedStart + 4_000,
+          },
+        },
+      }),
+      message("nested-level2-read", "tool", "runtime.ts", {
+        toolName: "Read",
+        toolCallId: "nested-level2-read-call",
+        parentToolCallId: "nested-child-call",
+        toolStatus: "success",
+        agentName: "implementer",
+      }),
+      message("nested-level2-report", "assistant", "The nested path is valid.", {
+        parentToolCallId: "nested-child-call",
+        agentName: "implementer",
+      }),
+      message("nested-level1-report", "assistant", "The child check is complete.", {
+        parentToolCallId: "nested-root-call",
+        agentName: "architect",
+      }),
+      message("nested-final", "assistant", "Nested delegation verified."),
+    ]);
+    const nestedNodes = container.querySelectorAll(".subagent-topology-node");
+    const nestedChildNode = container.querySelector(
+      ".subagent-topology-children .subagent-topology-node",
+    );
+    const nestedChildNodes = container.querySelectorAll(
+      ".subagent-topology-children > .subagent-topology-branch",
+    );
+    assert(
+      nestedNodes.length === 2 && nestedChildNode && nestedChildNodes.length === 1,
+      `nested topology did not render two connected nodes: ${nestedNodes.length}`,
+    );
+    assert(
+      nestedChildNode.querySelector(".subagent-topology-node-title")?.textContent ===
+        "implementer",
+      "nested topology node did not keep the child agent identity",
+    );
+    useAppStore.setState({
+      activeSessionId: "nested-session",
+      subagentPanel: null,
+    });
+    const nestedHeader = nestedChildNode.querySelector<HTMLButtonElement>(
+      ".subagent-topology-node-header",
+    );
+    assert(nestedHeader, "nested topology node header is missing");
+    nestedHeader.click();
+    assert(
+      useAppStore.getState().subagentPanel?.delegationId ===
+        "nested-child-delegation",
+      "nested topology node did not select its own detail panel",
+    );
+    useAppStore.setState({ subagentPanel: null });
+
     return {
       ok: true,
       groups,
@@ -226,6 +329,8 @@ globalThis.transcriptRenderProbe = async () => {
       changedToolRenders: 1,
       taskLifecycleUpdated: true,
       taskTimingUpdated: true,
+      nestedTopologyRendered: true,
+      nestedTopologyPanelSelection: true,
       turnProcess: await turnProcessProbe(),
       textUpdateDurationMs,
     };

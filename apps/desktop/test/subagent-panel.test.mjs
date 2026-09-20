@@ -15,7 +15,7 @@ const appSource = await readAppSource();
 const transcriptSource = await readTranscriptSource();
 const detailSource = transcriptSource.slice(
   transcriptSource.indexOf("export function SubagentDetail"),
-  transcriptSource.indexOf("/**\n * A truthful one-level graph", transcriptSource.indexOf("export function SubagentDetail")),
+  transcriptSource.indexOf("function topologyDelegationFromRunItem", transcriptSource.indexOf("export function SubagentDetail")),
 );
 const failureCardSource = transcriptSource.slice(
   transcriptSource.indexOf("function SubagentFailureCard("),
@@ -79,6 +79,13 @@ test("the side panel re-finds live rows instead of storing a stale render snapsh
   assert.match(panelSource, /<SubagentDetail/);
   assert.match(panelSource, /data-testid="subagent-panel"/);
   assert.match(panelSource, /selected\.item\.message/);
+});
+
+test("the side panel can re-find a nested delegation node", () => {
+  assert.match(panelSource, /function delegationItemFromRunItem\(/);
+  assert.match(panelSource, /function findSelectedInRun\(/);
+  assert.match(panelSource, /findSelectedInRun\(candidate\.delegate, delegationId\)/);
+  assert.match(panelSource, /selected\.item\.delegate/);
 });
 
 test("the work-panel dock hosts subagent details without creating a resource tab", () => {

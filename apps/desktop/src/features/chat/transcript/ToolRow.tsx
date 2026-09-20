@@ -313,7 +313,7 @@ export const ToolRow = memo(function ToolRow({
       className={`tool-row ${variant === "topology" ? "subagent-topology-node" : ""} ${
         renderedOpen ? "open" : ""
       } status-${run === "failed" ? "error" : status || "success"}${outcome ? ` outcome-${outcome.replaceAll("_", "-")}` : ""}${creating ? " outcome-creating" : ""}`}
-      role={variant === "topology" ? "listitem" : "region"}
+      role={variant === "topology" ? "group" : "region"}
       data-message-id={message.id}
       aria-label={`${t("chat.toolCall")}: ${rawName}${agentName ? `, ${agentName}` : ""}${modelLabel ? `, ${modelLabel}` : ""}${statusLabel ? `, ${statusLabel}` : ""}`}
     >
@@ -504,6 +504,11 @@ export const ToolRow = memo(function ToolRow({
           run={delegate}
           agentName={agentName}
           onCollapse={collapseRow}
+          // This row already lives inside the parent's follow scroller. A
+          // second bounded scroller makes nested delegation updates trigger
+          // competing ResizeObserver follow passes and causes visible layout
+          // jumps while the child is streaming.
+          scrollable={false}
         />
       ) : null}
     </div>
@@ -514,8 +519,9 @@ export const ToolRow = memo(function ToolRow({
  * What a delegate did, nested under the `Task` call that spawned it.
  *
  * The rows are the delegate's context, not the parent's, so they are visibly
- * one level in and stay collapsed with the call. Only one level is possible: a
- * delegate has no `Task` tool of its own (ADR 0062).
+ * inset and stay collapsed with the call. Nested Task rows carry their own
+ * run recursively, allowing the same conversation surface at every enabled
+ * subagent depth.
  */
 export const SubagentRunRows = memo(function SubagentRunRows({
   run,
@@ -619,7 +625,10 @@ function SubagentRunFollow({
             {items.map((item) =>
               item.kind === "tool" ? (
                 <Fragment key={item.message.id}>
-                  <ToolRow message={item.message} />
+                  <ToolRow
+                    message={item.message}
+                    {...(item.delegate ? { delegate: item.delegate } : {})}
+                  />
                   <ReviewChangeCard message={item.message} />
                 </Fragment>
               ) : item.kind === "thinking" ? (

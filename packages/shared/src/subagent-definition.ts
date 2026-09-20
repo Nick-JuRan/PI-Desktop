@@ -19,6 +19,11 @@ import {
   SUBAGENT_THINKING_LEVELS,
   type SubagentThinkingLevel,
 } from "./types.js";
+import {
+  isSubagentDynamicSelection,
+  subagentMcpServerIdFromSelector,
+  subagentSkillIdFromSelector,
+} from "./subagent-tools.js";
 
 /**
  * Where a definition came from. User-owned global documents shadow builtins by
@@ -81,9 +86,8 @@ export type SubagentDefinition = {
   filePath?: string;
 };
 
-/** Tools a definition may declare by name. Plugin, skill, mode and meta tools
- * are not on this list; a document opts into the parent's live catalog with
- * `tools: inherit` instead (ADR 0246). */
+/** Tools a definition may declare by name. Dynamic Skill, MCP and plugin
+ * selections use the namespaced values from `subagent-tools.ts`. */
 export const SUBAGENT_ASSIGNABLE_TOOLS = [
   "Read",
   "Glob",
@@ -129,19 +133,66 @@ export const SUBAGENT_INHERIT_DENY_TOOLS: readonly string[] = [
 export function resolveSubagentToolNames(
   definition: Pick<SubagentDefinition, "tools" | "inheritTools">,
   parentToolNames: readonly string[],
+  context: SubagentToolResolutionContext = {},
 ): string[] {
   const declared = definition.tools.filter(
     (name) => name !== SUBAGENT_INHERIT_TOKEN,
   );
-  if (!definition.inheritTools) return [...declared];
+  const skillToolName = context.skillToolName ?? "Skill";
+  const parent = new Set(parentToolNames);
+  const mcpToolsByServer = context.mcpToolsByServer ?? {};
+  const resolveDeclared = (name: string): string[] => {
+    const skillId = subagentSkillIdFromSelector(name);
+    if (skillId) {
+      if (
+        context.availableSkillIds &&
+        context.availableSkillIds.includes(skillId) &&
+        parent.has(skillToolName)
+      ) {
+        return [skillToolName];
+      }
+      return [];
+    }
+    const serverId = subagentMcpServerIdFromSelector(name);
+    if (serverId) {
+      return [...(mcpToolsByServer[serverId] ?? [])].filter((tool) => parent.has(tool));
+    }
+    return [name];
+  };
+  if (!definition.inheritTools) {
+    return declared.flatMap(resolveDeclared).filter((name, index, all) => all.indexOf(name) === index);
+  }
   const deny = new Set(SUBAGENT_INHERIT_DENY_TOOLS);
   const resolved: string[] = [];
-  for (const name of [...parentToolNames, ...declared]) {
+  for (const name of [...parentToolNames, ...declared.flatMap(resolveDeclared)]) {
     if (deny.has(name)) continue;
     if (resolved.includes(name)) continue;
     resolved.push(name);
   }
   return resolved;
+}
+
+export type SubagentToolResolutionContext = {
+  /** Active MCP tool names grouped by the persisted server id. */
+  mcpToolsByServer?: Readonly<Record<string, readonly string[]>>;
+  /** Active Skill ids that can be loaded by the local Skill tool. */
+  availableSkillIds?: readonly string[];
+  /** Runtime name of the generic skill loader. */
+  skillToolName?: string;
+};
+
+/** Resolve the Skill ids selected by a definition for prompt and execution gates. */
+export function resolveSubagentSkillIds(
+  definition: Pick<SubagentDefinition, "tools" | "inheritTools">,
+  availableSkillIds: readonly string[],
+): string[] {
+  if (definition.inheritTools) return [...availableSkillIds];
+  const available = new Set(availableSkillIds);
+  return definition.tools
+    .map(subagentSkillIdFromSelector)
+    .filter((id): id is string => Boolean(id))
+    .filter((id) => available.has(id))
+    .filter((id, index, all) => all.indexOf(id) === index);
 }
 
 /** Tools that can change the workspace; declaring one makes a delegate
@@ -208,6 +259,10 @@ export const MAX_SUBAGENT_DEFINITIONS = 16;
 export const MAX_SUBAGENT_PROVIDERS = 8;
 /** Running delegates per session, across batches (see ADR 0089). */
 export const MAX_SUBAGENT_CONCURRENCY = 10;
+/** Maximum delegation depth allowed by the app setting. */
+export const DEFAULT_SUBAGENT_MAX_DEPTH = 1;
+export const MIN_SUBAGENT_MAX_DEPTH = 0;
+export const MAX_SUBAGENT_DEPTH = 5;
 /** Resumable chains kept per subagent name before the oldest is evicted
  * (ADR 0279). A chain is one delegate session across any number of `resume`s. */
 export const MAX_RESUMABLE_CHAINS_PER_AGENT = 2;
@@ -216,6 +271,28 @@ export const MAX_RESUMABLE_CHAINS_PER_AGENT = 2;
 export const MAX_RESUMABLE_READ_LINES = 50_000;
 /** Files listed per chain in the parent's resumable-session prompt block. */
 export const MAX_RESUMABLE_LISTED_FILES = 8;
+
+/** Normalize the persisted maximum delegation depth at a process boundary. */
+export function normalizeSubagentMaxDepth(value: unknown): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < MIN_SUBAGENT_MAX_DEPTH ||
+    value > MAX_SUBAGENT_DEPTH
+  ) {
+    return DEFAULT_SUBAGENT_MAX_DEPTH;
+  }
+  return value;
+}
+
+export function isValidSubagentMaxDepth(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= MIN_SUBAGENT_MAX_DEPTH &&
+    value <= MAX_SUBAGENT_DEPTH
+  );
+}
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
@@ -394,7 +471,7 @@ export function parseSubagentDefinition(
         inheritTools = true;
         continue;
       }
-      if (isSubagentAssignableTool(tool)) {
+      if (isSubagentAssignableTool(tool) || isSubagentDynamicSelection(tool)) {
         if (!accepted.includes(tool)) accepted.push(tool);
       } else {
         warnings.push(`ignoring unknown tool "${tool}"`);

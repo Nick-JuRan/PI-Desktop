@@ -125,6 +125,19 @@ describe("composeSubagentSystemPrompt", () => {
     expect(prompt).not.toContain("no tools that change files");
     expect(prompt).not.toContain("inherit (parent tools)");
   });
+
+  it("distinguishes direct-parent reports from nested delegation boundaries", () => {
+    const prompt = composeSubagentSystemPrompt({
+      definition: definition(),
+      parentLabel: "your direct parent subagent",
+      canDelegate: true,
+      toolNames: ["Read", "Task", "TaskWait"],
+    });
+
+    expect(prompt).toContain("your direct parent subagent");
+    expect(prompt).toContain("may delegate further");
+    expect(prompt).toContain("Do not attempt to contact the main agent directly");
+  });
 });
 
 describe("SubagentRun event forwarding", () => {

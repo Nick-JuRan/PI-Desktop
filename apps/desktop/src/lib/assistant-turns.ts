@@ -17,7 +17,7 @@ export type AssistantActivityItem =
 /** One row a delegate produced, in the order the delegate produced it. */
 export type SubagentRunItem =
   | { kind: "thinking"; message: UiMessage }
-  | { kind: "tool"; message: UiMessage }
+  | { kind: "tool"; message: UiMessage; delegate?: SubagentRun }
   | { kind: "answer"; message: UiMessage };
 
 /**
@@ -102,6 +102,22 @@ function collectSubagentRuns(
       run.items.push({ kind: "answer", message });
     }
   }
+  // A delegate may itself emit a Task row. The first pass has already grouped
+  // that child run by its own Task call, so link the tree after all rows are
+  // known. Keeping the link on the run item lets every renderer use the same
+  // recursive topology and preserves the child conversation for the dock.
+  for (const run of runs.values()) {
+    for (let index = 0; index < run.items.length; index += 1) {
+      const item = run.items[index];
+      if (item.kind !== "tool" || !item.message.toolCallId) continue;
+      // Match the top-level attachment behavior: a resumed Task chain's
+      // earlier call has no run of its own, while the latest call owns the
+      // merged conversation.
+      const nested = runs.get(item.message.toolCallId);
+      if (!nested || nested === run) continue;
+      run.items[index] = { ...item, delegate: nested };
+    }
+  }
   return runs;
 }
 
@@ -109,7 +125,8 @@ function collectSubagentRuns(
 // delegation is one delegate session continued by a later Task call, so the
 // chain's rows all belong on the latest card, where they read as one
 // continuing conversation rather than a card per call.
-function chainLatestCalls(
+/** Resolve every Task call to the latest call in its resumed delegation chain. */
+export function chainLatestCalls(
   messages: readonly UiMessage[],
 ): (toolCallId: string) => string {
   const callByDelegationId = new Map<string, string>();
@@ -296,11 +313,19 @@ export function subagentRunsEqual(
   ) {
     return false;
   }
-  return previous.items.every(
-    (item, index) =>
-      item.kind === next.items[index].kind &&
-      item.message === next.items[index].message,
-  );
+  return previous.items.every((item, index) => {
+    const candidate = next.items[index];
+    if (
+      !candidate ||
+      item.kind !== candidate.kind ||
+      item.message !== candidate.message
+    ) {
+      return false;
+    }
+    return item.kind !== "tool" ||
+      candidate.kind !== "tool" ||
+      subagentRunsEqual(item.delegate, candidate.delegate);
+  });
 }
 
 export function reuseReadonlyMap<K, V>(
@@ -327,21 +352,41 @@ function reuseActivityItem(
   if (previous.kind === "tool" && next.kind === "tool") {
     if (subagentRunsEqual(previous.delegate, next.delegate)) return previous;
     if (!next.delegate || !previous.delegate) return next;
-    const items = next.delegate.items.map((item, index) => {
-      const prior = previous.delegate?.items[index];
-      return prior && prior.kind === item.kind && prior.message === item.message
-        ? prior
-        : item;
-    });
-    const delegate =
-      previous.delegate.agentName === next.delegate.agentName &&
-      previous.delegate.items.length === items.length &&
-      items.every((item, index) => item === previous.delegate!.items[index])
-        ? previous.delegate
-        : { ...next.delegate, items };
+    const delegate = reuseSubagentRun(previous.delegate, next.delegate);
     return delegate === previous.delegate ? previous : { ...next, delegate };
   }
   return previous;
+}
+
+function reuseSubagentRun(
+  previous: SubagentRun,
+  next: SubagentRun,
+): SubagentRun {
+  if (subagentRunsEqual(previous, next)) return previous;
+  const items = next.items.map((item, index) => {
+    const prior = previous.items[index];
+    if (
+      !prior ||
+      prior.kind !== item.kind ||
+      prior.message !== item.message
+    ) {
+      return item;
+    }
+    if (item.kind !== "tool" || prior.kind !== "tool") return prior;
+    const delegate = item.delegate && prior.delegate
+      ? reuseSubagentRun(prior.delegate, item.delegate)
+      : item.delegate;
+    if (delegate === prior.delegate) return prior;
+    return delegate === item.delegate ? item : { ...item, delegate };
+  });
+  if (
+    previous.agentName === next.agentName &&
+    items.length === previous.items.length &&
+    items.every((item, index) => item === previous.items[index])
+  ) {
+    return previous;
+  }
+  return { ...next, items };
 }
 
 function reuseTurnPart(
