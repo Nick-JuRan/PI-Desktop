@@ -1892,7 +1892,7 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
     );
 
     const result = await search.execute("search-1", { query: "BrowserPreview" });
-    expect(result.addedToolNames).toEqual(["BrowserPreview"]);
+    expect(result.details.activated).toEqual(["BrowserPreview"]);
     expect(agent.state.tools.some((tool: any) => tool.name === "BrowserPreview")).toBe(
       false,
     );
@@ -1908,7 +1908,7 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
           toolName: "ToolSearch",
           content: result.content,
           details: result.details,
-          addedToolNames: result.addedToolNames,
+          addedToolNames: result.details.activated,
           isError: false,
           timestamp: Date.now(),
         },
@@ -2300,7 +2300,7 @@ describe("DesktopAgentRuntime plan transitions", () => {
       } else {
         // The silent assistant is popped before the re-run, and the nudge is
         // on the prompt that re-run actually sends.
-        expect(agent.state.messages).toHaveLength(1);
+        expect(agent.state.messages.filter((message: any) => message.role !== "system")).toHaveLength(1);
         expect(agent.state.systemPrompt).toContain("<no_output_recovery>");
       }
       await handleAgentEvent({ type: "agent_start" });
@@ -2391,7 +2391,7 @@ describe("DesktopAgentRuntime plan transitions", () => {
       } else {
         // The progress assistant is visible in the reused bubble but must be
         // removed before continue() rebuilds the model context.
-        expect(agent.state.messages).toHaveLength(1);
+        expect(agent.state.messages.filter((message: any) => message.role !== "system")).toHaveLength(1);
         expect(agent.state.messages.at(-1)?.role).toBe("user");
         expect(agent.state.systemPrompt).toContain("<progress_only_recovery>");
       }
@@ -2480,7 +2480,7 @@ describe("DesktopAgentRuntime plan transitions", () => {
           { role: "user", content: "execute the approved plan", timestamp: 1 },
         ];
       } else {
-        expect(agent.state.messages).toHaveLength(1);
+        expect(agent.state.messages.filter((message: any) => message.role !== "system")).toHaveLength(1);
         expect(agent.state.messages.at(-1)?.role).toBe("user");
         expect(agent.state.systemPrompt).toContain(
           attempts === 2 ? "<progress_only_recovery>" : "<no_output_recovery>",
@@ -2987,7 +2987,7 @@ describe("DesktopAgentRuntime session collaboration provenance", () => {
       // Accepted silence is not resent: neither the runtime entries nor pi's
       // transcript carry an empty assistant into the next request.
       expect((runtime as any).fullEntries).toHaveLength(0);
-      expect(agent.state.messages.some((message: { role: string }) => message.role === "assistant")).toBe(false);
+      expect(agent.state.messages.filter((message: { role: string }) => message.role !== "system").some((message: { role: string }) => message.role === "assistant")).toBe(false);
       expect(buildSessionContext((runtime as any).fullEntries).messages).toEqual([]);
       onEvent.mockClear();
       await runtime.prompt("Please answer", "human-user", "human-turn");
@@ -3114,7 +3114,7 @@ describe("DesktopAgentRuntime session collaboration provenance", () => {
       expect(events).toContainEqual(expect.objectContaining({
         type: "message_end", message: expect.objectContaining({ status: "complete" }),
       }));
-      expect(agent.state.messages.some((message: { role: string }) => message.role === "assistant")).toBe(false);
+      expect(agent.state.messages.filter((message: { role: string }) => message.role !== "system").some((message: { role: string }) => message.role === "assistant")).toBe(false);
     } finally { await runtime.dispose(); }
   });
 
@@ -3238,7 +3238,7 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
         },
       ],
     });
-    const messages = (runtime as any).agent.state.messages;
+    const messages = (runtime as any).agent.state.messages.filter((message: any) => message.role !== "system");
 
     expect(messages.map((m: any) => m.role)).toEqual([
       "user",
@@ -3290,7 +3290,7 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
         },
       ],
     });
-    const messages = (runtime as any).agent.state.messages;
+    const messages = (runtime as any).agent.state.messages.filter((message: any) => message.role !== "system");
 
     expect(messages.map((m: any) => m.role)).toEqual([
       "assistant",
@@ -3318,7 +3318,7 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
         toolRow(),
       ],
     });
-    const messages = (runtime as any).agent.state.messages;
+    const messages = (runtime as any).agent.state.messages.filter((message: any) => message.role !== "system");
 
     expect(messages.map((m: any) => m.role)).toEqual([
       "user",
@@ -3354,7 +3354,7 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
         }),
       ],
     });
-    const messages = (runtime as any).agent.state.messages;
+    const messages = (runtime as any).agent.state.messages.filter((message: any) => message.role !== "system");
 
     expect(messages[1]).toMatchObject({
       role: "toolResult",
@@ -3390,11 +3390,11 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
         }),
       ],
     });
-    const messages = (runtime as any).agent.state.messages;
+    const messages = (runtime as any).agent.state.messages.filter((message: any) => message.role !== "system");
 
     expect(messages[1]).toMatchObject({
       role: "toolResult",
-      addedToolNames: ["BrowserPreview"],
+      details: { activated: ["BrowserPreview"] },
     });
 
     await runtime.dispose();
@@ -3413,7 +3413,7 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
         toolRow({ toolCallId: undefined }),
       ],
     });
-    const messages = (runtime as any).agent.state.messages;
+    const messages = (runtime as any).agent.state.messages.filter((message: any) => message.role !== "system");
 
     expect(messages.map((m: any) => m.role)).toEqual(["assistant"]);
     expect(messages[0].content).toEqual([{ type: "text", text: "answer" }]);
@@ -3568,7 +3568,7 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
     agent.continue = vi.fn(async () => undefined);
     (runtime as any).automaticCompactionNeeded = vi.fn(() => false);
     (runtime as any).runCompaction = vi.fn(async () => {
-      expect(agent.state.messages).toEqual([user]);
+      expect(agent.state.messages.filter((message: any) => message.role !== "system")).toEqual([user]);
       return true;
     });
 
@@ -3688,7 +3688,7 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
     });
     agent.waitForIdle = vi.fn(async () => undefined);
     agent.continue = vi.fn(async () => {
-      expect(agent.state.messages).toHaveLength(1);
+      expect(agent.state.messages.filter((message: any) => message.role !== "system")).toHaveLength(1);
       await handleAgentEvent({ type: "agent_start" });
       await handleAgentEvent({ type: "turn_start" });
       await handleAgentEvent({
@@ -3822,7 +3822,7 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
     });
     agent.waitForIdle = vi.fn(async () => undefined);
     agent.continue = vi.fn(async () => {
-      expect(agent.state.messages).toHaveLength(1);
+      expect(agent.state.messages.filter((message: any) => message.role !== "system")).toHaveLength(1);
       await handleAgentEvent({ type: "agent_start" });
       await handleAgentEvent({ type: "turn_start" });
       await handleAgentEvent({
@@ -4059,7 +4059,7 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
       promptDuringRerun = agent.state.systemPrompt;
       // The silent assistant must be gone: agentLoopContinue rejects a
       // transcript that ends with one.
-      expect(agent.state.messages).toHaveLength(1);
+      expect(agent.state.messages.filter((message: any) => message.role !== "system")).toHaveLength(1);
       await handleAgentEvent({ type: "agent_start" });
       await handleAgentEvent({ type: "turn_start" });
       await handleAgentEvent({
@@ -4223,7 +4223,7 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
       ],
     });
 
-    expect((runtime as any).agent.state.messages).toEqual([]);
+    expect((runtime as any).agent.state.messages.filter((message: any) => message.role !== "system")).toEqual([]);
     await runtime.dispose();
   });
 
@@ -4311,7 +4311,7 @@ describe("DesktopAgentRuntime compaction restore", () => {
       },
     });
 
-    const agentMessages = (runtime as any).agent.state.messages;
+    const agentMessages = (runtime as any).agent.state.messages.filter((message: any) => message.role !== "system");
     expect(agentMessages.map((message: any) => message.role)).toEqual([
       "compactionSummary",
       "user",
@@ -5137,7 +5137,7 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
       }),
     );
     expect((runtime as any).fullEntries).toHaveLength(2);
-    expect((runtime as any).agent.state.messages[0]).toEqual(
+    expect((runtime as any).agent.state.messages.filter((message: any) => message.role !== "system")[0]).toEqual(
       expect.objectContaining({ role: "compactionSummary" }),
     );
     expect(onEvent.mock.calls.map(([envelope]) => (envelope as any).event)).toContainEqual(
@@ -5408,7 +5408,7 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
         }),
       }),
     ]);
-    expect(agent.state.messages).toEqual([
+    expect(agent.state.messages.filter((message: any) => message.role !== "system")).toEqual([
       expect.objectContaining({ role: "user", content: "oversized request" }),
     ]);
     const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
