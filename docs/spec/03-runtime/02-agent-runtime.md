@@ -155,7 +155,7 @@ host-confirmed transition.
 ### 5d. Bounded provider recovery and diagnostics (D186, D245, D259, D378, ADR 0091, ADR 0128, ADR 0206)
 
 Provider request setup and stream delivery are separate failure phases, but
-HTTP 429 handling is one logical-turn policy. pi-ai's nested adapter retry is
+HTTP 429 handling is one response-recovery policy. pi-ai's nested adapter retry is
 disabled for this path so the runtime can share one budget across both phases.
 
 `PROVIDER_RATE_LIMITED` receives at most ten retries after the initial
@@ -184,7 +184,7 @@ server or calculated value is capped at 30 seconds. The runtime captures the
 failed response status and headers from fetch because pi-ai's ordinary response
 callback only covers an established response.
 
-Non-429 transient failures share their own bounded logical-turn budget of ten
+Non-429 transient failures share their own bounded response-recovery budget of ten
 retries after the initial attempt, for eleven provider attempts total. The budget
 is shared by request setup and stream delivery, so a fault that moves between
 phases cannot reset or multiply it, and it is separate from the 429 budget. It
@@ -194,6 +194,15 @@ headers or mid-stream. Authentication, model-selection, malformed-request,
 context, and other non-retryable errors do not enter either provider replay
 path, and a non-retryable `PROVIDER_ERROR` from a malformed 400/422 request
 stays terminal.
+
+Both budgets reset after a complete, non-error, non-aborted model response,
+including a response that requests tools. The next model request starts with
+fresh counters and backoff, even within the same user turn. Receiving HTTP
+headers, partial text, or changing failure phase does not reset either budget.
+This rule applies to the main session and builtin subagents: a long task with
+independent recovered outages must not eventually stop because earlier tool
+rounds consumed the budget. One-shot completions still use one bounded budget
+for their single response. Persistent failures remain bounded and abortable.
 
 Before surfacing a pre-stream `PROVIDER_ERROR` for HTTP 400/422 whose message
 ends in `(no body)`, the runtime makes at most one silent repair attempt with
@@ -218,6 +227,15 @@ Only the failed request is replayed. The session, its transcript, and its tool
 state are untouched: the failed assistant is removed from the next model context
 and the same visible message id is reused, so a retry never restarts the turn or
 re-runs a completed tool call.
+
+The application setting `infiniteProviderRetry` is off by default. When enabled,
+the main session and its builtin subagents skip only the ten-retry ceiling for
+`NETWORK_ERROR`, `TIMEOUT`, `STREAM_FAILED`, retryable `PROVIDER_ERROR`
+(including 5xx gateway failures), and `PROVIDER_RATE_LIMITED`. The same backoff,
+`Retry-After` precedence, visible retry status, and abort/Stop path remain in
+force. Non-retryable errors, context recovery, compaction, tool execution, and
+one-shot completions are unchanged. The setting can keep billing requests alive
+indefinitely until the user stops the turn.
 Each retry is abortable and reports its current backoff through the normalized
 status event. The `retrying` activity carries the classified error code, the
 bounded/redacted provider message, and the HTTP status when known. The main
@@ -232,7 +250,8 @@ When the retry budget is exhausted, the final assistant error and lifecycle
 `networkSyscall`, `networkHost`, `networkRoute`) and the request correlation
 (`requestMessages`, `requestBytes`, `compactionGeneration`). For a persistent
 429 or non-429 transient failure,
-`retryAttempt` is `10`. Credentials and unrestricted response bodies never
+`retryAttempt` is `10`, derived from the exhausted error class's budget rather
+than temporary retry activity state. Credentials and unrestricted response bodies never
 enter the event or log. The active-turn status shows the remaining backoff and
 the retry budget as `Retrying in 0s · attempt 9/10` in English.
 
@@ -462,6 +481,26 @@ boundary falls, not what survives it. The active-user retention limit is 20,000
 tokens, capped at half the hard budget so retention alone cannot fill a small
 window and leave the summary no room. None of these values are configurable.
 
+**Estimate calibration (D606).** Every threshold above is compared against one
+number, and that number is corrected against what requests actually cost. pi's
+`estimateContextTokens` anchors on the last assistant usage and estimates
+everything after it as `chars / 4`: that constant under-counts CJK text, and
+with no anchor left it omits the system prompt and the tool schemas, which the
+next request still pays for. The two errors are measured and applied
+separately — the per-character bias as a scale-free ratio over the guessed
+tail, and an unanchored residual as a ratio only for observations taken at a
+comparable scale (0.5×–2× of the estimate), otherwise as the observed overhead
+capped at 32,000 tokens.
+
+The correction is asymmetric because this number gates compaction: upward
+applies once three observations exist, downward needs three agreeing samples,
+is capped at 15 % per step and can never take the value below 85 % of the raw
+estimate, so a projection at 1.18× the hard limit (`1 / 0.85`) still compacts.
+A report outside 0.5×–3× of what the calibration predicted is treated as a
+misreport, and two consecutive misreports freeze the downward direction until a
+usable report arrives.
+
+
 The provider request layer also caps the concrete output budget before every
 parent, subagent, and one-shot request. It estimates the serialized input with
 the pi-ai chars/4 baseline plus a CJK correction, then reserves the larger of
@@ -645,6 +684,17 @@ criterion-by-criterion report of what was met and the evidence observed.
   restored into durable UI messages or transcript records.
 - Failed assistant messages remain durable diagnostic transcript entries but
   are never restored into pi model context on a later turn.
+- A tool-call id is unique in every request. The transcript is an append-only
+  snapshot stream that tolerates a retried append, so the same call can reach
+  the assembled context twice — under one row id, which the host's keep-last
+  read already collapses, or under two, which it cannot. The last view before
+  the wire therefore keeps the first occurrence of each `toolCall` id and drops
+  a later call or a later result for it, so the pair the provider validates
+  stays well-formed; a request with no duplicates is returned unchanged. A drop
+  is reported once on the `agent` log channel with the session and the ids
+  (D608). Anthropic-family endpoints, including DeepSeek's, reject the whole
+  turn with `tool_use ids must be unique` (issue #718), which leaves the session
+  unable to continue.
 - Restored checkpoints clear provider usage from retained assistant messages
   for budgeting. That usage measured the pre-compacted request and must not
   make the summary + tail appear as large as the discarded context.
@@ -1160,6 +1210,31 @@ same gateway backend as the conversation it summarizes.
 + [project instruction chain, when present]
 + [optional user custom instructions]
 ```
+
+### 7.0.1 User custom system prompt files (issue #542)
+
+The `[optional user custom instructions]` layer is the pi-compatible file pair
+`SYSTEM.md` / `APPEND_SYSTEM.md`, discovered per session launch from
+`<workspace>/.pi/` (project) and `~/.pi/agent/` (global), each kind picking a
+single winner with project over global, exactly like pi CLI. A change to the
+resolved content retires the runtime through the reuse match, so the next
+prompt recomposes; the files are not re-read per tool call like the project
+instruction chain. Native-pi sessions keep resolving them through the upstream
+`DefaultResourceLoader` as before.
+
+Two deliberate deviations from pi CLI's semantics:
+
+- `SYSTEM.md` replaces only the base product persona line, not the whole
+  prompt: the operational rules below (collaboration, search, edit contract,
+  scratch, delegation, skills) are desktop mechanics a persona file must not
+  remove.
+- `APPEND_SYSTEM.md` is appended after the composed base prompt and before
+  the project instruction chain, matching pi's ordering, so the user's own
+  `AGENTS.md` keeps the last word.
+
+Both files are capped at 64 KiB, and a whitespace-only file counts as absent.
+Native `SYSTEM.md` / `APPEND_SYSTEM.md` resolution in a native-pi session is
+unaffected: it stays with the upstream loader.
 
 The base prompt states collaboration rules explicitly, because omitting them
 is what produced silent sessions: "prefer concise, actionable answers" was the

@@ -151,17 +151,19 @@ Each scenario is documented in this format:
 ## E2E Main Integration Validation
 
 Every code-bearing change must pass the E2E suites relevant to its regression
-surface on the integrated local `main` that carries the change, before the
-request branch is pushed and the pull request is opened. Code-bearing changes
-include Renderer, Electron Main, Preload, Agent Runtime, Rust host-core,
-sessions, transcripts, plans, plugins, MCP, permissions, provider/model
-runtime, persistence, process lifecycle, packaging/runtime startup, and build
-or CI behavior that affects application execution. Documentation-only changes
-are exempt when they do not alter executable behavior.
+surface on a candidate that already contains the latest `origin/main`, before
+the request branch is pushed and the pull request is opened. Code-bearing
+changes include Renderer, Electron Main, Preload, Agent Runtime, Rust
+host-core, sessions, transcripts, plans, plugins, MCP, permissions,
+provider/model runtime, persistence, process lifecycle, packaging/runtime
+startup, and build or CI behavior that affects application execution.
+Documentation-only changes are exempt when they do not alter executable
+behavior.
 
-Run the selected suites from the latest integrated local `main` checkout and
-commit. An E2E run on the request branch is exploratory and does not satisfy
-this gate.
+Run the selected suites from the request worktree after `pnpm check:pr-base`
+passes. An E2E run on a branch that is behind `origin/main` is exploratory and
+does not satisfy this gate. Do not merge the task into local `main` to create
+the candidate.
 
 Use the root `package.json` as the source of truth for executable commands.
 The minimum selection is:
@@ -1235,7 +1237,10 @@ identify the platform validation still needed.
   and inspect the composer. 3) Type a different prompt in B, then switch back
   to A. 4) Create a new session and inspect its composer. 5) Return to B and
   then delete B; revisit the remaining sessions and the home composer if it is
-  available. 6) Type in A, open Settings (or Plugins), then return to chat.
+  available. 6) Type in A, add a workspace file through `@` and a pasted scratch
+  file, open Settings (or Plugins), then return to chat. Confirm both file chips
+  and the surrounding text remain. Change the workspace of the same draft and
+  confirm only its workspace-relative reference is removed.
   7) Hide the app window and show it again with an unsent draft in A.
 - **Expected**: B initially shows an empty composer, A restores its original
   unsent prompt, and the new session starts empty rather than inheriting A or
@@ -1250,7 +1255,9 @@ identify the platform validation still needed.
 - **Acceptance**: C (session isolation and composer input)
 - **Milestone**: M2
 - **Status**: Source-level regression covered
-  (`composer-draft-cache.test.mjs`); full UI scenario Draft
+  (`composer-draft-cache.test.mjs`); real React remount and workspace-change
+  coverage in `scripts/e2e/composer-paste.tsx` (`pnpm test:e2e:composer-paste`);
+  full UI scenario Draft
 
 #### E2E-011d: New task creates an immediate durable empty slot
 
@@ -1463,6 +1470,16 @@ identify the platform validation still needed.
   `session-switch-performance.test.mjs`); full UI scenario Draft
 
 
+#### Composer file-reference undo regression
+
+- Add a file reference to an unsent draft, select the chip, delete it, then
+  undo and redo with the native editor shortcuts. Undo must restore both the
+  chip and the file path used by submission; redo must remove both.
+- Switch to another chat and back after undo: the other draft stays empty and
+  the source retains the restored reference. Typing a removed chip's private-use
+  token as plain text must not restore the attachment.
+- Automated by `pnpm test:e2e:composer-paste` (`fileReferenceUndoRedo`).
+
 ### Conversation Top Bar
 
 #### E2E-087: Conversation top bar renders on the chat route
@@ -1481,8 +1498,11 @@ identify the platform validation still needed.
   or Agent|Plan|Goal mode control. The
   left-of-input Composer chip owns the active session's Agent/Plan/Goal switch,
   and the Composer-right combined chip owns model and reasoning selection. The
-  task title is the only visible title text and is capped at 10 characters
-  with an ellipsis; project scope is available through its tooltip. The sidebar
+  task title is the only visible title text and uses the available width,
+  with an ellipsis only on overflow. Check an English title longer than 10
+  characters in wide and narrow layouts, with the sidebar expanded/collapsed
+  and the work panel open/closed; titles must not overlap the action buttons.
+  The complete title and project scope remain available through its tooltip. The sidebar
   toggle is present only in the collapsed state (no
   duplicate of the sidebar's control). On every other route the frameless drag
   band renders instead (no chat top-bar controls) while retaining the same
@@ -2056,8 +2076,8 @@ identify the platform validation still needed.
 #### E2E-038: Settings owns the project archive destination
 
 - **Preconditions**: App running with at least one configured provider, one supported local session store, one retained project, and one archived project.
-- **Steps**: 1) Open Settings. 2) Inspect the complete settings rail. 3) Open Basics and change the theme in its Appearance card using the searchable theme picker. 4) Open 全局 AI and inspect the Permissions and Defaults cards, including the Command shell row; confirm Context management has no settings card. 5) Open Shortcuts and inspect the Keyboard shortcuts card. 6) Open Instructions and save global instructions. 7) Open Model configuration and inspect the provider studio. 8) Open Import, Project archive, and Info in order. 9) Search Settings for "project" or "archive". 10) In Project archive, compare each group strip's count with its rendered rows. 11) Switch the sort control from Recent to Name. 12) Search for a known session title, confirm the owning project is selected and its inspector lists matching sessions, then reveal more than eight sessions; clear the search with the clear affordance. 13) Open the inspector menu, dismiss it with Escape and with an outside press. 14) Restore the archived project, then activate it. 15) Return to the app shell and open Plugins.
-- **Expected**: The rail contains exactly Basics, 全局 AI/AI, Shortcuts, Instructions, Model configuration, Import, Project archive, and Info in that order, each with its semantic Lucide icon (Sliders / Sparkles / Keyboard / FileText / Bot / Download / Archive / Info). The flat directory is visually grouped under four muted, non-interactive headings — Personal / 个人 for Basics, AI, and Shortcuts; Agent / 智能体 for Instructions and Model configuration; Workspace / 工作区 for Import and Project archive; About / 关于 for Info — with whitespace and no divider lines between groups; searching keeps the destination results flat and hides empty groups together with their headings. Appearance remains in Basics, while Permissions, Defaults, and the Command shell row live under 全局 AI; an available selected shell is represented by the selector without a duplicate Configured status, while default, fallback, and no-effective-shell states remain explicit; Context management has no settings card; Keyboard shortcuts and global instructions have their own destinations; Developer lives under Info; Project archive shows active, closed, and archived durable rows without a visibility toggle, grouping them under the always-visible Pinned / All projects / Archived strips (D168/D267/D455) with per-section counts in a one-column workbench. The destination renders no hero block and no page-level counter run: the intro is one quiet description line, and each group strip's count agrees with its rendered rows; a click selects a row without leaving Settings; sorting by Name reorders rows inside every section without hiding any; search matches project fields and session titles and reports a match count, a session-title result selects its owning project, lists sessions in the inspector by latest activity with relative update times, and reveals history in batches of eight; clearing the search restores the complete index. The inspector menu closes on Escape and on an outside press. Bootstrap completion and background refreshes do not return Settings or Extensions to the chat home; the destination changes only after an explicit navigation action. Restore keeps the archive open and activation returns to chat with the restored project retained in the sidebar; the home sidebar and global page results have no standalone Projects destination; Settings search finds Project archive; Plugins remains an independent app-shell destination.
+- **Steps**: 1) Open Settings. 2) Inspect the complete settings rail. 3) Open Basics and change the theme in its Appearance card using the searchable theme picker. 4) Open 全局 AI and inspect the Permissions and Defaults cards, including the Command shell row; confirm Context management has no settings card. 5) Open Shortcuts and inspect the Keyboard shortcuts card. 6) Open Instructions and save global instructions. 7) Open Model configuration and inspect the provider studio. 8) Open Import, Project archive, and Info in order. 9) Search Settings for "project" or "archive". 10) In Project archive, compare each group strip's count with its rendered rows. 11) Switch the sort control from Recent to Name. 12) Search for a known session title, confirm the owning project is selected and its inspector lists matching sessions, then reveal more than eight sessions; clear the search with the clear affordance. 13) Open the inspector menu, dismiss it with Escape and with an outside press. 14) Restore the archived project, then activate it. 15) Archive one project session, open it from Project archive, and return to Project archive. 16) Return to the app shell and open Plugins.
+- **Expected**: The rail contains exactly Basics, 全局 AI/AI, Shortcuts, Instructions, Model configuration, Import, Project archive, and Info in that order, each with its semantic Lucide icon (Sliders / Sparkles / Keyboard / FileText / Bot / Download / Archive / Info). The flat directory is visually grouped under four muted, non-interactive headings — Personal / 个人 for Basics, AI, and Shortcuts; Agent / 智能体 for Instructions and Model configuration; Workspace / 工作区 for Import and Project archive; About / 关于 for Info — with whitespace and no divider lines between groups; searching keeps the destination results flat and hides empty groups together with their headings. Appearance remains in Basics, while Permissions, Defaults, and the Command shell row live under 全局 AI; an available selected shell is represented by the selector without a duplicate Configured status, while default, fallback, and no-effective-shell states remain explicit; Context management has no settings card; Keyboard shortcuts and global instructions have their own destinations; Developer lives under Info; Project archive shows active, closed, and archived durable rows without a visibility toggle, grouping them under the always-visible Pinned / All projects / Archived strips (D168/D267/D455) with per-section counts in a one-column workbench. The destination renders no hero block and no page-level counter run: the intro is one quiet description line, and each group strip's count agrees with its rendered rows; a click selects a row without leaving Settings; sorting by Name reorders rows inside every section without hiding any; search matches project fields and session titles and reports a match count, a session-title result selects its owning project, lists sessions in the inspector by latest activity with relative update times, and reveals history in batches of eight; clearing the search restores the complete index. The inspector menu closes on Escape and on an outside press. Bootstrap completion and background refreshes do not return Settings or Extensions to the chat home; the destination changes only after an explicit navigation action. Restore keeps the archive open and activation returns to chat with the restored project retained in the sidebar. Opening an archived session succeeds before clearing its archived state, returns to chat with that session selected, and makes it visible in the project sidebar; returning to Project archive no longer shows that session as archived. The home sidebar and global page results have no standalone Projects destination; Settings search finds Project archive; Plugins remains an independent app-shell destination.
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/01-ui-ia.md`, `03-runtime/11-provider-model-system.md`
 - **Acceptance**: B (model configuration), F (session import)
 - **Milestone**: M4
@@ -2331,6 +2351,8 @@ identify the platform validation still needed.
 - **Specs linked**: `07-plugins/07-plugin-marketplace.md`
 - **Acceptance**: G (marketplace detail UX)
 - **Status**: Documented
+
+- **Focus regression**: In light and dark themes, open a marketplace card and press Escape. Like pointer dismissal, Escape leaves no line or focus ring on the card. Then use Tab and Shift+Tab: the detail button shows a complete, unclipped ring, and Install remains separately focusable. Automated focus-state regression: `node scripts/e2e-plugin-detail-focus.mjs`; verify the rendered ring visually.
 
 #### E2E-024F: Refresh official remote marketplace repository
 
@@ -3441,6 +3463,30 @@ identify the platform validation still needed.
 - **Milestone**: M5
 - **Status**: Draft (manual)
 
+#### E2E-BROWSER-session-preview-race: Session switching does not expose a stale preview
+
+- **Preconditions**: Two sessions have distinct HTML previews; their Browser
+  panel contexts are retained independently. Directory lookups and document
+  loads can be delayed independently by the fixture.
+- **Steps**: Preview A; produce B's preview in the background; collapse A's
+  panel and open B; delay B's directory lookup and load, then return to A.
+  Switch rapidly B → C and finish the older B lookup last. Repeat with an
+  already-started old load, an empty session, a failed load, and disposal.
+- **Expected**: Background B does not navigate A. On switching, no A document
+  appears in B's panel, even after bounds/visibility updates. Only the latest
+  navigation can reveal the guest; the late B lookup cannot replace C.
+  Returning to A restores A, while an empty session remains empty. Closing or
+  disposing cannot be undone by a delayed completion. Same-session navigation
+  keeps its current page visible. Invalid, failed, or timed-out loads do not
+  report the previous document as the destination being ready. A switch that
+  exceeds the existing 15-second load wait stays hidden until retried; automatic
+  late reveal is not promised.
+- **Specs linked**: `04-ux/08-component-spec.md` §5.3; ADR 0028, ADR 0170.
+- **Status**: Automated service-path coverage in `browser-host-session.test.mjs`
+  and `browser-pane-navigation.test.mjs`: production BrowserHost/BrowserPane,
+  controlled native-browser/Host boundaries, and deterministic timers. Native
+  Electron compositing and the reporter's live sessions are not covered.
+
 #### E2E-060: Files tab browsing stays inside the workspace
 
 - **Preconditions**: Workspace with file artifacts for nested source, large
@@ -3498,7 +3544,9 @@ identify the platform validation still needed.
   choose Copy. 4) Right-click the assistant turn and choose Copy.
   5) Right-click empty space below the last turn and choose Copy
   conversation. 6) Press Escape on an open menu, then Tab. 7) Right-click
-  a markdown link in the answer.
+  a markdown link in the answer. 8) Edit the user message, replace its content,
+  select a phrase, and right-click Copy. Repeat with a collapsed caret and
+  Select message text, then cancel editing and copy the saved message.
 - **Expected**: The user menu lists Copy, Select message text, Edit, and
   a separated Delete; the assistant menu lists Copy, Select message text,
   Regenerate, and Branch. Copy writes the live selection in the
@@ -3510,7 +3558,11 @@ identify the platform validation still needed.
   A link still offers Open in default browser, Open in work panel, and
   Copy link address. Quote, Annotate, and Open side chat are absent
   (ADR 0268). The surface is a viewport-fixed body-level layer and does
-  not resize the transcript.
+  not resize the transcript. During editing, Copy uses the selected draft text
+  or the full draft with a collapsed caret; Select message text selects the
+  draft. Edit, Delete, and revision actions are absent until editing ends.
+  Cancel preserves the original message. Automated Chromium component check:
+  `node scripts/e2e-message-edit-copy.mjs`.
 - **Specs linked**: `04-ux/08-component-spec.md` §8.3 / §8.5,
   `04-ux/09-interaction-patterns.md` (floating dropdown surfaces),
   ADR 0268
@@ -3519,6 +3571,14 @@ identify the platform validation still needed.
 - **Status**: Unit-covered (`chat-context-menu.test.mjs`,
   `chat-context-menu-items.test.mjs`, `chat-context-menu-surface.test.mjs`);
   full UI scenario Draft
+
+- **Full-history regression**: Open a 140-message session without scrolling
+  back and choose Copy conversation. The clipboard must contain messages
+  1–140, not only the loaded tail. Repeat from a search context window and
+  with a truncated long message. Preserve visible in-flight text; a failed
+  history read must report an error and leave the clipboard unchanged.
+  Copy must not load history until selected or change the reading position.
+  Run `node scripts/e2e-copy-conversation.mjs`.
 
 #### E2E-060b: Neutral gray accent across chrome
 
@@ -5449,17 +5509,31 @@ identify the platform validation still needed.
      no repair request starts.
   9. Reload the session and verify that only the completed response or the
      single terminal failed assistant remains durable.
+  10. Open Settings → AI → Defaults, enable infinite provider retry, and repeat
+      a network fixture that fails beyond ten attempts before recovering. Stop the
+      turn during backoff and verify no later request starts; disable the setting
+      and verify a fresh persistent outage stops after ten retries.
+  11. Alternate one socket failure and one successful tool-call response for
+      eleven actual Read calls, then fail once and return a final answer.
+      Verify all twelve independent failures recover in the same user turn,
+      each beginning at retry 1, with no repeated tool execution.
+  12. After a recovered tool response, keep the next response failing. Verify
+      it receives ten fresh retries and terminates once with `retryAttempt: 10`.
+      Restore the fixture, click Continue, and verify completion in the UI.
 - **Expected**:
   - `terminated` is classified as `STREAM_FAILED`, and an upstream gateway
     `502`/`503`/`504` as retryable `PROVIDER_ERROR`.
   - Non-429 transient failures share one bounded budget of ten retries after
     the initial attempt, for eleven provider attempts total, shared by request
     setup and stream delivery. Each retry waits for an abortable bounded
-    backoff, removes the failed assistant from model context, and produces no
-    duplicate assistant bubble or terminal error notification.
+    backoff, removes the entire failed assistant suffix from model context,
+    and produces no duplicate assistant bubble or terminal error notification. A retry never
+    calls native continuation while an assistant remains the last model message.
   - A mid-stream 502 is retried rather than surfacing immediately. The
     mixed-phase fixture spends one counter across both phases and makes eleven
-    attempts in total, not one retry per phase. Observed waits without a
+    attempts in total, not one retry per phase. A complete successful response
+    replenishes both retry budgets for the next tool round. Headers and partial
+    output do not. Observed waits without a
     `Retry-After` header are 1, 2, 4, then 8 seconds for every later retry,
     identical in both phases.
   - Only the failed request is replayed: the session, its transcript, and any
@@ -5487,14 +5561,21 @@ identify the platform validation still needed.
   - Authentication, model-selection, context, and descriptive
     malformed-request failures do not enter either provider replay path. The
     opaque empty-body 400/422 case is the bounded repair exception described
-    above.
+    above. Infinite mode changes no classification and only removes the retry
+    ceiling for admitted network/transient failures; it remains abortable and
+    is visibly marked with an unbounded retry indicator.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `03-runtime/02-agent-runtime.md`, `03-runtime/08-error-codes.md`,
   `08-meta/decisions-log.md` (D186, D259, D378), ADR 0050, ADR 0128, ADR 0206
 - **Acceptance**: C (chat & stream), F (persistence), H (diagnostics), Quality
 - **Milestone**: M5
-- **Status**: Unit-covered (`agent-errors.test.ts`, `provider-retry.test.ts`,
-  `runtime.test.ts`, `subagent.test.ts`); full provider/UI journey Draft
+- **Status**: Retry and successful-response budget boundaries covered by
+  `provider-recovery-flow.test.ts` through real agent loops. Desktop socket
+  failure, partial-stream recovery, Responses recovery, exhaustion, Continue,
+  and eleven-tool-round recovery run in `scripts/e2e-provider-recovery.mjs`.
+  Existing classification coverage: `agent-errors.test.ts`,
+  `provider-retry.test.ts`, `runtime.test.ts`, `subagent.test.ts`.
+  Other scenario variants remain Draft.
 
 #### E2E-149: Recover provider rate limits (429) silently in place
 
@@ -5526,6 +5607,10 @@ identify the platform validation still needed.
     attempts, never multiplies attempts through nested pi-ai retries, and
     emits no intermediate assistant error, lifecycle `error`, `turn_end`, or
     `agent_end`.
+    A complete successful response, including a tool-call response, resets both
+    budgets before the next model request. Independent recovered rate limits
+    across more than ten tool rounds must not terminate the user turn or a
+    builtin subagent; partial output alone must not replenish either budget.
   - A recovered attempt removes the failed assistant from model context and
     reuses its visible assistant message id. The transcript has one assistant
     bubble and one terminal lifecycle; bounded retry diagnostics retain the
@@ -8018,6 +8103,11 @@ identify the platform validation still needed.
 | C — Conversation & stream (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
 | Quality (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
 | M6+ (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
+| C / F / Quality — The context estimate stays safe (calibration) | E2E-CONTEXT-estimate-calibration-stays-safe |
+| C — Conversation & stream (unique tool-call ids) | E2E-RUNTIME-unique-tool-call-ids-per-request |
+| Quality (unique tool-call ids) | E2E-RUNTIME-unique-tool-call-ids-per-request |
+| G — Plugin host lifecycle (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
+| Quality (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
 
 The `US-UI-*` visual scenarios (§UI shell visual scenarios) trace to the
 Codex parity decisions in [decisions-log §D](../08-meta/decisions-log.md)
@@ -13459,9 +13549,11 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 | ID | Scenario | Verification |
 |---|---|---|
-| E2E-MCP-MARKET-NET-BOUNDARY | URL guard rejects credentials, loopback, private, special-use IPv4, v4-mapped, ULA, site-local and link-local bypass forms (trailing dot included); Main pins the checked public address and rechecks HTTPS redirects | deterministic guard assertions; source-contract coverage for DNS pin and bounded responses |
-| E2E-MCP-MARKET-SEMANTICS | Registry records map to install templates preserving package versions, named/positional runtime/package arguments and required/optional env variables | deterministic mapping assertions |
+| E2E-MCP-MARKET-NET-BOUNDARY | URL guard rejects credentials, loopback, private, special-use IPv4, v4-mapped, ULA, site-local and link-local bypass forms (trailing dot included); direct/unknown routes pin the checked public address by default, while a fully proxied route uses the session transport and an explicit `allowFakeIp` opt-in can cover transparent-router fake-IP sources without allowing real private answers | deterministic guard assertions; source-contract coverage for DNS pin, proxy route selection, explicit fake-IP scope and bounded responses |
+| E2E-MCP-MARKET-SEMANTICS | Registry records map to install templates preserving package versions, named/positional runtime/package arguments and required/optional env variables; a remote header variable is recognized in both the registry's `{name}` and the catalog's `${NAME}` spelling, prompts for declared editable values, preserves unbound brace literals, and resolves header-local defaults, fixed values, and optional flags without merging same-named inputs across headers (ADR registry-header-variable-spelling) | deterministic mapping assertions |
 | E2E-MCP-MARKET-INSTALL | Builtin catalog entry resolves through `resolveCatalogEntry` and installs via the host `mcp.upsert` RPC; record lands in `~/.agents/servers/` | real host binary, isolated temp HOME |
+| E2E-MCP-MARKET-HEADER-SCOPE | Registry header-local `{token}` resolves only in its header; same-named URL path/query tokens remain literal through mapping, resolution, host upsert/list and persistence. URL templates retain only legacy `${NAME}` substitution. When `headerBindings` exists (even empty or partial), unbound tokens in every header stay literal and never consume another header's input or default | shared regressions plus real host binary with isolated temporary storage; remote entry disabled, no network call |
+| E2E-MCP-MARKET-partial-header-bindings-stay-literal | Resolve a catalog with only Authorization bound and another header using the same `{token}` / `${token}`; an undeclared `${UNBOUND}` in a third header also remains literal through host upsert/list and disk persistence | real host binary, disabled remote entry, synthetic input and isolated temporary storage; no network call |
 
 
 #### E2E-SKILL-MARKET-NET-BOUNDARY: Public-HTTPS skill sources reject private and loopback URLs
@@ -13926,6 +14018,12 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Milestone**: M6+
 - **Status**: Draft
 
+- **Local fallback regression**: Set the process default data directory to a
+  different temporary root, then create a plugin manager with its own root.
+  All bundled fallback package URLs must stay beneath the manager's root;
+  installing the bundled package must still report byte progress, validate its
+  size and checksum, and preserve cancellation behavior.
+
 #### E2E-PLUGIN-cancel-during-download-installs-nothing: Cancelling during the download stops the install, leaves nothing installed, and closes the dialog without an error
 
 - **Preconditions**: An official-channel install of a package large enough or a mirror slow enough that the download phase lasts, a way to answer `market.cancelInstall`, and a view of the plugin directory, the install cache, and the Installed list.
@@ -14105,6 +14203,31 @@ the latest destination. These assertions measure work counts, not device FPS.
   default.
 - **Status:** Contract-covered; no end-to-end driver waits out a real 70s call.
 
+### E2E-PLUGIN-crash-report-names-the-exit-code
+
+- **Preconditions:** A loaded plugin whose host process dies on its own —
+  `process.exit(7)` after writing one line to stderr is the fixture — with a
+  resident service so the supervisor path is exercised too. Isolated desktop
+  profile; no marketplace or network access.
+- **Steps:** Load the plugin and let the host process die. Read the load error,
+  the `failed` service state, the `plugin.crash` audit record and the `plugin`
+  log channel. Repeat with a hard fault (a Windows `0xC0000005`-class exit) if
+  one is available, and then quit the app while a plugin host is alive.
+- **Expected:** Every one of those surfaces names the exit code (`exit code 7`,
+  and `exit code 3221225477 (0xC0000005)` for the fault), while the fixture's
+  stderr line is absent from the load error and crash audit record. A clean quit
+  reports no crash at all: quitting is a shutdown, not a crash.
+- **Specs:** `07-plugins/05-plugin-lifecycle.md` §3.1 / §8,
+  `08-meta/decisions-log.md` D607.
+- **Acceptance:** G (plugin host lifecycle), Quality (diagnosability).
+- **Milestone:** Post-MVP regression coverage.
+- **Automation:** `apps/desktop/test/plugin-services.test.mjs` forks a real host
+  process, kills it with a fixture exit code and asserts the code plus the
+  absence of raw stderr in the crash audit record; `plugin-isolation.test.mjs`
+  and the shutdown cases cover the "quit is not a crash" half.
+- **Status:** Automated at the runtime level; no UI driver reads the plugin
+  page's error text.
+
 ### E2E-DIALOG-long-text-boundaries
 
 - **Preconditions:** Built renderer assets and an isolated Electron component
@@ -14169,3 +14292,74 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Limits:** OS-root inclusion is checked without installing a root. The TLS
   success fixture uses a child-only extra CA; it does not reproduce a specific
   antivirus installation or claim native macOS/Linux verification.
+
+### E2E-CONTEXT-estimate-calibration-stays-safe
+
+- **Preconditions:** Deterministic provider fixture whose reported usage can be
+  scripted; a session whose occupancy is close to the hard boundary; no real
+  provider credentials.
+- **Steps:** Report usage below the prediction repeatedly and confirm the
+  displayed occupancy never falls below the floor and compaction still fires;
+  report usage far outside the plausible band and confirm the value does not
+  move; run a CJK-heavy session and compare the displayed occupancy with the
+  reported usage.
+- **Expected:** The calibrated occupancy stays within 0.85×–6× of the raw
+  estimate, moves up as soon as there is evidence, moves down only after
+  agreeing samples, and a projection at 1.18× the hard limit still compacts.
+  Misreports move it in neither direction. CJK text no longer reads at a
+  quarter of its measured cost.
+- **Specs linked:** `03-runtime/02-agent-runtime.md` §5.1,
+  `08-meta/decisions-log.md` D606
+- **Acceptance:** C (chat and stream), F (persistence), Quality
+- **Status:** Unit-covered (`context-calibration.test.ts`, including the CJK and
+  boundary cases); desktop E2E pending
+
+### E2E-RUNTIME-unique-tool-call-ids-per-request
+
+- **Preconditions:** A session transcript that carries the same tool call twice
+  (a retried append leaves the call under a second row id), loaded into a
+  recreated runtime against a deterministic provider fixture. No real provider
+  credentials.
+- **Steps:** Send one prompt so the runtime assembles and issues a request. Read
+  the outgoing request the fixture received, and the `agent` log channel. Repeat
+  with a transcript whose calls are already unique.
+- **Expected:** The outgoing request carries exactly one `toolCall` for that id
+  and exactly one matching result, so no provider can answer
+  `tool_use ids must be unique`. The log channel gets one line naming the
+  session and the ids. The unique transcript's request is unchanged, byte for
+  byte, and logs nothing.
+- **Specs:** `03-runtime/02-agent-runtime.md` §5,
+  `08-meta/decisions-log.md` D608.
+- **Acceptance:** C (conversation and stream), Quality.
+- **Milestone:** Post-MVP regression coverage.
+- **Automation:** `packages/agent-runtime/src/runtime.test.ts` covers both halves
+  against a real runtime built from a duplicated history (drop + one log line)
+  and a unique one (identity, no log line).
+- **Status:** Unit-covered; no end-to-end driver issues a real provider request
+  against a duplicated transcript.
+
+### E2E-MCP-HTTP-ACK — HTTP acknowledgement and authorization status
+
+- **Preconditions**: A local mock Streamable HTTP server returns JSON for
+  initialize, `202` with plain-text `Accepted` for notifications/initialized,
+  SSE for tools/list, and JSON for tools/call. No provider credentials needed.
+- **Steps**: Connect, discover a tool, and call it. Render the MCP settings row
+  with idle, connecting, ready, non-authentication failure, and authentication
+  failure statuses, including an expired stored OAuth credential.
+- **Expected**: The acknowledgement does not enter the JSON parser; discovery,
+  calls, and session headers remain functional. Only explicit authRequired
+  status shows the authorization-required badge. Non-authentication failures
+  retain their original error. Authentication failures remain actionable.
+- **Specs**: 07-plugins/01-plugin-system §12.2; ADR 0038; ADR 0283.
+- **Acceptance**: HTTP client integration and settings component rendering.
+- **Milestone**: Maintenance.
+- **Status**: Covered by the existing HTTP client integration fixture and a
+  focused component-render validation; no live IDA process required.
+
+
+#### E2E-CHAT-parenthesized-url: Complete URLs in user messages
+
+- **Steps**: Send `https://en.wikipedia.org/wiki/React_(software)` in a user message and click its link. Repeat with the URL wrapped in prose parentheses, followed by a sentence-ending period, and followed immediately by another link or file reference.
+- **Expected**: The complete URL, including `(software)`, opens the React software article. The outer prose closing parenthesis and sentence-ending punctuation after the URL parenthesis are not part of the link. Adjacent references remain independently clickable. Nested parentheses, query/fragment parentheses and percent-encoded parentheses remain intact.
+- **Coverage**: `chat-links.test.mjs`; native desktop click-through with the normal browser destination.
+- **Specs linked**: `04-ux/08-component-spec.md` §8.3.

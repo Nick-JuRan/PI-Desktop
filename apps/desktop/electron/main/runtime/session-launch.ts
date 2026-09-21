@@ -3,6 +3,7 @@ import {
   capabilitiesFromModelConfig,
   clampThinkingLevel,
   genericModelConfig,
+  loadCustomSystemPrompt,
   loadInstructionChain,
   loadSubagentDefinitions,
   modelConfigWithBinding,
@@ -526,6 +527,9 @@ export function createSessionLaunchRuntime({
         ? session.projectPath.trim()
         : undefined;
     let projectInstructions = await loadInstructionChain(projectPath);
+    // pi-compatible SYSTEM.md / APPEND_SYSTEM.md (issue #542): resolved once
+    // per launch; a change retires the runtime through the reuse match.
+    const customSystemPrompt = await loadCustomSystemPrompt(projectPath);
     let projectMemory: string | undefined;
     if (projectPath) {
       try {
@@ -772,6 +776,7 @@ export function createSessionLaunchRuntime({
         scratchDir: join(dataDir, "scratch", sessionId),
         attachmentsDir: join(dataDir, "attachments"),
         projectPath,
+        customSystemPrompt,
         projectInstructions,
         projectMemory,
         provider: {

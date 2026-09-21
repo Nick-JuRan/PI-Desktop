@@ -29,6 +29,11 @@ export type AppSettings = {
   defaultMode: Mode;
   /** Maximum number of delegated subagent levels; 1 preserves direct-only delegation. */
   maxSubagentDepth?: number;
+  /**
+   * Keep retryable provider/network failures retrying until the request succeeds.
+   * Absent and false use the bounded ten-retry policy.
+   */
+  infiniteProviderRetry?: boolean;
   /** Configured command shell for the agent Bash protocol tool. */
   defaultCommandShell?: CommandShellId;
   /**

@@ -63,6 +63,10 @@ import {
   subagentContextOverflowError,
 } from "./subagent-context.js";
 import {
+  dedupeToolCallMessages,
+  reportDuplicateToolCallDrop,
+} from "./tool-call-dedupe.js";
+import {
   classifyProviderError,
   delayWithAbort,
   PROVIDER_RATE_LIMIT_MAX_RETRIES,
@@ -124,6 +128,8 @@ export type SubagentRunOptions = {
   /** Provider resolved by Electron main (the definition's pin, or the
    * session's provider when the definition pins nothing). */
   provider: RuntimeProviderConfig;
+  /** Inherited session policy for retrying transient provider failures. */
+  infiniteProviderRetry?: boolean;
   thinkingLevel: SubagentThinkingLevel;
   /** User-owned definition pins only, in configured order. Missing bindings fail visibly. */
   fallbackModels?: Array<{ key: string; provider?: RuntimeProviderConfig }>;
@@ -256,7 +262,8 @@ export class SubagentRun {
     this.agent = new Agent({
       streamFn: binding.streamFn,
       getApiKey: binding.getApiKey,
-      convertToLlm,
+      convertToLlm: (messages) =>
+        convertToLlm(this.dedupeToolCalls(messages)),
       // The same turn-boundary context protection the session has (ADR 0299):
       // re-estimate at each boundary, compact before the next request, degrade
       // before failing. The budget derives from this run's resolved model.
@@ -329,6 +336,11 @@ export class SubagentRun {
 
   private modelBinding() {
     return this.bindingFor(this.provider, this.thinkingLevel);
+  }
+  private dedupeToolCalls(messages: AgentMessage[]): AgentMessage[] {
+    const drop = dedupeToolCallMessages(messages);
+    reportDuplicateToolCallDrop(this.opts.sessionId, drop);
+    return drop.messages;
   }
 
   private bindingFor(
@@ -473,8 +485,9 @@ export class SubagentRun {
     phase: "request" | "stream",
   ): number | undefined {
     if (!error.retriable) return undefined;
+    const infinite = this.opts.infiniteProviderRetry === true;
     if (error.code === "PROVIDER_RATE_LIMITED") {
-      if (this.providerRateLimitRetryAttempt >= PROVIDER_RATE_LIMIT_MAX_RETRIES) {
+      if (!infinite && this.providerRateLimitRetryAttempt >= PROVIDER_RATE_LIMIT_MAX_RETRIES) {
         return undefined;
       }
       return ++this.providerRateLimitRetryAttempt;
@@ -483,7 +496,7 @@ export class SubagentRun {
     // session does, so a delegate is not abandoned on a single gateway 502.
     void phase;
     if (!isTransientProviderRetryCode(error.code)) return undefined;
-    if (this.providerTransientRetryAttempt >= PROVIDER_TRANSIENT_MAX_RETRIES) {
+    if (!infinite && this.providerTransientRetryAttempt >= PROVIDER_TRANSIENT_MAX_RETRIES) {
       return undefined;
     }
     return ++this.providerTransientRetryAttempt;
@@ -497,7 +510,9 @@ export class SubagentRun {
     if (messages.at(-1)?.role !== "assistant") {
       throw new Error("Cannot retry a subagent provider stream without its failed assistant message");
     }
-    messages.pop();
+    // A failed provider stream can leave more than one assistant row after a
+    // tool round. Remove the entire failed suffix before continuing.
+    while (messages.at(-1)?.role === "assistant") messages.pop();
     this.agent.state.messages = messages;
     this.providerRetryInProgress = true;
     try {
@@ -733,6 +748,10 @@ export class SubagentRun {
               };
             }
           }
+        }
+        if (!failed && stopReason !== "aborted") {
+          this.providerTransientRetryAttempt = 0;
+          this.providerRateLimitRetryAttempt = 0;
         }
         const messageUsage = usageFromPi(message.usage);
         this.usage = addUsage(this.usage, messageUsage);
