@@ -4,6 +4,7 @@ import type {
   AssistantTurnPart,
   SubagentRun,
 } from "./assistant-turns";
+import { activityItemHasIssue } from "./activity-summary";
 
 type ThinkingDisplayMode = NonNullable<AppSettings["thinkingDisplayMode"]>;
 
