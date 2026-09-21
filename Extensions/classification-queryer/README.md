@@ -7,23 +7,50 @@ workflow.
 
 ## Capabilities
 
-One tool call can contain any combination of these four request lists:
+The tool exposes one concise nested request shape. Any combination of code and
+keyword queries can be sent in one call:
 
-| Input field | Operation |
-| --- | --- |
-| `ipc_codes` | Return the complete official IPC tree for each code |
-| `cpc_codes` | Return the complete official CPC tree for each code |
-| `ipc_keywords` | Search IPC classification numbers by one short keyword per item |
-| `cpc_keywords` | Search CPC classification numbers by one short keyword per item |
+```json
+{
+  "ipc": {
+    "codes": ["G06N3/02"],
+    "keywords": ["神经网络"]
+  },
+  "cpc": {
+    "codes": [],
+    "keywords": ["神经网络"]
+  }
+}
+```
 
-Keyword items must be independent short words. Phrases, claim text, whitespace,
-operators, and wildcards are rejected before a process is started. Code items
-may contain formatting spaces; they are normalized before the official client
-is called. The tool accepts at most 20 items per list and 40 items per call.
+`codes` returns the complete official tree for each IPC/CPC code. `keywords`
+searches classification numbers using one independent short keyword per item.
+Phrases, claim text, whitespace, operators, and wildcards are rejected before a
+process is started. Code items may contain formatting spaces; they are
+normalized before the official client is called. The tool accepts at most 20
+items per list and 40 items per call.
 
-The result keeps the official JSON payload for every request. Keyword queries
-are returned as the official flat `data` list; code queries are returned as the
-official recursive `data.tree`, including ancestor and descendant nodes.
+The result is plain text intended for an Agent, not an API envelope:
+
+```text
+IPC
+└── G
+    └── G06
+        └── G06N
+            └── G06N3/02: 神经网络[2006.01]
+
+CPC
+└── G
+    └── G06
+        └── G06N
+            └── G06N3/02: 神经网络
+```
+
+Code queries preserve the official ancestor and descendant tree. Keyword
+matches are projected into a sparse code hierarchy and repeated branches are
+merged. The output omits `request`, `year`, `language`, endpoint metadata,
+operation fields, and the per-query response envelope. Query failures are
+reported as one concise system/query line.
 
 ## Runtime configuration
 

@@ -5,7 +5,12 @@ const MAX_VALUE_LENGTH = 128;
 const KEYWORD_PATTERN = /^[\p{L}\p{N}\u3400-\u9fff][\p{L}\p{N}\u3400-\u9fff_-]{0,31}$/u;
 const CODE_PATTERN = /^[A-Z][A-Z0-9./-]{1,63}$/i;
 
-const BUCKETS = [
+const SYSTEMS = [
+  { key: "ipc", system: "IPC" },
+  { key: "cpc", system: "CPC" },
+];
+
+const LEGACY_BUCKETS = [
   { field: "ipc_codes", system: "IPC", kind: "code", flag: "--ipcno" },
   { field: "cpc_codes", system: "CPC", kind: "code", flag: "--ipcno" },
   { field: "ipc_keywords", system: "IPC", kind: "keyword", flag: "--content" },
@@ -34,32 +39,55 @@ function normalizeKeyword(value, field, index) {
   return normalized;
 }
 
-function normalizeBucket(input, bucket) {
-  const values = input?.[bucket.field];
+function normalizeBucket(values, field, system, kind, flag, seen) {
   if (values === undefined) return [];
-  if (!Array.isArray(values)) invalidValue(`${bucket.field} must be an array`);
+  if (!Array.isArray(values)) invalidValue(`${field} must be an array`);
   if (values.length > MAX_ITEMS_PER_BUCKET) {
-    invalidValue(`${bucket.field} accepts at most ${MAX_ITEMS_PER_BUCKET} items`);
+    invalidValue(`${field} accepts at most ${MAX_ITEMS_PER_BUCKET} items`);
   }
 
-  const seen = new Set();
   return values
-    .map((value, index) => (bucket.kind === "code"
-      ? normalizeCode(value, bucket.field, index)
-      : normalizeKeyword(value, bucket.field, index)))
+    .map((value, index) => (kind === "code"
+      ? normalizeCode(value, field, index)
+      : normalizeKeyword(value, field, index)))
     .filter((value) => {
-      const key = `${bucket.system}:${bucket.kind}:${value}`;
+      const key = `${system}:${kind}:${value}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     })
     .map((value) => ({
-      field: bucket.field,
-      system: bucket.system,
-      kind: bucket.kind,
-      flag: bucket.flag,
+      field,
+      system,
+      kind,
+      flag,
       value,
     }));
+}
+
+function normalizeSystem(input, { key, system }, kind, seen) {
+  const scope = input[key];
+  if (scope === undefined) return [];
+  if (!scope || typeof scope !== "object" || Array.isArray(scope)) {
+    invalidValue(`${key} must be an object with codes and/or keywords`);
+  }
+  const field = kind === "code" ? "codes" : "keywords";
+  const flag = kind === "code" ? "--ipcno" : "--content";
+  return normalizeBucket(scope[field], `${key}.${field}`, system, kind, flag, seen);
+}
+
+function normalizeLegacyInput(input) {
+  const seen = new Set();
+  return LEGACY_BUCKETS.flatMap((bucket) =>
+    normalizeBucket(
+      input[bucket.field],
+      bucket.field,
+      bucket.system,
+      bucket.kind,
+      bucket.flag,
+      seen,
+    ),
+  );
 }
 
 export function normalizeQueryInput(input) {
@@ -67,7 +95,14 @@ export function normalizeQueryInput(input) {
     invalidValue("classification query input must be an object");
   }
 
-  const requests = BUCKETS.flatMap((bucket) => normalizeBucket(input, bucket));
+  const seen = new Set();
+  const hasConciseShape = Object.hasOwn(input, "ipc") || Object.hasOwn(input, "cpc");
+  const requests = hasConciseShape
+    ? [
+      ...SYSTEMS.flatMap((system) => normalizeSystem(input, system, "code", seen)),
+      ...SYSTEMS.flatMap((system) => normalizeSystem(input, system, "keyword", seen)),
+    ]
+    : normalizeLegacyInput(input);
   if (requests.length === 0) {
     invalidValue("provide at least one IPC/CPC code or keyword query");
   }
