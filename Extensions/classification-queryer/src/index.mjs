@@ -2,52 +2,59 @@ import {
   buildClassifierArgs,
   normalizeQueryInput,
   parseClassifierOutput,
-  summarizeResults,
 } from "./query.mjs";
+import {
+  addKeywordRows,
+  addOfficialTree,
+  classificationErrorLabel,
+  createClassificationTree,
+  renderClassificationTrees,
+} from "./presentation.mjs";
 
 export const DEFAULT_CLASSIFIER_ROOT = "D:\\专利局\\逆向目录\\外网-IPC分类检索\\官方IPCCPC";
 export const DEFAULT_PYTHON_COMMAND = process.platform === "win32" ? "python" : "python3";
 export const CLASSIFIER_TIMEOUT_MS = 45_000;
 export const CLASSIFIER_MAX_BUFFER = 16 * 1024 * 1024;
 
+const QUERY_SCOPE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    codes: {
+      type: "array",
+      items: { type: "string" },
+      maxItems: 20,
+      description: "IPC/CPC codes whose complete official tree should be returned.",
+    },
+    keywords: {
+      type: "array",
+      items: { type: "string" },
+      maxItems: 20,
+      description: "Single short keywords used to discover IPC/CPC classification numbers.",
+    },
+  },
+  minProperties: 1,
+};
+
 export const CLASSIFICATION_QUERY_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    ipc_codes: {
-      type: "array",
-      items: { type: "string" },
-      maxItems: 20,
-      description: "IPC classification codes whose complete official tree should be returned.",
+    ipc: {
+      ...QUERY_SCOPE_SCHEMA,
+      description: "IPC queries. Include codes, keywords, or both.",
     },
-    cpc_codes: {
-      type: "array",
-      items: { type: "string" },
-      maxItems: 20,
-      description: "CPC classification codes whose complete official tree should be returned.",
-    },
-    ipc_keywords: {
-      type: "array",
-      items: { type: "string" },
-      maxItems: 20,
-      description: "Single short keywords to search for IPC classification numbers.",
-    },
-    cpc_keywords: {
-      type: "array",
-      items: { type: "string" },
-      maxItems: 20,
-      description: "Single short keywords to search for CPC classification numbers.",
+    cpc: {
+      ...QUERY_SCOPE_SCHEMA,
+      description: "CPC queries. Include codes, keywords, or both.",
     },
   },
+  minProperties: 1,
 };
 
 function environmentValue(name, fallback) {
   const value = typeof process?.env?.[name] === "string" ? process.env[name].trim() : "";
   return value || fallback;
-}
-
-function progressText(request, index, total) {
-  return `Querying ${request.system} ${request.kind} ${JSON.stringify(request.value)} (${index}/${total})`;
 }
 
 export function createClassificationQueryTool({
@@ -64,23 +71,21 @@ export function createClassificationQueryTool({
     label: "分类号查询器",
     description:
       "Query official IPC/CPC classification trees and search classification numbers by keyword. " +
-      "One call can contain IPC codes, CPC codes, IPC keywords, and CPC keywords.",
-    promptSnippet: "Query IPC/CPC codes or discover codes from single short keywords",
+      "Use one concise nested request; the result is a readable IPC/CPC tree without API metadata.",
+    promptSnippet: "Query IPC/CPC codes or discover codes from short keywords and get a tree",
     promptGuidelines: [
       "Use classification_query for official IPC/CPC code-tree verification and keyword discovery.",
       "Put every independent short keyword in its own array item; do not send phrases or claims as keywords.",
-      "Use one call with ipc_codes, cpc_codes, ipc_keywords, and cpc_keywords when all four query types are needed.",
+      "Use one nested call with ipc.codes, ipc.keywords, cpc.codes, and cpc.keywords when all four query types are needed.",
+      "Read the returned IPC/CPC tree directly; it intentionally omits request, year, language, endpoint, and response-envelope metadata.",
     ],
     parameters: CLASSIFICATION_QUERY_SCHEMA,
-    async execute(_toolCallId, params, signal, onUpdate) {
+    async execute(_toolCallId, params, signal) {
       const requests = normalizeQueryInput(params);
-      const results = [];
+      const trees = new Map();
 
-      for (const [index, request] of requests.entries()) {
+      for (const request of requests) {
         if (signal?.aborted) throw new Error("classification query cancelled");
-        onUpdate?.({
-          content: [{ type: "text", text: progressText(request, index + 1, requests.length) }],
-        });
 
         let response;
         try {
@@ -105,22 +110,21 @@ export function createClassificationQueryTool({
           };
         }
 
-        results.push({
-          system: request.system,
-          kind: request.kind,
-          query: request.value,
-          response,
-        });
+        const tree = trees.get(request.system) ?? createClassificationTree(request.system);
+        trees.set(request.system, tree);
+        if (response.ok === true) {
+          if (request.kind === "keyword") {
+            addKeywordRows(tree, response.data);
+          } else {
+            addOfficialTree(tree, response.data?.tree);
+          }
+        } else {
+          tree.errors.push(classificationErrorLabel(request, response));
+        }
       }
 
-      const output = {
-        ok: results.every((result) => result.response?.ok === true),
-        summary: summarizeResults(results),
-        results,
-      };
       return {
-        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
-        details: output,
+        content: [{ type: "text", text: renderClassificationTrees([...trees.values()]) }],
       };
     },
   };
