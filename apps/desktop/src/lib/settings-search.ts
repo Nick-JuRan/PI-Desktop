@@ -16,6 +16,7 @@ export type SettingsTabId =
   | "subagents"
   | "import"
   | "projects"
+  | "sync"
   | "remoteHosts"
   | "about";
 
@@ -86,6 +87,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.permissionModeAcceptEdits",
       "settings.permissionModeAuto",
       "settings.defaultsTitle",
+      "settings.imageModel",
       "settings.mode",
       "settings.commandShell",
       "settings.linkOpenTarget",
@@ -237,6 +239,20 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "project.archive",
       "project.restore",
       "project.delete",
+    ],
+  },
+  {
+    id: "sync",
+    labelKey: "settings.nav.sync",
+    titleKey: "settings.configSync.title",
+    group: "system",
+    keywordKeys: [
+      "settings.configSync.connectionTitle",
+      "settings.configSync.endpoint",
+      "settings.configSync.statusTitle",
+      "settings.configSync.categoriesTitle",
+      "settings.configSync.approvalsTitle",
+      "settings.configSync.syncNow",
     ],
   },
   {

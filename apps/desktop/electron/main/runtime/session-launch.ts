@@ -1,5 +1,29 @@
 import { join } from "node:path";
 import {
+  ErrorCodes as SharedErrorCodes,
+  isActiveInProject,
+  isCommandShellCatalog,
+  imageGenerationBindings,
+  isImageGenerationModel,
+  normalizeMode,
+  normalizeSubagentMaxDepth,
+  resolveBindingContextWindow,
+  trustedExtensionAgentKeyFromProviderId,
+  type CommandShellCatalog,
+  type McpServerRecord,
+  type ModelBinding,
+  type Mode,
+  type Risk,
+  type SessionThinkingLevel,
+  type SubagentPluginToolOption,
+  type SubagentToolCatalog,
+  subagentExtensionToolSelector,
+  type TrustedExtensionLoadReport,
+  type TrustedExtensionSpec,
+  type UserSkillRecord,
+  type UserSubagentRecord,
+} from "@pi-desktop/shared";
+import {
   capabilitiesFromModelConfig,
   clampThinkingLevel,
   genericModelConfig,
@@ -12,28 +36,6 @@ import {
   type UserSubagentDocument,
   visionFromModelConfig,
 } from "@pi-desktop/agent-runtime";
-import {
-  type CommandShellCatalog,
-  isActiveInProject,
-  isCommandShellCatalog,
-  type McpServerRecord,
-  type Mode,
-  type ModelBinding,
-  normalizeMode,
-  normalizeSubagentMaxDepth,
-  type Risk,
-  resolveBindingContextWindow,
-  type SessionThinkingLevel,
-  ErrorCodes as SharedErrorCodes,
-  type SubagentPluginToolOption,
-  type SubagentToolCatalog,
-  subagentExtensionToolSelector,
-  type TrustedExtensionLoadReport,
-  type TrustedExtensionSpec,
-  trustedExtensionAgentKeyFromProviderId,
-  type UserSkillRecord,
-  type UserSubagentRecord,
-} from "@pi-desktop/shared";
 import type { AgentExtensionBridge } from "../agent-extensions";
 import { builtinSkills } from "../builtin-skills";
 import type { HostProcess } from "../host-process";
@@ -483,6 +485,15 @@ export function createSessionLaunchRuntime({
       provider.defaultModelId;
     if (!modelId) {
       throw Object.assign(new Error("No model selected for provider"), {
+        errorCode: ErrorCodes.MODEL_NOT_CONFIGURED,
+      });
+    }
+    if (isImageGenerationModel(
+      imageGenerationBindings(settings.imageGenerationModels, settings.imageGeneration),
+      provider.id,
+      modelId,
+    )) {
+      throw Object.assign(new Error("The image model cannot be used for conversation; select a chat model"), {
         errorCode: ErrorCodes.MODEL_NOT_CONFIGURED,
       });
     }
