@@ -2481,6 +2481,30 @@ identify the platform validation still needed.
 - **Milestone**: M4
 - **Status**: Automated (protocol smoke: dispatch roundtrip host->runner->host; in-app JS execution via PluginRuntime)
 
+#### E2E-PLUGIN-fusion-search-authenticated-semantic-baseline
+
+- **Preconditions**: The `local.fusion-search` development plugin is loaded; a
+  dedicated intranet test account is configured only in that plugin's private
+  settings; the declared authentication and search hosts are reachable; the
+  user grants the manifest's requested high-risk permissions; a read-only test
+  `element_id` is available.
+- **Steps**: 1) Start with no stored token. 2) Invoke
+  `fusion_semantic_baseline` with `action=get_terms` and the test `element_id`.
+  3) Invoke the same read again. 4) Inspect the returned terms and the isolated
+  plugin settings without displaying credential or token values.
+- **Expected**: The first call completes the built-in login chain, persists a
+  usable token in the plugin-private settings, and returns the Chinese and
+  English terms; the second call uses the stored token. Neither credentials nor
+  token appear in tool arguments, results, or logs. The tool exposes exactly
+  `prepare`, `get_terms`, and `update_terms`; only the read action is plan-safe.
+  Mutating actions are validated separately against controlled test data and
+  are never automatically replayed after an ambiguous remote outcome.
+- **Specs linked**: `07-plugins/03-plugin-api.md`,
+  `07-plugins/13-plugin-permissions-matrix.md`, `Extensions/fusion-search/README.md`
+- **Acceptance**: Plugin authentication, private persistence, and semantic read
+- **Status**: Automated unit/integration coverage; live intranet test requires
+  the dedicated test account and reachable service
+
 #### E2E-024G: Marketplace detail sheet shows README, permissions, versions
 
 - **Preconditions**: Official marketplace catalog available.

@@ -1,0 +1,10 @@
+{
+  "name": "local-fusion-search",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "PI-Desktop tools for the Fusion Search semantic baseline.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}
