@@ -12,7 +12,6 @@ import {
   currentNetworkProxy,
   testNetworkProxy,
 } from "./network-proxy";
-import { installInsecureEndpointNotice } from "./network-notice";
 import {
   APP_ID,
   APP_NAME,
@@ -838,10 +837,8 @@ function sendToRenderer(channel: string, payload: unknown) {
     // it. Notifying a gone frame is routine teardown, never an error:
     // supervision must keep running with no window attached.
   }
-
 }
 
-installInsecureEndpointNotice(sendToRenderer);
 
 let appliedMenuSettings: string | null = null;
 

@@ -19,6 +19,7 @@ import type { Logger } from "../logger";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { RuntimeState } from "./context";
 import { syncPluginDisplayLocale } from "../plugin-display-locale";
+import { installInsecureEndpointNotice } from "../network-notice";
 import { RuntimeSupervisor } from "@pi-desktop/host-runtime";
 
 type RestartKind = "host" | "sidecar";
@@ -67,6 +68,7 @@ export function createRuntimeLifecycle({
   runtimeArch: () => ReturnType<typeof detectRuntimeArch>;
   bootBackends: () => Promise<void>;
 } {
+  installInsecureEndpointNotice(sendToRenderer);
   let runtimeArchCache: ReturnType<typeof detectRuntimeArch> | null = null;
 
   /**
