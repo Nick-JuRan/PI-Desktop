@@ -839,6 +839,7 @@ function sendToRenderer(channel: string, payload: unknown) {
   }
 }
 
+
 let appliedMenuSettings: string | null = null;
 
 /**

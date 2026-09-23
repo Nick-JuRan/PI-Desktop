@@ -19,6 +19,7 @@ import {
   type RuntimePromptAttachment,
   type RuntimeProviderConfig,
 } from "./runtime.js";
+import { catalogProbeUiResponse } from "./extensions/catalog-probe-ui.js";
 import {
   TrustedExtensionRunner,
   type TrustedExtensionBridge,
@@ -92,22 +93,7 @@ function catalogProbeBridge(cwd: string): TrustedExtensionBridge {
     waitForIdle: async () => undefined,
     newSession: async () => ({ cancelled: true }),
     fork: async () => ({ cancelled: true }),
-    requestUi: async (_extension, request) => {
-      switch (request.kind) {
-        case "confirm":
-          return { kind: "confirm", value: false };
-        case "select":
-          return { kind: "select", value: undefined };
-        case "input":
-          return { kind: "input", value: undefined };
-        case "notify":
-          return { kind: "notify" };
-        case "setStatus":
-          return { kind: "setStatus" };
-        case "setWorkingMessage":
-          return { kind: "setWorkingMessage" };
-      }
-    },
+    requestUi: async (_extension, request) => catalogProbeUiResponse(request),
     publishCommands: () => undefined,
     publishDiagnostics: () => undefined,
   };

@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "local.fusion-search",
+  "name": "融合检索",
+  "version": "0.2.0",
+  "description": "Semantic baseline tools for the remote Fusion Search service, with built-in token acquisition and refresh.",
+  "main": "main.cjs",
+  "contributes": {
+    "agentTools": [
+      {
+        "name": "fusion_semantic_baseline",
+        "description": "Manage the remote semantic baseline used by Fusion Search ranking. Use action=prepare to create a baseline from an application number or text and receive Chinese and English terms; action=get_terms to read every active term and weight; action=update_terms to replace one or both complete language lists and persist weights. Authentication is fully automatic; credentials are configured in the plugin data directory, never in tool arguments.",
+        "risk": "high",
+        "planSafeActions": ["get_terms"],
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action"],
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": ["prepare", "get_terms", "update_terms"],
+              "description": "prepare=create a baseline; get_terms=read terms and weights; update_terms=save complete replacement lists."
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 25000,
+              "description": "The application number or technical text used by prepare."
+            },
+            "reference_kind": {
+              "type": "string",
+              "enum": ["application_number", "text"],
+              "description": "The prepare input mode. Specify application_number for an application number and text for direct text input."
+            },
+            "element_id": {
+              "type": ["string", "integer"],
+              "description": "The element_id returned by prepare, required by get_terms and update_terms."
+            },
+            "terms": {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "chinese": {
+                  "type": "array",
+                  "maxItems": 500,
+                  "description": "The complete desired Chinese term list. Omit to preserve the current Chinese list.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["term", "weight"],
+                    "properties": {
+                      "term": { "type": "string", "minLength": 1, "maxLength": 100 },
+                      "weight": { "type": "integer", "minimum": 1, "maximum": 5 }
+                    }
+                  }
+                },
+                "english": {
+                  "type": "array",
+                  "maxItems": 500,
+                  "description": "The complete desired English term list. Omit to preserve the current English list.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["term", "weight"],
+                    "properties": {
+                      "term": { "type": "string", "minLength": 1, "maxLength": 100 },
+                      "weight": { "type": "integer", "minimum": 1, "maximum": 5 }
+                    }
+                  }
+                }
+              }
+            },
+            "verify": {
+              "type": "boolean",
+              "default": true,
+              "description": "Read the saved terms again after update_terms. Defaults to true."
+            }
+          }
+        }
+      }
+    ]
+  },
+  "permissions": ["agent.tool.register", "net.fetch"],
+  "net": {
+    "domains": ["10.160.28.16", "10.160.47.100"]
+  },
+  "engines": {
+    "piDesktop": ">=0.15.2"
+  },
+  "activationEvents": ["onStartup"]
+}

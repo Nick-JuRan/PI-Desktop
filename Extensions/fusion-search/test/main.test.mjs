@@ -1,0 +1,99 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import test from "node:test";
+
+const require = createRequire(import.meta.url);
+
+function makeFakeJwt(expSecondsFromNow) {
+  const exp = Math.floor(Date.now() / 1000) + expSecondsFromNow;
+  return `h.${Buffer.from(JSON.stringify({ exp })).toString("base64url")}.s`;
+}
+
+function setupPi({ token, credentials = { username: "user1", password: "pw1" } } = {}) {
+  let registeredTool;
+  let settingsReads = 0;
+  const settings = { ...credentials, ...(token ? { token } : {}) };
+  const netCalls = [];
+  const pi = {
+    plugin: {
+      getSettings: async () => {
+        settingsReads += 1;
+        return { ...settings };
+      },
+      setSettings: async (partial) => Object.assign(settings, partial),
+      getDataPath: async () => "unused",
+    },
+    net: {
+      fetch: async (input) => {
+        netCalls.push(input);
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ status: 200, t: { code: "200", data: { records: [] } } }),
+        };
+      },
+    },
+    agent: {
+      registerTool: async (tool) => { registeredTool = tool; },
+      unregisterTool: async () => {},
+    },
+  };
+  return { pi, getRegisteredTool: () => registeredTool, netCalls, settings, settingsReads: () => settingsReads };
+}
+
+test("the tool validates the action before touching credentials", async () => {
+  const { pi, getRegisteredTool, settingsReads } = setupPi();
+  globalThis.pi = pi;
+  const plugin = require("../main.cjs");
+  try {
+    await plugin.onLoad();
+    const tool = getRegisteredTool();
+    const result = await tool.execute({ action: "bogus" }, {});
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, "INVALID_INPUT");
+    assert.equal(settingsReads(), 0, "an invalid action must not read settings");
+  } finally {
+    await plugin.onUnload();
+    delete globalThis.pi;
+  }
+});
+
+test("a tool call uses the stored token and sends it as the Authorization header", async () => {
+  const token = makeFakeJwt(7200);
+  const { pi, getRegisteredTool, netCalls } = setupPi({ token });
+  globalThis.pi = pi;
+  const plugin = require("../main.cjs");
+  try {
+    await plugin.onLoad();
+    const tool = getRegisteredTool();
+    const result = await tool.execute({ action: "get_terms", element_id: 1 }, {});
+    assert.equal(result.ok, true);
+    assert.equal(netCalls.length, 1);
+    assert.equal(netCalls[0].headers.Authorization, `Bearer ${token}`);
+    assert.equal(netCalls[0].url, "http://10.160.28.16/api/neusipo-app-search/fusionSearch/element/retrieval");
+  } finally {
+    await plugin.onUnload();
+    delete globalThis.pi;
+  }
+});
+
+test("an expiring token with no credentials reports AUTH_CONFIG_MISSING, not a silent replay", async () => {
+  const expiring = makeFakeJwt(60);
+  const { pi, getRegisteredTool, netCalls } = setupPi({
+    token: expiring,
+    credentials: {},
+  });
+  globalThis.pi = pi;
+  const plugin = require("../main.cjs");
+  try {
+    await plugin.onLoad();
+    const tool = getRegisteredTool();
+    const result = await tool.execute({ action: "get_terms", element_id: 1 }, {});
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, "AUTH_CONFIG_MISSING");
+    assert.equal(netCalls.length, 0, "no search request was sent with the expiring token");
+    assert.match(result.error.message, /settings\.json/);
+  } finally {
+    await plugin.onUnload();
+    delete globalThis.pi;
+  }
+});
