@@ -174,13 +174,7 @@ if (process.platform === "win32") {
   app.setAppUserModelId(APP_ID);
 }
 
-// Chromium's accessibility tree serializer has a known CHECK failure in
-// AXBlockFlowData::ComputeNeighborOnLine (chromium #552018997) that kills
-// the renderer when an AT client reads the tree while the DOM is being
-// mutated — exactly what happens during streaming agent responses.
-// The switch prevents Chromium from building the in-renderer accessibility
-// tree unless the user explicitly opts in via --force-renderer-accessibility.
-// This is a workaround until the upstream fix lands.
+// Avoid Chromium renderer crashes while serializing the accessibility tree (#552018997).
 app.commandLine.appendSwitch("disable-renderer-accessibility");
 
 // One installation, one process. The lock lives in `userData` (set just
@@ -946,6 +940,7 @@ const {
   executeNativeMenuAction,
   dispatchNativeMenuAction,
   applyDeveloperMode,
+  applyPreventScreenSleep,
   applyNativeThemeSource,
   applyApplicationMenuSettings,
   applyAppThemePreference,
@@ -1283,6 +1278,7 @@ function registerIpc() {
     currentNetworkProxy,
     applyApplicationMenuSettings,
     applyDeveloperMode,
+    applyPreventScreenSleep,
     resolveEffectiveCommandShell,
     modelsDevCatalog,
     vendorOAuth,
@@ -1411,6 +1407,7 @@ registerApplicationStartup({
   planUiProbe,
   applyApplicationMenuSettings,
   applyDeveloperMode,
+  applyPreventScreenSleep,
   applyPluginLauncherShortcut,
   applyToggleWindowShortcut,
   ensureWindow,

@@ -15,6 +15,10 @@ import {
   portalToBody,
   visiblePortalContent,
 } from "../lib/portal-visibility";
+import {
+  getSegmentedControlItemAttributes,
+  type SegmentedControlRole,
+} from "./segmented-control-attributes";
 
 import { IconEye, IconEyeOff, IconHelp } from "./icons";
 
@@ -695,14 +699,18 @@ export function SegmentedControl<T extends string>({
 }: {
   value: T;
   onChange: (value: T) => void;
-  options: readonly { readonly value: T; readonly label: ReactNode }[];
+  options: readonly {
+    readonly value: T;
+    readonly label: ReactNode;
+    readonly id?: string;
+    readonly controls?: string;
+  }[];
   label: string;
-  role?: "group" | "radiogroup" | "tablist";
+  role?: SegmentedControlRole;
   className?: string;
   itemClassName?: string;
   disabled?: boolean;
 }) {
-  const itemRole = role === "tablist" ? "tab" : role === "radiogroup" ? "radio" : undefined;
   return (
     <div
       className={cx("settings-segment", className)}
@@ -713,11 +721,7 @@ export function SegmentedControl<T extends string>({
         <button
           key={option.value}
           type="button"
-          {...(itemRole === "tab"
-            ? { role: "tab", id: `${label}-tab-${option.value}`, "aria-selected": value === option.value }
-            : itemRole === "radio"
-              ? { role: "radio", "aria-checked": value === option.value }
-              : { "aria-pressed": value === option.value })}
+          {...getSegmentedControlItemAttributes(role, label, value, option)}
           className={cx(
             "settings-segment-item",
             value === option.value && "active",
