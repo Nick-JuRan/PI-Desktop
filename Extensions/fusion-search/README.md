@@ -7,22 +7,32 @@ file channel are both retired.
 
 ## Tool
 
-`fusion_semantic_baseline` has three actions:
+`fusion_semantic_baseline` has two actions:
 
-- `prepare`: create a semantic baseline from `reference_kind=application_number`
-  or `reference_kind=text`, then return the server `element_id`, active Chinese
-  and English terms, and their weights.
-- `get_terms`: read the active Chinese and English terms and retained weights
-  for an existing `element_id`. Zero-weight deletion markers are reported
-  under `deleted_terms`.
+- `prepare`: create a baseline and immediately return its `element_id`, active
+  Chinese and English terms, and weights. The workflow targets one specified
+  patent claim, not the application as a whole. A case-number source may yield
+  broader terms, so compare and refine them against the target claim. Prefer a
+  case-number baseline by specifying `reference_kind=application_number` or
+  `reference_kind=publication_number`; compare the returned terms and weights
+  with the target claim. Keep suitable terms or first refine them with
+  `update_terms`. If the case-number baseline remains unsuitable, use
+  `reference_kind=text` with your own concise paraphrase of the technical
+  solution in that claim. Base it on your understanding; do not copy the claim
+  verbatim or use the full application, then refine the returned terms and
+  weights as needed. Case-number mode accepts only application or
+  publication numbers; other case identifiers are not accepted.
 - `update_terms`: submit one or both complete language lists. An omitted
   language is preserved. Removed existing terms are sent with `wt: 0`; new
   terms use `isAdd: "1"`; retained terms use `isAdd: 0`. The default
-  `verify=true` reads the saved lists back after the write.
+  `verify=true` reads the saved lists back after the write and returns the
+  verified active terms and weights.
 
 Weights are integers from 1 to 5. Text baselines must contain 20 to 25,000
-characters. Application numbers are normalized by removing dots and spaces,
-matching the legacy UI request shape.
+characters. Application and publication numbers are normalized by removing
+dots and spaces, matching the legacy UI request shape. The `get_terms` action
+is no longer public; `prepare` returns generated terms immediately, while
+`update_terms` returns the saved terms when verification is enabled.
 
 ## Authentication
 
@@ -44,20 +54,18 @@ lives, and collapses repeated Set-Cookie headers, which carry the login
 
 Tokens are stored and lazily refreshed: each tool call checks the JWT `exp`,
 and a token inside the 30-minute margin triggers one single-flight re-login.
-A 401/403 triggers one forced re-login. The read-only `get_terms` action is
-replayed once with the replacement token; mutating `prepare` and `update_terms`
-actions are not automatically replayed. They return
-`REMOTE_AUTH_REJECTED_NOT_RETRIED` after refreshing credentials, so inspect the
-remote state before explicitly retrying a mutation.
+A 401/403 triggers one forced re-login. Both public actions mutate remote
+state, so neither `prepare` nor `update_terms` is automatically replayed. They
+return `REMOTE_AUTH_REJECTED_NOT_RETRIED` after refreshing credentials; inspect
+the remote state before explicitly retrying either action.
 
 Tool cancellation stops that caller's authentication wait and aborts a shared
 authentication chain only when no other caller is waiting. It prevents that
 tool call from starting later requests.
 The current PI host `pi.net.fetch` contract does not carry an `AbortSignal`, so
 an already submitted semantic request cannot be assumed to have stopped. A
-cancelled `get_terms` returns `CANCELLED`; if cancellation intersects `prepare`
-or `update_terms`, the tool returns `REMOTE_OUTCOME_UNKNOWN`. Review remote state
-before retrying either mutation.
+cancellation during a remote `prepare` or `update_terms` may leave the remote
+outcome unknown. Review remote state before retrying either mutation.
 
 ## Credentials (one-time setup)
 
@@ -82,6 +90,7 @@ tool boundary. The token itself lands in the same file under `token`.
 ```powershell
 node --test test/*.test.mjs
 $env:FUSION_TEST_USERNAME = "..."; $env:FUSION_TEST_PASSWORD = "..."; node --test test/live-login.test.mjs
+$env:FUSION_TEST_REFERENCE_KIND = "publication_number"; $env:FUSION_TEST_REFERENCE = "..."; node --test test/live-tool.test.mjs
 pnpm pi-plugin check .\Extensions\fusion-search
 pnpm pi-plugin pack .\Extensions\fusion-search
 ```
@@ -90,6 +99,8 @@ pnpm pi-plugin pack .\Extensions\fusion-search
 dependencies) for decoding the captcha images.
 
 Load the folder with **Plugins → Load development plugin**, review
-`agent.tool.register` and `net.fetch`, then use the tool in Agent mode.
-`get_terms` is the only action declared safe for Goal-mode planning; baseline
-creation and term updates are mutating remote operations.
+`agent.tool.register` and `net.fetch`, then use the tool in Agent mode. Both
+public actions create or update remote state and are not safe for Goal-mode
+planning. The optional live-tool test requires a dedicated account and a
+controlled case-number or claim-solution paraphrase reference; `prepare` creates a
+remote baseline.

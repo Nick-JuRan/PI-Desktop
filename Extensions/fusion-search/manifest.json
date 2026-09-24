@@ -9,9 +9,8 @@
     "agentTools": [
       {
         "name": "fusion_semantic_baseline",
-        "description": "Manage the remote semantic baseline used by Fusion Search ranking. Use action=prepare to create a baseline from an application number or text and receive Chinese and English terms; action=get_terms to read every active term and weight; action=update_terms to replace one or both complete language lists and persist weights. Authentication is fully automatic; credentials are configured in the plugin data directory, never in tool arguments.",
+        "description": "Goal: produce a semantic baseline for one explicitly specified patent claim, not the application as a whole. A case-number source can yield broader terms, so compare the returned terms and weights with the target claim. Prefer an application or publication number: call prepare with the matching reference_kind; if appropriate, keep it, otherwise first refine terms/weights with update_terms. If it remains unsuitable, call prepare with reference_kind=text and reference containing your own concise paraphrase of the technical solution in that one claim. Base it on your understanding; do not copy the claim verbatim or use the full application, then refine the returned terms and weights. Case-number input accepts only application numbers or publication numbers. prepare immediately returns the element_id and active Chinese and English terms with weights; update_terms saves complete replacement lists for the same claim. Authentication is automatic; credentials are configured in the plugin data directory, never in tool arguments.",
         "risk": "high",
-        "planSafeActions": ["get_terms"],
         "schema": {
           "type": "object",
           "additionalProperties": false,
@@ -19,23 +18,23 @@
           "properties": {
             "action": {
               "type": "string",
-              "enum": ["prepare", "get_terms", "update_terms"],
-              "description": "prepare=create a baseline; get_terms=read terms and weights; update_terms=save complete replacement lists."
+              "enum": ["prepare", "update_terms"],
+              "description": "prepare=create a baseline from the selected source and immediately return its terms and weights; update_terms=refine and save complete lists for that same target claim. Both actions mutate remote state."
             },
             "reference": {
               "type": "string",
               "minLength": 1,
               "maxLength": 25000,
-              "description": "The application number or technical text used by prepare."
+              "description": "Input to prepare: an application/publication number, or your concise paraphrase of the technical solution in the one target claim. Write it from your understanding; do not copy the claim verbatim or use the full application text."
             },
             "reference_kind": {
               "type": "string",
-              "enum": ["application_number", "text"],
-              "description": "The prepare input mode. Specify application_number for an application number and text for direct text input."
+              "enum": ["application_number", "publication_number", "text"],
+              "description": "For prepare, use application_number or publication_number for case-number input, or text for your own paraphrase of the target claim's technical solution. Do not copy the claim verbatim. No other case-number type is accepted."
             },
             "element_id": {
               "type": ["string", "integer"],
-              "description": "The element_id returned by prepare, required by get_terms and update_terms."
+              "description": "The element_id returned by prepare, required by update_terms."
             },
             "terms": {
               "type": "object",
@@ -45,7 +44,7 @@
                 "chinese": {
                   "type": "array",
                   "maxItems": 500,
-                  "description": "The complete desired Chinese term list. Omit to preserve the current Chinese list.",
+                  "description": "The complete desired Chinese term list for the same target claim. Omit to preserve the current Chinese list.",
                   "items": {
                     "type": "object",
                     "additionalProperties": false,
@@ -59,7 +58,7 @@
                 "english": {
                   "type": "array",
                   "maxItems": 500,
-                  "description": "The complete desired English term list. Omit to preserve the current English list.",
+                  "description": "The complete desired English term list for the same target claim. Omit to preserve the current English list.",
                   "items": {
                     "type": "object",
                     "additionalProperties": false,
@@ -75,7 +74,7 @@
             "verify": {
               "type": "boolean",
               "default": true,
-              "description": "Read the saved terms again after update_terms. Defaults to true."
+              "description": "Read the saved terms again after update_terms. Defaults to true; the verified terms and weights are returned."
             }
           }
         }
