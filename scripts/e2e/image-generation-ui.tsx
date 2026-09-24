@@ -248,7 +248,12 @@ globalThis.imageGenerationProbe = async () => {
       const unsetImageRow = [...container.querySelectorAll<HTMLElement>(".settings-row")].find(
         (element) => element.textContent?.includes(i18n.t("settings.imageModel")),
       );
-      assert(!unsetImageRow, "unset image model row should be hidden");
+      assert(unsetImageRow, "an unset image default with selectable candidates should remain visible");
+      assert(
+        unsetImageRow.querySelector('[role="status"]')?.textContent === i18n.t("settings.imageModelUnset") &&
+          unsetImageRow.querySelector('button[aria-haspopup="listbox"]'),
+        "unset image default should show its empty state and keep the candidate selector",
+      );
 
       // Issue #826: release the only chat model through the real edit/save path.
       providers.splice(0, providers.length, chatProvider);

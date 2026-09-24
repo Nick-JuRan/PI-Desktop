@@ -39,9 +39,10 @@
   its own blocker and cannot disable the system blocker. Manual sleep and lid
   close are outside this contract.
 - **Status:** Automated in `pnpm test:e2e:keep-awake`, with a real isolated
-  Electron/Host profile and a Windows `powercfg /requests` assertion when no
-  other Electron power request is present at baseline. Controller lifecycle
-  and Host settings round-trip also have targeted tests.
+  Electron/Host profile. On Windows, `powercfg /requests` is asserted when no
+  other Electron power request is present and the runner can query it; an
+  elevation-required response skips only that OS-level assertion. Controller
+  lifecycle and Host settings round-trip also have targeted tests.
 
 ### E2E-IMAGES-provider-save-feedback
 

@@ -31,8 +31,17 @@ let session;
 
 function hasElectronPowerRequest() {
   if (process.platform !== "win32") return null;
-  const output = execFileSync("powercfg", ["/requests"], { encoding: "utf8" });
-  return /electron\.exe/i.test(output);
+  try {
+    const output = execFileSync("powercfg", ["/requests"], { encoding: "utf8" });
+    return /electron\.exe/i.test(output);
+  } catch (error) {
+    const details = `${String(error?.stderr ?? "")} ${String(error?.message ?? "")}`;
+    if (/requires administrator privileges|elevated command prompt|requires administrator access|需要管理员权限|提升的命令提示符/i.test(details)) {
+      console.log("SKIP Windows powercfg assertion — querying /requests requires an elevated shell");
+      return null;
+    }
+    throw error;
+  }
 }
 
 async function launch() {
@@ -105,18 +114,40 @@ async function close() {
 
 async function click(selector) {
   let point;
-  await waitFor(async () => {
-    point = await session.evaluate(`(() => {
-      const el = document.querySelector(${JSON.stringify(selector)});
-      if (!el || el.disabled) return null;
-      el.scrollIntoView({ block: 'nearest' });
-      const rect = el.getBoundingClientRect();
-      const x = Math.round(rect.left + rect.width / 2);
-      const y = Math.round(rect.top + rect.height / 2);
-      return el.contains(document.elementFromPoint(x, y)) ? { x, y } : null;
-    })()`);
-    return !!point;
-  }, 10_000, `clickable ${selector}`);
+  let lastHit;
+  try {
+    await waitFor(async () => {
+      lastHit = await session.evaluate(`(() => {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        if (!el) return { point: null, reason: "missing" };
+        if (el.disabled) return { point: null, reason: "disabled" };
+        el.scrollIntoView({ block: 'nearest' });
+        const rect = el.getBoundingClientRect();
+        const x = Math.round(rect.left + rect.width / 2);
+        const y = Math.round(rect.top + rect.height / 2);
+        const top = document.elementFromPoint(x, y);
+        // A fresh isolated profile may still be under the once-per-profile
+        // launch overlay. Dismiss it, then retry the requested real pointer hit.
+        const eggClose = document.querySelector('.mid-autumn-egg-close');
+        if (eggClose && !eggClose.contains(el)) {
+          eggClose.click();
+          return { point: null, reason: "dismissed-first-launch-overlay" };
+        }
+        return {
+          point: el.contains(top) ? { x, y } : null,
+          reason: el.contains(top) ? "hit" : "occluded",
+          rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          top: top ? { tag: top.tagName, id: top.id, className: String(top.className) } : null,
+          overlay: document.querySelector('.mid-autumn-egg-overlay') !== null,
+          eggSeen: localStorage.getItem('pi.desktop.midAutumnEggSeen'),
+        };
+      })()`);
+      point = lastHit.point;
+      return !!point;
+    }, 10_000, `clickable ${selector}`);
+  } catch (error) {
+    throw new Error(`${error.message}: ${JSON.stringify(lastHit)}`);
+  }
   assert.ok(point, `clickable ${selector}`);
   for (const type of ["mousePressed", "mouseReleased"]) {
     await session.send("Input.dispatchMouseEvent", { type, ...point, button: "left", clickCount: 1 });

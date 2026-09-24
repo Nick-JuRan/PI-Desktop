@@ -162,10 +162,11 @@ try {
       5000,
       `enabled ${text}`,
     );
-    const point = await evaluate(
-      `(() => { const button = [...document.querySelectorAll(${JSON.stringify(selector)})].find(e => (${byLabel} ? e.getAttribute('aria-label') : e.textContent.trim()) === ${JSON.stringify(text)}); if (!button || button.disabled) return null; button.scrollIntoView({block:'nearest'}); const r=button.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2; return button.contains(document.elementFromPoint(x,y)) ? {x,y} : null; })()`,
+    const hit = await evaluate(
+      `( () => { const button = [...document.querySelectorAll(${JSON.stringify(selector)})].find(e => (${byLabel} ? e.getAttribute('aria-label') : e.textContent.trim()) === ${JSON.stringify(text)}); if (!button) return { point: null, reason: "missing" }; if (button.disabled) return { point: null, reason: "disabled" }; button.scrollIntoView({block:'nearest'}); const r=button.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2, top=document.elementFromPoint(x,y); return { point: button.contains(top) ? {x,y} : null, reason: button.contains(top) ? "hit" : "occluded", rect: {x:r.x,y:r.y,width:r.width,height:r.height}, top: top ? {tag:top.tagName, id:top.id, className: String(top.className), text:top.textContent?.trim().slice(0,80)} : null }; })()`
     );
-    assert.ok(point, `button hit target: ${text}`);
+    const point = hit.point;
+    assert.ok(point, `button hit target: ${text}; ${JSON.stringify(hit)}`);
     await send("Input.dispatchMouseEvent", {
       type: "mousePressed",
       ...point,
@@ -191,6 +192,12 @@ try {
   };
   await send("Emulation.setDeviceMetricsOverride", {width:1280,height:900,deviceScaleFactor:1,mobile:false});
   await waitFor(() => evaluate(`!!document.querySelector('[data-nav="settings"]') && !document.querySelector('.startup-splash')`),30000,"desktop ready");
+  // Fresh isolated profiles show the once-per-profile Mid-Autumn overlay after
+  // the startup splash. Dismiss that unrelated first-launch scene before the
+  // image-generation settings/chat scenario continues.
+  await waitFor(() => evaluate(`!!document.querySelector('.mid-autumn-egg-close')`),10000,"first-launch easter egg");
+  await evaluate(`document.querySelector('.mid-autumn-egg-close').click()`);
+  await waitFor(() => evaluate(`!document.querySelector('.mid-autumn-egg-overlay')`),5000,"first-launch easter egg dismissed");
   await evaluate(`document.querySelector('[data-nav="settings"]').click()`);
   await waitFor(() => evaluate(`!![...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='AI')`),10000,"AI settings");
   await click("AI");

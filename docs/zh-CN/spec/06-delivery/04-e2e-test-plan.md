@@ -19,9 +19,10 @@
 - **预期：** 设置持久化并立即生效，不会重复创建阻止器；关闭开关或退出应用
   时释放。屏幕开关拥有独立阻止器，不能关闭系统休眠阻止器。手动睡眠和合盖
   不在该功能的保证范围内。
-- **状态：** `pnpm test:e2e:keep-awake` 使用隔离的真实 Electron/Host 配置；
-  当基线不存在其他 Electron 电源请求时，以 Windows `powercfg /requests`
-  验证系统请求。控制器生命周期和 Host 设置往返另有定向测试。
+- **状态：** `pnpm test:e2e:keep-awake` 使用隔离的真实 Electron/Host 配置。
+  Windows 基线无其他 Electron 电源请求且当前 shell 有权限查询时，以
+  `powercfg /requests` 验证；若查询要求提升权限，仅跳过该系统级断言。
+  控制器生命周期和 Host 设置往返另有定向测试。
 
 ### E2E-IMAGES-provider-save-feedback
 
