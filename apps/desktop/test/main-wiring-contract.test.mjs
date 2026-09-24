@@ -136,6 +136,17 @@ test("the composition root passes every required factory dependency", () => {
   );
 });
 
+test("Chromium accessibility workaround is installed before app startup", () => {
+  const index = read("index.ts");
+  const workaround = index.indexOf(
+    'app.commandLine.appendSwitch("disable-renderer-accessibility")',
+  );
+  const singleInstanceLock = index.indexOf("app.requestSingleInstanceLock()");
+
+  assert.notEqual(workaround, -1, "the workaround must remain in the Electron entry point");
+  assert.ok(workaround < singleInstanceLock, "install the switch before the app lock");
+});
+
 test("no factory dependency is wired as an explicit undefined", () => {
   const index = read("index.ts");
   assertNoUndefinedMember(

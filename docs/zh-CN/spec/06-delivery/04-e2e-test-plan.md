@@ -1386,11 +1386,19 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 #### E2E-024K：插件 MCP 服务器工具到达代理
 
 - **先决条件**：针对可信局域网存根声明一个 `stdio` 和一个非回环 HTTP MCP 服务器的插件；已授予 `mcp.server.local` 和 `mcp.server.remote`；HTTP 主机已列入 `net.domains`；保存存根凭证的设置密钥。
-- **步骤**： 1) 启用插件并确认尚未启动服务器进程。 2) 要求代理调用已发现的工具。 3) 检查存根收到的 environment/headers。 4) 使存根调用失败并超时。 5) 让 stdio 存根的目录超过旧的 64 个工具上限并重新发现。 6) 禁用插件。
-- **预期**：服务器在首次使用时延迟连接；工具在 `risk: "medium"` 上显示为 `plugin_demo_*_<serverId>_<tool>`，并进行每次调用审核；stdio 子级仅接收声明的 `env` 值加上 PATH/temp/locale，从不接收主机提供程序密钥；非回环 HTTP 端点只有在主机列入白名单后才会接受，未加密传输会在审查中显示；跳转到未声明主机时会在第二次请求前阻止；失败和超时会返回工具错误，而不会导致插件或主机崩溃；大于旧的 64 个工具上限的目录会完整到达，而突破某项每服务器护栏（数量、页数、游标、遍历时间）的服务器会被拒绝，而不是贡献其目录的一个前缀；禁用会断开两个服务器的连接。
+- **步骤**： 1) 启用插件并确认尚未启动服务器进程。 2) 要求代理调用已发现的工具。 3) 检查存根收到的 environment/headers。 4) 使存根调用失败，再执行耗时超过 10 秒握手预算但少于 100 秒调用预算的 HTTP 工具，最后让另一次调用超过自身预算。 5) 让 stdio 存根的目录超过旧的 64 个工具上限并重新发现。 6) 禁用插件。
+- **预期**：服务器在首次使用时延迟连接；工具在 `risk: "medium"` 上显示为 `plugin_demo_*_<serverId>_<tool>`，并进行每次调用审核；stdio 子级仅接收声明的 `env` 值加上 PATH/temp/locale，从不接收主机提供程序密钥；非回环 HTTP 端点只有在主机列入白名单后才会接受，未加密传输会在审查中显示；跳转到未声明主机时会在第二次请求前阻止；HTTP 工具可在握手预算之后完成，超过自身预算的调用失败；其他失败和超时会返回工具错误，而不会导致插件或主机崩溃；大于旧的 64 个工具上限的目录会完整到达，而突破某项每服务器护栏（数量、页数、游标、遍历时间）的服务器会被拒绝，而不是贡献其目录的一个前缀；禁用会断开两个服务器的连接。
 - **链接规格**：`07-plugins/02-plugin-manifest-schema.md`、`07-plugins/04-plugin-security.md` §8.1、ADR 0038、ADR 0142、D176、D281、D452
 - **接受**：G（MCP 桥）+ E（工具和权限）+ 安全
 - **状态**：单位覆盖（`plugin-mcp.test.mjs` stdio + HTTP 存根）；面向代理的场景草稿
+
+#### E2E-MCP-CANCEL：停止操作只中断调用方会话的 MCP 请求
+
+- **先决条件**：两个 Agent 会话共用用户或插件 MCP 服务器，均有待处理工具调用，服务器记录取消通知。
+- **步骤**：两项调用待处理时停止第一个会话，再让第二项调用完成；分别对远程 HTTP 和 stdio 服务器重复。
+- **预期**：第一个请求收到 `notifications/cancelled`，停止后不会产生成功的工具结果；第二个会话的调用正常完成且连接可继续使用。关闭应用会取消其余请求并清理监听器。
+- **关联规格**：`03-runtime/01-ipc-protocol.md` §12a、`07-plugins/04-plugin-security.md` §8.1
+- **状态**：客户端及会话隔离已有单元测试；完整桌面流程待验证
 
 #### E2E-024L：常驻插件服务受监督且可见
 
@@ -4675,6 +4683,7 @@ eleven-tool-round desktop paths are verified by
       调用之间终止 stub 服务器进程。在同一会话中再次调用该工具，不再搜索。
   11. 用重启后不再提供该工具的 stub 重复；以及在恢复前禁用或改出作用域。
       也试一次断开后的并发调用，以及恢复握手失败的服务器。
+  12. 连接 HTTP 服务器后将其停止，刷新 MCP 设置页；重启服务器后再次测试连接。
 - **预期**：
   - 传输重启后，已激活的工具无需再次搜索即可使用；并发调用共享一次握手。
     新的服务器列表仍须公布该工具。已移除的工具和未激活的服务器在不执行
@@ -4697,6 +4706,7 @@ eleven-tool-round desktop paths are verified by
   - 损坏的命令记录 `failed` 并带有一条消息，不提供任何工具，
      并且不会在下一次会议上重拨；压制测试
 重试。
+  - HTTP 服务器停止后，设置页刷新显示 `failed`；重启后“测试连接”恢复为 `ready`。
 - **链接规格**：`07-plugins/01-plugin-system.md` §12，
   `03-runtime/01-ipc-protocol.md` §12a、`08-meta/decisions-log.md`（D192、D193）
 - **验收**：E（工具和权限）、质量
@@ -5397,7 +5407,7 @@ eleven-tool-round desktop paths are verified by
 | M5（聊天文件引用） | E2E-CHAT-shorthand-file-ref-opens-the-matching-file、E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
 | M6+（聊天文件引用） | E2E-PLUGIN-file-view-collapse-persists |
 | M6+（项目文件夹根） | E2E-PLUGIN-file-view-switches-folder-per-project |
-| 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
+| 后MVP | E2E-PLUGIN-pi-npm-skill-discovery, E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
 | 基线后本地自动化 | E2E-220 |
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
 | 受信任扩展（R7 v1） | E2E-DIALOG-long-text-boundaries、E2E-241、E2E-242、E2E-HOOKS-cancel-and-dispose、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
@@ -8724,6 +8734,30 @@ the latest destination. These assertions measure work counts, not device FPS.
   宿主 RPC 路径由 `scripts/e2e-smoke.mjs` 覆盖提供商的创建与列举，但没有套件
   驱动手工编辑的 `config_json`。
 
+### E2E-PLUGIN-pi-npm-skill-discovery
+
+- **Preconditions:** Isolated npm package directory and plugin import storage;
+  a package declaring `pi.skills`, optionally executable extensions. No provider.
+- **Steps:** Open Skills, discover the candidate, cancel import, confirm import,
+  read the registered skill body and resources, reload, and attempt a duplicate.
+  Change metadata during confirmation; retry discovery after an error; discover
+  with more than 256 hoisted dependencies and an unreadable scope. Simulate a
+  runtime load failure after host registration and inspect the refreshed state.
+- **Expected:** No implicit import/execution, native explicit consent, preserved
+  resources and runtime skill body, stable imported state, no duplicate import,
+  stale consent refusal, and visible/recoverable errors. Unregistered leftover
+  directories do not count as imports; scoped packages are discovered. Unrelated
+  dependencies and unreadable scopes do not hide healthy skills. A registered
+  import remains marked imported after runtime failure while its error stays visible.
+- **Specs:** 07-plugins/16-trusted-extensions; ADR pi-npm-skill-discovery.
+- **Acceptance:** Plugin skill discovery and explicit trust boundary.
+- **Milestone:** Post-MVP compatibility.
+- **Status:** Automated via `apps/desktop/test/pi-skill-discovery.test.mjs` (real
+  import and plugin child process, native dialog boundary controlled) and
+  `node scripts/e2e-pi-skill-discovery-ui.mjs` (real React/Chromium panel with
+  controlled IPC results). Optional `PI_SKILL_PACKAGE_FIXTURE` points to an
+  unpacked published package for the reported planning-with-files path.
+
 ### E2E-SESSION-temporary-attachment-fork：临时任务预览与独立分支附件
 
 - **步骤**：在没有项目的任务中粘贴超过长文本阈值的内容并发送，点击对话中的附件。
@@ -8804,6 +8838,27 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **自动化**：`node --experimental-strip-types scripts/e2e-scheduled-paths.mjs`
   使用隔离的真实 Host 与 SQLite 配置，不向真实提供商发送推理请求。
 
+### E2E-MARKDOWN-table-actions
+
+- **Setup**: Render a conversation containing two Markdown tables, including
+  aligned columns, formatted text, Chinese text, commas, quotes, and `<br>` cells.
+- **Steps**: Copy the first table; download its CSV; expand it; use copy inside
+  the modal; close with Escape and with Close. Append a streamed row while the
+  preview is open. Repeat the preview at a narrow width in light/dark themes
+  and English/Chinese. Deny clipboard writes at the browser boundary.
+- **Expected**: Actions operate only on their own table. Markdown retains inline
+  syntax and alignment. CSV decodes as UTF-8 and preserves fields and line breaks.
+  The modal fits the viewport, traps focus, updates streamed rows, blocks native
+  work-panel surfaces, and returns focus on dismissal. Narrow previews keep short
+  headers on one line and scroll horizontally; sticky headers fully cover the
+  rows behind them. Failed copies report an
+  error, not success. Existing table wrapping remains intact.
+- **Automated coverage**: `node --test apps/desktop/test/markdown-table.test.mjs`
+  and `node scripts/test-markdown-table.mjs` after building the desktop. The
+  latter mounts the production Markdown component in an isolated Electron
+  window and exercises real clipboard/download boundaries. It does not call a
+  model or use the user's app profile.
+
 ## 原生搜索续跑契约（离线 sidecar）
 
 **范围：** ADR 0297；供应商原生搜索内容、估算、本地工具、Task 委派及历史恢复。不调用真实模型或搜索服务。
@@ -8827,6 +8882,22 @@ the latest destination. These assertions measure work counts, not device FPS.
 
 **证据：** 记录构建和测试退出码、基线 SHA、依赖版本、产物标识及独立评审，报告位于
 `docs/project/hosted-search-contract-verification.md`。不得记录真实会话或凭据。未执行明确标为 NOT RUN，不得标为 PASS。
+
+### E2E-CHAT-fork-completed-reply-while-running
+
+- **Preconditions:** Isolated real desktop profile, configured model, two turns
+  in one Desktop conversation; the first assistant reply has completed.
+- **Steps:** Send the second prompt. While it is still running, click **Branch
+  from this reply** on the first reply. Continue chatting in the child, then
+  return to the parent.
+- **Expected:** The child contains only history through the first reply, can
+  continue independently, and starts with no running turn. The parent keeps
+  running and retains its second prompt and reply. No live tail is overwritten.
+  A whole-session fork and a fork within the active tool loop remain rejected.
+  A navigation during the fork response records the child without stealing focus.
+- **Coverage:** Host fork regression, renderer session-fork-running tests,
+  session IPC contract tests, and real-model desktop acceptance. A local model
+  fixture or mocked component result is not real-model acceptance evidence.
 
 ### E2E-HOOKS-cancel-and-dispose
 

@@ -20,6 +20,7 @@ const TooltipButton = ({ children, ariaLabel, tooltip, ...props }) =>
   React.createElement("button", { ...props, "aria-label": ariaLabel ?? tooltip }, children);
 const shared = {
   CopyButton: ({ label }) => React.createElement("button", { "aria-label": label }),
+  MessageTimestamp: () => null,
   FileRefChip: () => null,
   LinkifiedText: ({ text }) => text,
   MessageAttachmentImage: () => null,
