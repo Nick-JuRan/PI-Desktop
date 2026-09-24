@@ -65,7 +65,7 @@ test("the shared tooltip hook always has an exit path", () => {
   // window blur inside the delay still paints a tooltip on an unfocused window.
   assert.match(uiSource, /const hide = \(\) => \{[\s\S]*?window\.clearTimeout\(showTimerRef\.current\)[\s\S]*?releaseTooltipSlot\(slotId\)/);
   // Unmount releases the tooltip and both pending timers.
-  assert.match(uiSource, /\}, \[\]\);\n\n\s*\/\/ A disabled trigger[\s\S]*?\n  \}, \[disabled\]\);/);
+  assert.match(uiSource, /\}, \[\]\);\r?\n\r?\n\s*\/\/ A disabled trigger[\s\S]*?\r?\n  \}, \[disabled\]\);/);
   assert.match(uiSource, /releaseTooltipSlot\(slotId\);[\s\S]{0,80}\}, \[\]\);/);
   // One shared guard set for the whole window closes what is on screen: window
   // blur, a hidden document, Escape, or a pointer that left its trigger.
