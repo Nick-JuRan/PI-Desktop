@@ -16,7 +16,8 @@ const dataDir = join(root, "data");
 const profile = join(root, "profile");
 const project = join(root, "project");
 const evidence = process.env.PI_KEEP_AWAKE_EVIDENCE_DIR;
-const port = Number(process.env.PI_KEEP_AWAKE_CDP_PORT || 19400);
+const baseCdpPort = Number(process.env.PI_KEEP_AWAKE_CDP_PORT || 19400);
+let launchCount = 0;
 mkdirSync(dataDir);
 mkdirSync(project);
 const host = new Host(resolveHostBinary(), dataDir);
@@ -45,6 +46,10 @@ function hasElectronPowerRequest() {
 }
 
 async function launch() {
+  // A second Electron launch uses the same isolated profile to prove
+  // persistence, but gets a fresh DevTools port so a slow first-process
+  // shutdown cannot make the new CDP endpoint ambiguous.
+  const port = baseCdpPort + launchCount++;
   const env = {
     ...process.env,
     PI_DESKTOP_DATA_DIR: dataDir,
@@ -61,14 +66,26 @@ async function launch() {
   child.stdout.on("data", (chunk) => { output = (output + chunk).slice(-4000); });
   child.stderr.on("data", (chunk) => { output = (output + chunk).slice(-4000); });
   let target;
-  await waitFor(async () => {
-    if (child.exitCode !== null) throw new Error(output);
+  try {
+    await waitFor(async () => {
+      if (child.exitCode !== null) throw new Error(output);
+      try {
+        target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json())
+          .find((entry) => entry.type === "page" && entry.url.includes("index.html") && !entry.url.includes("plugin-launcher"));
+        return !!target;
+      } catch { return false; }
+    }, 30_000, "desktop CDP target");
+  } catch (error) {
+    let endpoints = "unavailable";
     try {
-      target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json())
-        .find((entry) => entry.type === "page" && entry.url.includes("index.html") && !entry.url.includes("plugin-launcher"));
-      return !!target;
-    } catch { return false; }
-  }, 30_000, "desktop CDP target");
+      const [version, pages] = await Promise.all([
+        fetch(`http://127.0.0.1:${port}/json/version`).then((response) => response.json()),
+        fetch(`http://127.0.0.1:${port}/json/list`).then((response) => response.json()),
+      ]);
+      endpoints = JSON.stringify({ version, pages: pages.map((entry) => ({ type: entry.type, url: entry.url })) });
+    } catch {}
+    throw new Error(`${error.message}; port=${port}; childExit=${child.exitCode}; endpoints=${endpoints}; output=${output.slice(-2000)}`);
+  }
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   await once(ws, "open");
   console.log("Keep-awake desktop CDP target ready");
