@@ -3034,7 +3034,12 @@ reasoning-level control.
   unknown/custom models without an explicit override, disabled image input, and
   oversized images use the existing canonical `@<path>` file-tool fallback.
   There are no visual previews in MVP.
-- No voice input
+- When `AppSettings.voice.enabled` is true, the Composer toolbar shows a local
+  microphone action. The recording/transcribing overlay exposes duration,
+  input level, and cancel while active. Stopping inserts the recognized text
+  into the current draft (appending to existing text when needed); it never
+  submits the draft. This is local speech-to-text, not provider-backed speech
+  or text-to-speech (ADR 0307).
 
 ### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, D362, D397, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222)
 

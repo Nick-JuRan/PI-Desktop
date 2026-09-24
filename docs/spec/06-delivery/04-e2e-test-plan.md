@@ -15212,3 +15212,26 @@ renderer's durable transcript reads. No real model or provider is contacted.
   `official-native-search.test.ts`; shared route tests reject lookalike hosts,
   unsafe URLs and unknown gateways. The UI fixture does not prove Host/SQLite
   persistence or live provider availability.
+
+## E2E-VOICE-local-dictation
+
+- **Preconditions:** A test host with microphone permission granted, one local
+  voice model already downloaded, and a deterministic short utterance. No chat
+  provider credentials are configured or used.
+- **Steps:** Enable Voice in Settings and select the intended microphone,
+  language, Chinese output variant, and downloaded model. Reopen Settings and
+  confirm those choices persist. In the Composer, start recording, speak the
+  utterance, stop, and wait for transcription. Repeat once with Cancel, then
+  disable Voice and return to the Composer.
+- **Expected:** The microphone action appears only while Voice is enabled;
+  active capture shows recording state and can be cancelled. A completed
+  transcript is inserted into the existing draft (or becomes the draft) and is
+  never sent automatically. Cancel preserves the current draft and adds no
+  partial transcript. Captured audio stays in the main-process voice pipeline;
+  only state and transcript text reach the renderer. Model download is
+  separate from transcription and uses the local model cache.
+- **Specs:** `03-runtime/23-local-voice-input.md`, `04-ux/06-settings-ia.md`,
+  `04-ux/08-component-spec.md`, ADR 0307.
+- **Automation:** `packages/voice-runtime/test/*` covers controller, PCM,
+  language, model-catalog, and Chinese-output logic. Desktop microphone
+  acceptance requires the host permission/device/model preconditions above.

@@ -155,7 +155,6 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getPluginPanelTheme,
     isDeveloperMode,
     sendToRenderer,
-    voiceService,
   } = dependencies;
 
 
@@ -451,9 +450,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
 
   registerSpeechIpc({ registrar, speech });
 
-  if (voiceService) {
-    registerVoiceIpc({ registrar, voiceService });
-  }
+  registerVoiceIpc({ registrar, dataDir, getMainWindow });
 
   registerRemoteHostIpc({ registrar });
 

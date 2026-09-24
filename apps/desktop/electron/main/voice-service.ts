@@ -6,6 +6,7 @@
  */
 
 import { BrowserWindow } from "electron";
+import { IPC } from "@pi-desktop/shared";
 import { PvRecorderBackend, checkMicrophonePermission, requestMicrophonePermission } from "./audio-backend";
 import type {
   AudioCaptureFactory,
@@ -75,7 +76,7 @@ export class VoiceService {
 
     // Forward state changes to renderer
     this.controller.on("stateChange", (state: VoiceState) => {
-      this.sendToRenderer("voice:stateChanged", state);
+      this.sendToRenderer(IPC.event.voiceStateChanged, state);
     });
   }
 
@@ -127,7 +128,7 @@ export class VoiceService {
     await this.ensureRuntime();
     const gen = this.modelManager!.download(modelId);
     for await (const progress of gen) {
-      this.sendToRenderer("voice:modelProgress", { modelId, progress });
+      this.sendToRenderer(IPC.event.voiceModelProgress, { modelId, progress });
     }
   }
 

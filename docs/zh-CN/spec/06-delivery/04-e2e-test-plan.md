@@ -8878,3 +8878,11 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **里程碑：** 提供商配置维护。
 - **状态：** `pnpm test:e2e:provider-api-style`、`official-native-search.test.ts`；
   共享路由测试覆盖伪装域名、不安全地址和未知中转站。未验证线上服务或 Host/SQLite 保存。
+
+## E2E-VOICE-local-dictation
+
+- **前提：** 测试主机已授予麦克风权限，至少下载一个本地语音模型，并准备确定的短句；不配置或使用聊天 provider 凭据。
+- **步骤：** 在设置中启用 Voice，选择麦克风、语言、中文输出变体和已下载模型。重新打开设置确认选择持久化。回到 Composer，开始录音、说出短句、停止并等待转写；再用取消操作重复一次，最后关闭 Voice。
+- **预期：** 只有启用 Voice 后 Composer 才显示麦克风操作；录音状态可见且能取消。转写结果插入现有草稿（或作为新草稿），绝不自动发送。取消保留原草稿且不加入部分转写。采集音频只经过 main 进程语音流程；渲染器只接收状态和转写文本。模型下载与本地转写分离。
+- **规格：** `03-runtime/23-local-voice-input.md`、`04-ux/06-settings-ia.md`、`04-ux/08-component-spec.md`、ADR 0307。
+- **自动化：** `packages/voice-runtime/test/*` 覆盖 controller、PCM、语言、模型目录和中文输出逻辑。桌面麦克风验收需要满足以上权限、设备和模型前提。
