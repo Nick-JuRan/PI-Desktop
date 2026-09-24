@@ -10,7 +10,8 @@ import { jwtExpiry } from "../src/auth/crypto.mjs";
 const require = createRequire(import.meta.url);
 const username = process.env.FUSION_TEST_USERNAME;
 const password = process.env.FUSION_TEST_PASSWORD;
-const elementId = process.env.FUSION_TEST_ELEMENT_ID || "1";
+const referenceKind = process.env.FUSION_TEST_REFERENCE_KIND;
+const reference = process.env.FUSION_TEST_REFERENCE;
 
 async function readSettings(settingsPath) {
   try {
@@ -21,9 +22,10 @@ async function readSettings(settingsPath) {
   }
 }
 
-test("plugin entry obtains a live token and returns a successful live get_terms result", {
-  skip: !(username && password),
+test("plugin entry obtains a live token and returns terms from a prepared controlled claim baseline", {
+  skip: !(username && password && referenceKind && reference),
 }, async () => {
+  assert.ok(["application_number", "publication_number", "text"].includes(referenceKind));
   const dataPath = await mkdtemp(join(tmpdir(), "fusion-live-plugin-"));
   const settingsPath = join(dataPath, "settings.json");
   await writeFile(settingsPath, JSON.stringify({ username, password }), "utf8");
@@ -67,20 +69,24 @@ test("plugin entry obtains a live token and returns a successful live get_terms 
   try {
     await plugin.onLoad();
     assert.equal(typeof registeredTool?.execute, "function", "the actual plugin entry registered its tool");
-    const result = await registeredTool.execute({ action: "get_terms", element_id: elementId }, {});
+    const result = await registeredTool.execute({
+      action: "prepare",
+      reference_kind: referenceKind,
+      reference,
+    }, {});
 
     assert.equal(
       result?.ok,
       true,
       `live tool invocation failed: code=${String(result?.error?.code ?? "unknown")}; semantic_requests=${requests.length}; details withheld`,
     );
-    assert.equal(result.action, "get_terms");
+    assert.equal(result.action, "prepare");
     assert.ok(Array.isArray(result.terms?.chinese));
     assert.ok(Array.isArray(result.terms?.english));
-    assert.equal(requests.length, 1, "the read tool sent one live semantic request");
-    assert.equal(requests[0].origin, "http://10.160.28.16");
-    assert.equal(requests[0].status, 200);
-    assert.equal(requests[0].hasBearer, true);
+    assert.equal(requests.length, 2, "prepare creates a baseline and retrieves its terms");
+    assert.ok(requests.every((request) => request.origin === "http://10.160.28.16"));
+    assert.ok(requests.every((request) => request.status === 200));
+    assert.ok(requests.every((request) => request.hasBearer));
 
     const persisted = await readSettings(settingsPath);
     assert.equal(typeof persisted.token, "string");

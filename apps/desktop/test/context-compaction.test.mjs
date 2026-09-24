@@ -357,7 +357,7 @@ test("the transcript shows one row per compaction, the inspector the newest", ()
   assert.match(runtime, /checkpointDetailsWithGeneration/);
   assert.match(runtime, /mark: contextCompactionMark\(checkpoint\)/);
   // Both the durable records and the live event feed the same per-session list.
-  assert.match(store, /sessionCompactions: Record<string, ContextCompactionMark\[\]>/);
+  assert.match(store, /sessionCompactions: Record<string, \(ContextCompactionMark & \{ summary\?: string \}\)\[\]>/);
   assert.match(store, /rememberSessionCompactions\(id, detail\.session\)/);
   assert.match(store, /event\.type === "compaction_end" && event\.ok && event\.mark/);
   assert.match(store, /withCompactionMark\(/);

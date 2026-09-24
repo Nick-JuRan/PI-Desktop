@@ -31,6 +31,21 @@ test("every shipped catalog matches English keys and interpolation variables", (
   }
 });
 
+test("custom prompt template labels are populated in every locale", () => {
+  const keys = [
+    "settings.promptEnhancementCustomTemplateNeedsTemplate",
+    "settings.promptEnhancementCustomTemplateActive",
+  ];
+
+  for (const [id, catalog] of Object.entries(catalogs)) {
+    const flat = flattenCatalog(catalog);
+    for (const key of keys) {
+      assert.equal(typeof flat[key], "string", `${id} ${key}`);
+      assert.notEqual(flat[key].trim(), "", `${id} ${key}`);
+    }
+  }
+});
+
 test("canonical thinking levels are not translated catalog entries", () => {
   const levels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
   const effortKeys = [

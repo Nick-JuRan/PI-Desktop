@@ -2520,22 +2520,33 @@ identify the platform validation still needed.
 - **Preconditions**: The `local.fusion-search` development plugin is loaded; a
   dedicated intranet test account is configured only in that plugin's private
   settings; the declared authentication and search hosts are reachable; the
-  user grants the manifest's requested high-risk permissions; a read-only test
-  `element_id` is available.
+  user grants the manifest's requested high-risk permissions; a controlled
+  test claim reference is available. `prepare` creates a remote baseline, so
+  use only a test case or target-claim text approved for that side effect.
 - **Steps**: 1) Start with no stored token. 2) Invoke
-  `fusion_semantic_baseline` with `action=get_terms` and the test `element_id`.
-  3) Invoke the same read again. 4) Inspect the returned terms and the isolated
-  plugin settings without displaying credential or token values.
+  `fusion_semantic_baseline` with `action=prepare`, an explicit
+  `reference_kind` (`application_number`, `publication_number`, or `text`), and
+  the controlled reference. For `text`, provide your own concise paraphrase of
+  the technical solution in that claim; do not copy it verbatim or use the
+  whole application.
+  3) Inspect the returned `element_id` and Chinese/English terms and weights,
+  comparing them to that one claim. 4) If needed, invoke `update_terms` with
+  corrected lists. Inspect plugin settings without displaying credentials or
+  token values.
 - **Expected**: The first call completes the built-in login chain, persists a
-  usable token in the plugin-private settings, and returns the Chinese and
-  English terms; the second call uses the stored token. Neither credentials nor
-  token appear in tool arguments, results, or logs. The tool exposes exactly
-  `prepare`, `get_terms`, and `update_terms`; only the read action is plan-safe.
-  Mutating actions are validated separately against controlled test data and
-  are never automatically replayed after an ambiguous remote outcome.
+  usable token in the plugin-private settings, and returns the baseline terms
+  and weights immediately. The workflow targets one specified claim, not the
+  whole application; do not assume a case-number response is already
+  claim-specific. Prefer an application/publication number, refine its terms
+  with `update_terms`, and fall back to your own paraphrase of the target
+  claim's technical solution when the case-number baseline remains unsuitable. Neither credentials nor token appear
+  in tool arguments, results, or logs. The tool exposes exactly `prepare` and
+  `update_terms`; both actions mutate remote state and are never automatically
+  replayed after an ambiguous remote outcome.
 - **Specs linked**: `07-plugins/03-plugin-api.md`,
   `07-plugins/13-plugin-permissions-matrix.md`, `Extensions/fusion-search/README.md`
-- **Acceptance**: Plugin authentication, private persistence, and semantic read
+- **Acceptance**: Plugin authentication, private persistence, and semantic
+  baseline preparation with immediate term output
 - **Status**: Automated unit/integration coverage; live intranet test requires
   the dedicated test account and reachable service
 
@@ -6535,6 +6546,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   7. Switch the session to Plan, then to Goal, and inspect the tool catalog.
   8. Reload the session and re-expand the delegation card and every `Task`
      node.
+  9. Open a node with a long description and long tool paths, then resize the
+     work-panel dock to its minimum, default, and a wider width. Inspect the
+     topology card and live process at each width without repeatedly dragging
+     the divider to read a complete line.
 - **Expected**:
   - Both delegates in step 1 run concurrently, and `pinned` streams on its own
     provider/model while the parent keeps the session's.
@@ -6552,6 +6567,11 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     count. Expanding a node shows the brief, report exactly once, and
     `status`/`turns`/`toolCalls`. Delegate rows appear only inside that node,
     never in the turn stream or the minimap.
+  - At narrow, default, and wide dock widths, topology titles, descriptions,
+    and step summaries reflow within the card instead of using a fixed
+    one-line ellipsis. Long tool paths, commands, and answer fragments in the
+    dock wrap inside the committed width, produce no horizontal overflow, and
+    retain the panel body as the only scroll owner.
   - If the parent keeps working after those `Task` calls — thinking, `Read`,
     `Grep`, or a lifecycle row — that work is a separate processing group, not
     rows inside the delegation card (D319). The card's tile, “Subagent working”
@@ -15201,3 +15221,26 @@ renderer's durable transcript reads. No real model or provider is contacted.
   `official-native-search.test.ts`; shared route tests reject lookalike hosts,
   unsafe URLs and unknown gateways. The UI fixture does not prove Host/SQLite
   persistence or live provider availability.
+
+## E2E-VOICE-local-dictation
+
+- **Preconditions:** A test host with microphone permission granted, one local
+  voice model already downloaded, and a deterministic short utterance. No chat
+  provider credentials are configured or used.
+- **Steps:** Enable Voice in Settings and select the intended microphone,
+  language, Chinese output variant, and downloaded model. Reopen Settings and
+  confirm those choices persist. In the Composer, start recording, speak the
+  utterance, stop, and wait for transcription. Repeat once with Cancel, then
+  disable Voice and return to the Composer.
+- **Expected:** The microphone action appears only while Voice is enabled;
+  active capture shows recording state and can be cancelled. A completed
+  transcript is inserted into the existing draft (or becomes the draft) and is
+  never sent automatically. Cancel preserves the current draft and adds no
+  partial transcript. Captured audio stays in the main-process voice pipeline;
+  only state and transcript text reach the renderer. Model download is
+  separate from transcription and uses the local model cache.
+- **Specs:** `03-runtime/23-local-voice-input.md`, `04-ux/06-settings-ia.md`,
+  `04-ux/08-component-spec.md`, ADR 0307.
+- **Automation:** `packages/voice-runtime/test/*` covers controller, PCM,
+  language, model-catalog, and Chinese-output logic. Desktop microphone
+  acceptance requires the host permission/device/model preconditions above.

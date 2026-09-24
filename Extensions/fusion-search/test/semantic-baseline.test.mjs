@@ -78,12 +78,35 @@ test("prepare normalizes an application number and returns both term lists", asy
   assert.deepEqual(api.calls[1].payload, { eId: "ELEMENT-1" });
 });
 
-test("prepare accepts direct text and returns a compact text reference", async () => {
+test("prepare accepts a publication number through the case-number endpoint", async () => {
+  const api = fakeApi([
+    { status: 200, t: { element_id: "PUBLICATION-1" }, message: "SUCCESS" },
+    retrievalEnvelope({ chinese: [["通信", 4]] }),
+  ]);
+
+  const result = await executeSemanticBaseline({
+    api,
+    args: {
+      action: "prepare",
+      reference_kind: "publication_number",
+      reference: "CN 2020.123456 A",
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.reference, { kind: "publication_number", value: "CN2020123456A" });
+  assert.deepEqual(api.calls[0], {
+    endpoint: SEMANTIC_BASELINE_ENDPOINTS.addElement,
+    payload: { sno: "CN2020123456A", stxt: "" },
+  });
+});
+
+test("prepare accepts an agent-written claim-solution paraphrase and returns terms immediately", async () => {
   const api = fakeApi([
     { status: 200, t: { id: 42 }, message: "SUCCESS" },
     retrievalEnvelope({ chinese: [["点云", 5]] }),
   ]);
-  const text = "一种用于点云采集和事件检测的监测方法及其设备";
+  const text = "A monitoring method that collects point-cloud data and detects events based on the collected data.";
 
   const result = await executeSemanticBaseline({
     api,
@@ -92,38 +115,33 @@ test("prepare accepts direct text and returns a compact text reference", async (
 
   assert.equal(result.ok, true);
   assert.equal(result.element_id, "42");
+  assert.deepEqual(result.terms, { chinese: [{ term: "点云", weight: 5 }], english: [] });
   assert.deepEqual(result.reference, { kind: "text", length: text.length, preview: text });
   assert.deepEqual(api.calls[0].payload, { sno: "", stxt: text });
 });
 
-test("get_terms preserves active weights and exposes zero-weight deletions", async () => {
-  const api = fakeApi([
-    retrievalEnvelope({
-      chinese: [["保留词", 5]],
-      english: [["wireless", 3]],
-      deletedChinese: ["已删除中文"],
-      deletedEnglish: ["deleted english"],
-    }),
-  ]);
-
+test("get_terms is rejected because prepare returns terms and weights", async () => {
+  const api = fakeApi([]);
   const result = await executeSemanticBaseline({
     api,
     args: { action: "get_terms", element_id: 42 },
   });
 
-  assert.deepEqual(result, {
-    ok: true,
-    action: "get_terms",
-    element_id: "42",
-    terms: {
-      chinese: [{ term: "保留词", weight: 5 }],
-      english: [{ term: "wireless", weight: 3 }],
-    },
-    deleted_terms: {
-      chinese: [{ term: "已删除中文" }],
-      english: [{ term: "deleted english" }],
-    },
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "INVALID_INPUT");
+  assert.equal(api.calls.length, 0);
+});
+
+test("prepare rejects unsupported case-number kinds before sending a request", async () => {
+  const api = fakeApi([]);
+  const result = await executeSemanticBaseline({
+    api,
+    args: { action: "prepare", reference_kind: "grant_number", reference: "CN123456A" },
   });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "INVALID_INPUT");
+  assert.equal(api.calls.length, 0);
 });
 
 test("update_terms preserves an omitted language and sends explicit deletions", async () => {
@@ -176,14 +194,18 @@ test("update_terms preserves an omitted language and sends explicit deletions", 
   });
 });
 
-test("an aborted read does not return a success after the transport completes", async () => {
+test("cancellation during update_terms retrieval does not return success after transport completion", async () => {
   let startedResolve;
   let finishFetch;
   const started = new Promise((resolve) => { startedResolve = resolve; });
   const response = new Promise((resolve) => { finishFetch = resolve; });
   const controller = new AbortController();
   const pending = executeSemanticBaseline({
-    args: { action: "get_terms", element_id: 42 },
+    args: {
+      action: "update_terms",
+      element_id: 42,
+      terms: { chinese: [{ term: "wanted term", weight: 3 }] },
+    },
     authorization: "Bearer test-token",
     signal: controller.signal,
     fetchImpl: async () => {
@@ -199,14 +221,18 @@ test("an aborted read does not return a success after the transport completes", 
   assert.equal(result.ok, false);
   assert.equal(result.error.code, "CANCELLED");
 });
-test("an aborted read maps the host cancellation to CANCELLED", async () => {
+test("host cancellation during update_terms retrieval maps to CANCELLED", async () => {
   let startedResolve;
   let rejectFetch;
   const started = new Promise((resolve) => { startedResolve = resolve; });
   const response = new Promise((_resolve, reject) => { rejectFetch = reject; });
   const controller = new AbortController();
   const pending = executeSemanticBaseline({
-    args: { action: "get_terms", element_id: 42 },
+    args: {
+      action: "update_terms",
+      element_id: 42,
+      terms: { chinese: [{ term: "wanted term", weight: 3 }] },
+    },
     authorization: "Bearer test-token",
     signal: controller.signal,
     fetchImpl: async () => {

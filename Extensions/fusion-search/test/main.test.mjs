@@ -26,10 +26,19 @@ function setupPi({ token, credentials = { username: "user1", password: "pw1" } }
     net: {
       fetch: async (input) => {
         netCalls.push(input);
-        return {
-          status: 200,
-          bodyText: JSON.stringify({ status: 200, t: { code: "200", data: { records: [] } } }),
-        };
+        const isCreate = input.url.endsWith("/neusipo-app-search/element/addElement");
+        const response = isCreate
+          ? { status: 200, t: "ELEMENT-1", message: "SUCCESS" }
+          : {
+            status: 200,
+            t: {
+              code: "200",
+              data: {
+                records: [{ srcEle: [{ sec: "cn", eles: [{ wd: "claim term", wt: 4 }] }] }],
+              },
+            },
+          };
+        return { status: 200, bodyText: JSON.stringify(response) };
       },
     },
     agent: {
@@ -57,6 +66,31 @@ test("the tool validates the action before touching credentials", async () => {
   }
 });
 
+test("the registered schema exposes two claim-scoped actions and supported case-number kinds", async () => {
+  const { pi, getRegisteredTool } = setupPi();
+  globalThis.pi = pi;
+  const plugin = require("../main.cjs");
+  try {
+    await plugin.onLoad();
+    const tool = getRegisteredTool();
+    assert.deepEqual(tool.schema.properties.action.enum, ["prepare", "update_terms"]);
+    assert.deepEqual(tool.schema.properties.reference_kind.enum, [
+      "application_number",
+      "publication_number",
+      "text",
+    ]);
+    assert.equal(tool.planSafeActions, undefined);
+    assert.match(tool.description, /one explicitly specified patent claim/i);
+    assert.match(tool.description, /not the application as a whole/i);
+    assert.match(tool.schema.properties.reference_kind.description, /your own paraphrase/i);
+    assert.match(tool.schema.properties.reference_kind.description, /Do not copy the claim verbatim/i);
+    assert.match(tool.schema.properties.reference_kind.description, /No other case-number type is accepted/);
+  } finally {
+    await plugin.onUnload();
+    delete globalThis.pi;
+  }
+});
+
 test("a tool call uses the stored token and sends it as the Authorization header", async () => {
   const token = makeFakeJwt(7200);
   const { pi, getRegisteredTool, netCalls } = setupPi({ token });
@@ -65,11 +99,18 @@ test("a tool call uses the stored token and sends it as the Authorization header
   try {
     await plugin.onLoad();
     const tool = getRegisteredTool();
-    const result = await tool.execute({ action: "get_terms", element_id: 1 }, {});
+    const result = await tool.execute({
+      action: "prepare",
+      reference_kind: "application_number",
+      reference: "202010123456.7",
+    }, {});
     assert.equal(result.ok, true);
-    assert.equal(netCalls.length, 1);
-    assert.equal(netCalls[0].headers.Authorization, `Bearer ${token}`);
-    assert.equal(netCalls[0].url, "http://10.160.28.16/api/neusipo-app-search/fusionSearch/element/retrieval");
+    assert.equal(result.action, "prepare");
+    assert.deepEqual(result.terms, { chinese: [{ term: "claim term", weight: 4 }], english: [] });
+    assert.equal(netCalls.length, 2);
+    assert.ok(netCalls.every((input) => input.headers.Authorization === `Bearer ${token}`));
+    assert.equal(netCalls[0].url, "http://10.160.28.16/api/neusipo-app-search/element/addElement");
+    assert.equal(netCalls[1].url, "http://10.160.28.16/api/neusipo-app-search/fusionSearch/element/retrieval");
   } finally {
     await plugin.onUnload();
     delete globalThis.pi;
@@ -87,7 +128,11 @@ test("an expiring token with no credentials reports AUTH_CONFIG_MISSING, not a s
   try {
     await plugin.onLoad();
     const tool = getRegisteredTool();
-    const result = await tool.execute({ action: "get_terms", element_id: 1 }, {});
+    const result = await tool.execute({
+      action: "prepare",
+      reference_kind: "publication_number",
+      reference: "CN123456A",
+    }, {});
     assert.equal(result.ok, false);
     assert.equal(result.error.code, "AUTH_CONFIG_MISSING");
     assert.equal(netCalls.length, 0, "no search request was sent with the expiring token");

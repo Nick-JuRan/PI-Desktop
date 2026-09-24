@@ -267,11 +267,14 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   Manual `/compact` remains available from the command palette for an idle
   session; the transcript shows where each compaction happened and the context
   usage inspector shows whether a checkpoint is installed.
-Speech bindings (`AppSettings.speech`) are **not a Settings surface** (ADR
-0291). The host keeps the speech capability and the `speech/*` IPC for plugins
-and for bindings that are already stored, but nothing here picks a
-transcription or speech provider, protocol, model, or voice, and search indexes
-no speech keys.
+Provider-backed speech bindings (`AppSettings.speech`) are **not a Settings
+surface** (ADR 0291). The host keeps the speech capability and `speech/*` IPC
+for plugins and existing bindings; this surface selects no provider, protocol,
+speech model, or TTS voice. Local microphone-to-text input uses the separate
+`AppSettings.voice` settings described in ADR 0307 and
+`03-runtime/23-local-voice-input.md`: it configures capture, languages, and a
+local recognition model, with no provider selection. Settings search indexes
+the local voice controls, not provider-backed speech bindings.
 
 Token usage is **not a Settings destination** (D335 / ADR 0173). Completed-turn
 history stays host-owned (`session.endTurn.usage`, `stats.getTokenUsageHistory`).
@@ -825,9 +828,10 @@ system while preserving their different data ownership:
     clearing the search restores the complete index
 14. Info renders disabled, checking, up-to-date, available, downloading,
     downloaded, and error update states without adding another destination
-15. Native select option lists remain readable in both light and dark themes,
-    including when Chromium delegates the opened list surface to Windows; the
-    same global rule covers non-Settings native selects
+15. Settings dropdowns use `SettingsMenuSelect` (anchored menu), never native
+    `<select>`. Native select option lists outside Settings remain readable in
+    both light and dark themes, including when Chromium delegates the opened
+    list surface to Windows
 16. Shortcut recording rejects modifier-free non-function keys, reserved
     editor/OS chords, and conflicts; successful overrides immediately drive
     app behavior and macOS menu accelerators and survive restart
@@ -863,6 +867,17 @@ system while preserving their different data ownership:
 27. The Skills page Market view browses public-HTTPS catalogs, previews
     the assembled document, and installs only through `skills.create`; oversized
     expanded documents are refused and source badges follow `sourceId`
+28. All Settings UI must use shared primitives from `components/ui.tsx` and
+    `components/settings/`:
+    - Boolean toggles → `SettingsToggle` (not inline `<button role="switch">`)
+    - Multi-option selectors → `SegmentedControl` (not inline
+      `<div className="settings-segment">` with manual button loops)
+    - Dropdowns → `SettingsMenuSelect` (not native `Select` / `<select>`)
+    - Checkboxes → `Checkbox` (not inline `<label><input type="checkbox">`)
+    - Buttons → `Button` (not raw `<button>` with manual class names)
+    - Status indicators → `Badge` (not inline `<span>` with manual classes)
+    - Layout → `SettingsCard` + `SettingsRow` from `features/settings/primitives`
+    Inline reimplementation of any shared primitive is a spec violation.
 
 ## 5. General chrome metrics
 
