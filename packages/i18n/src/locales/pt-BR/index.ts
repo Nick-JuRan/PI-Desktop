@@ -576,6 +576,9 @@ export const ptBR = {
     dismiss: "Dispensar"
   },
   settings: {
+    power: "Energia",
+    keepAwakeWhileRunning: "Manter o computador ativo",
+    keepAwakeWhileRunningDesc: "Impede a suspensão por inatividade enquanto o PI-Desktop estiver aberto. A tela pode apagar; a suspensão manual e ao fechar a tampa continuam funcionando.",
     imageModel: "Modelo de imagens",
     imageModelUnset: "Sem configurar",
     imageModelUnavailable: "Atualmente indisponível",
@@ -1679,7 +1682,7 @@ export const ptBR = {
     subagent: "Subagente",
     subagentTask: "Tarefa",
     subagentTaskEmpty: "Nenhuma descrição de tarefa.",
-    subagentClose: "Fechar detalhes do subagente",
+    subagentReadOnly: "Subagentes são orientados pelo agente principal — a entrada não está disponível.",
     subagentEmpty: "Os detalhes do subagente não estão mais disponíveis.",
     resize: "Redimensionar painel de trabalho",
     maximize: "Expandir painel de trabalho",
@@ -1696,6 +1699,7 @@ export const ptBR = {
       browser: "Navegador",
       file: "Arquivos",
       plugin: "Visualização de plugin",
+      subagent: "Subagente",
     },
     pluginView: {
       failed: "Não foi possível carregar esta visualização. Recarregue o plugin e tente novamente."
@@ -2139,6 +2143,11 @@ export const ptBR = {
       idHint: "É usado como prefixo nos nomes das ferramentas e não pode ser alterado depois.",
       command: "Comando",
       commandHint: "Executável que será iniciado. Use um caminho absoluto se ele não estiver no PATH.",
+      commandHintNpx: "Usa o Node.js do PATH, da instalação oficial, fnm, nvm ou Volta.",
+      commandHintUvx: "Usa o uv do PATH ou do local de instalação padrão.",
+      launcherCustom: "Personalizado",
+      commandPath: "Executável",
+      commandPlaceholder: "npx ou um caminho absoluto",
       args: "Argumentos",
       argsHint: "Argumentos passados ao comando, um por linha ou separados por espaço.",
       env: "Variáveis de ambiente",
