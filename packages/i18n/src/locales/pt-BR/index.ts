@@ -220,7 +220,7 @@ export const ptBR = {
     copyTableMarkdown: "Copiar tabela como Markdown",
     exportTableCsv: "Baixar tabela como CSV",
     tablePreview: "Expandir tabela",
-    closeTablePreview: "Fechar pré-visualização da tabela",
+    closeTablePreview: "Fechar visualização da tabela",
     tableCopied: "Tabela copiada",
     tableCopyFailed: "Não foi possível copiar a tabela",
     tableExportFailed: "Não foi possível baixar a tabela",
