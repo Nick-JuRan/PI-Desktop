@@ -60,6 +60,7 @@ test("skills and MCP filter one list by level instead of stacking two sections",
   assert.doesNotMatch(layout, /AgentCapabilitySection|AgentCapabilityColumn/);
   assert.match(layout, /agent-capability-list/);
   assert.match(segmentedControl, /role = "radiogroup"/);
+  assert.match(layout, /<SegmentedControl[\s\S]*?value=\{filter\}/);
   assert.match(layout, /settings\.capabilityFilterAll/);
   // Subagents are global-only, so they get no level filter and no project.
   assert.doesNotMatch(subagents, /AgentProjectPicker|projectPath|CapabilityFilter/);
@@ -120,8 +121,10 @@ test("capability surfaces use the shared settings hierarchy", () => {
 });
 
 test("the workbench reuses the shared segmented control instead of a third copy", () => {
+  assert.match(layout, /<SegmentedControl/);
   assert.match(layout, /className="agent-capability-segment"/);
   assert.match(layout, /itemClassName="agent-capability-segment-btn"/);
+  assert.match(segmentedControl, /getSegmentedControlItemAttributes\(role, label, value, option\)/);
   assert.match(segmentedControl, /cx\("settings-segment", className\)/);
   assert.match(segmentedControl, /"settings-segment-item"/);
   // providers.css defines the shared segment and imports after settings.css, so

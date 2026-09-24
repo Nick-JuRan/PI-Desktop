@@ -30,6 +30,10 @@ function cssRule(selector) {
 
 test("remote hosts is an inventory plus one SSH/Pair add form", () => {
   assert.match(page, /role="tablist"/);
+  for (const mode of ["ssh", "pair"]) {
+    assert.ok(page.includes(`id: "remote-host-add-${mode}"`));
+    assert.ok(page.includes(`controls: "remote-host-add-panel-${mode}"`));
+  }
   assert.match(page, /id: "remote-host-add-ssh"/);
   assert.match(page, /controls: "remote-host-add-panel-ssh"/);
   assert.match(page, /id: "remote-host-add-pair"/);
