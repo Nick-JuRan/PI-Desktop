@@ -158,7 +158,8 @@ test("a delegate gets the session's turn-boundary budget protection (ADR 0299)",
   // retention rule, and the degradation ladder of decision 4.
   assert.match(subagentContext, /prepareCompaction\(/);
   assert.match(subagentContext, /generateSummaryWithUsage\(/);
-  assert.match(subagentContext, /contextBudgetFor\(input\.model/);
+  assert.match(subagentContext, /const budget = delegateContextBudgetFor\(\s*input\.model,\s*input\.messages,/);
+  assert.match(subagentContext, /const estimate = contextBudgetFor\(model, requestMessages\)/);
   assert.match(subagentContext, /delegateRetentionMode/);
   assert.match(subagentContext, /\? "active_turn"\s*: "completed_turn"/);
   assert.match(subagentContext, /degradedDelegateMessages/);
