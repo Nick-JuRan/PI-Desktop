@@ -2640,6 +2640,66 @@ identify the platform validation still needed.
 - **Status**: Automated unit/integration coverage; live intranet test requires
   the dedicated test account and reachable service
 
+#### E2E-PLUGIN-fusion-boolean-search
+
+- **Preconditions**: The `local.fusion-search` development plugin is loaded;
+  the plugin's private settings contain the test account credentials or a
+  currently usable token; the declared intranet hosts are reachable; and a
+  semantic baseline is selected (or can be prepared); a single supported
+  database plus a controlled Boolean query are approved for creating a real
+  remote search-history entry.
+- **Steps**: 1) Invoke `fusion_boolean_search` with `database` set to a
+  displayed code (`CNTXT`, `ENTXT`, `ENTXTC`, `VEN`, or `DWPI`) and `query` set
+  to the controlled expression. 2) Inspect only `total_hits` and `session_id`.
+  3) Invoke `fusion_semantic_result_page` with that `session_id` and
+  `page=1`; confirm the same session is addressed and semantic rank fields are
+  returned. 4) Repeat with `CTTXT` and verify it resolves to the provider's
+  canonical `CNTXT` catalog entry.
+- **Expected**: The tool obtains credentials through the existing shared
+  token manager, resolves internal `dbId` from the live database catalog,
+  resolves the active semantic baseline, validates and executes the query,
+  retains up to 400 ranked candidates, and returns the total hit count plus the
+  opaque provider `ssId` under `session_id`; it does not return records or
+  internal database IDs. A failed or cancelled search is never automatically
+  replayed because it may already have created remote history. Invalid input
+  or invalid syntax is rejected before search execution. If search execution
+  returns a session but count retrieval fails, the error retains `session_id`
+  so the caller can resume by session rather than creating a duplicate search.
+- **Specs linked**: `07-plugins/03-plugin-api.md`,
+  `07-plugins/13-plugin-permissions-matrix.md`,
+  `Extensions/fusion-search/README.md`
+- **Acceptance**: Authenticated Boolean search against one displayed database
+  with a reusable results-session identifier and bounded output
+- **Status**: Automated unit/integration coverage; live intranet test requires
+  a dedicated account, reachable service, and a query approved for remote
+  history creation
+
+#### E2E-PLUGIN-fusion-semantic-result-page
+
+- **Preconditions**: The `local.fusion-search` plugin is loaded; the private
+  plugin settings authorize the intranet search service; and `session_id`
+  identifies an existing session whose semantic sorting was confirmed by the
+  provider.
+- **Steps**: 1) Invoke `fusion_semantic_result_page` with the session ID and
+  `page=1`. 2) Invoke it again with `page=2` when `totalPage` is greater than
+  one. 3) Inspect publication number, title, similarity, semantic rank, and
+  the plain-text abstract and main-claim fields.
+- **Expected**: The request uses `size=20`, `showAbsFlag="1"`, and
+  `start=(page-1)*20`; the response returns `totalPage=ceil(listCounts/20)`
+  and the requested page. Every returned row belongs to the supplied session,
+  includes `simVal` and `semanticSort`, and is ordered by semantic rank. The
+  abstract and main-claim fields contain complete plain text, without provider
+  detail labels or HTML/XML markup; paragraph boundaries remain readable and
+  absent content is an empty string. A regular unranked session or cross-session
+  row is rejected rather than presented as semantic output. The tool reads
+  existing search state and does not rerun the query.
+- **Specs linked**: `07-plugins/03-plugin-api.md`,
+  `Extensions/fusion-search/README.md`
+- **Acceptance**: Bounded semantic result paging with session identity,
+  relevance fields, and requested document details
+- **Status**: Automated unit/integration coverage; live intranet acceptance
+  requires a currently semantic-sorted session
+
 #### E2E-024G: Marketplace detail sheet shows README, permissions, versions
 
 - **Preconditions**: Official marketplace catalog available.
@@ -8626,6 +8686,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 | Acceptance | Scenarios |
 |---|---|
+| G — Fusion Search Boolean tool | E2E-PLUGIN-fusion-boolean-search |
+| G — Fusion Search semantic result pages | E2E-PLUGIN-fusion-semantic-result-page |
 | C / F — Hourly task updates | E2E-SCHEDULED-manual-to-hourly |
 | C / F / Quality — Saved project isolation | E2E-SCHEDULED-manual-workspace-binding |
 | C / F / Quality — Desktop automations | E2E-SCHEDULED-desktop-automation-lifecycle |
