@@ -54,8 +54,8 @@ function normalizeReferenceKind(value, reference) {
       ? "application_number"
       : "text";
   }
-  if (value !== "application_number" && value !== "text") {
-    fail("INVALID_INPUT", "reference_kind must be application_number or text");
+  if (value !== "application_number" && value !== "publication_number" && value !== "text") {
+    fail("INVALID_INPUT", "reference_kind must be application_number, publication_number, or text");
   }
   return value;
 }
@@ -65,10 +65,10 @@ function normalizeReference(value, kind) {
   const source = value.trim();
   if (!source) fail("INVALID_INPUT", "reference must not be empty");
 
-  if (kind === "application_number") {
+  if (kind === "application_number" || kind === "publication_number") {
     const normalized = source.replace(/[.\s]+/gu, "");
     if (normalized.length > 50 || !/^[A-Za-z0-9/]+$/.test(normalized)) {
-      fail("INVALID_INPUT", "application_number may contain only letters, digits, or / and is limited to 50 characters");
+      fail("INVALID_INPUT", `${kind} may contain only letters, digits, dots, spaces, or / and is limited to 50 characters`);
     }
     return normalized;
   }
@@ -349,12 +349,6 @@ async function prepare(api, args, signal) {
   };
 }
 
-async function getTerms(api, args, signal) {
-  const elementId = normalizeElementId(args.element_id);
-  const terms = await readTerms(api, elementId, signal);
-  return { ok: true, action: "get_terms", ...terms };
-}
-
 async function updateTerms(api, args, signal) {
   const elementId = normalizeElementId(args.element_id);
   const input = normalizeTermsInput(args.terms);
@@ -392,9 +386,8 @@ async function runAction(api, args, signal) {
   if (!isObject(args)) fail("INVALID_INPUT", "tool arguments must be an object");
   const action = args.action;
   if (action === "prepare") return prepare(api, args, signal);
-  if (action === "get_terms") return getTerms(api, args, signal);
   if (action === "update_terms") return updateTerms(api, args, signal);
-  fail("INVALID_INPUT", "action must be prepare, get_terms, or update_terms");
+  fail("INVALID_INPUT", "action must be prepare or update_terms");
 }
 
 /**

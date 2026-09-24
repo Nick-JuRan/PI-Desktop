@@ -32,7 +32,8 @@ synthesize({ sessionId, text, voice?, format? }) → { path, mimeType, dataUrl? 
 ```
 
 协议 id 匹配 `^[a-z][a-z0-9._-]{0,63}$`。speech 为空或缺省即未配置状态；应用界面
-不再读取该绑定，调用方只有插件与显式 IPC 调用（ADR 0291）。
+不再读取此 provider 绑定，调用方只有插件与 `speech/*` IPC（ADR 0291）。它与
+`AppSettings.voice` 本地麦克风转写设置分离（ADR 0307、`23-local-voice-input.md`）。
 
 ## 3. 内置协议
 
@@ -68,8 +69,10 @@ pi-desktop/speech/synthesize
 
 ## 6. 产品
 
-设置页面**不再提供**语音入口（ADR 0291）。绑定由调用方通过宿主设置接口写入，
-消费方只有插件与 `speech/*` IPC，渲染器没有任何转写或朗读控件。
-Whisper / TTS 模型不得出现在聊天模型选择器中。
+设置页面**不提供基于 provider 的语音入口**（ADR 0291）。绑定由调用方通过宿主
+设置接口写入，消费方只有插件与 `speech/*` IPC。本地麦克风转写是
+`23-local-voice-input.md` 中定义的独立能力；它不增加 provider 选择器或 TTS
+控件。Whisper / TTS 模型不得出现在聊天模型选择器中。
 
-v1 不实现麦克风采集、Realtime 和 agent 工具。
+基于 provider 的 speech API 不实现麦克风采集、Realtime 或 agent 工具。本地采集
+和转写另有规格说明。
