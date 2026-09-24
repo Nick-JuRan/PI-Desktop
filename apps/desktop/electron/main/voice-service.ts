@@ -5,7 +5,7 @@
  * means zero import overhead at startup.
  */
 
-import { BrowserWindow } from "electron";
+import { app, BrowserWindow } from "electron";
 import { IPC } from "@pi-desktop/shared";
 import { PvRecorderBackend, checkMicrophonePermission, requestMicrophonePermission } from "./audio-backend";
 import type {
@@ -171,4 +171,13 @@ export class VoiceService {
       // Window may be closing
     }
   }
+}
+
+export function createVoiceService(
+  modelCacheDir: string,
+  getWindow: () => BrowserWindow | null,
+): VoiceService {
+  const service = new VoiceService(modelCacheDir, getWindow);
+  app.once("before-quit", () => service.dispose());
+  return service;
 }

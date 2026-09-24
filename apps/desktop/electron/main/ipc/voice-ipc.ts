@@ -3,27 +3,17 @@
  * Follows the same pattern as speech-ipc.ts and other IPC modules.
  */
 
-import { join } from "node:path";
-import { app, type BrowserWindow } from "electron";
 import { IPC } from "@pi-desktop/shared";
 import type { IpcRegistrar } from "./types";
-import { VoiceService } from "../voice-service";
+import type { VoiceService } from "../voice-service";
 
 export function registerVoiceIpc({
   registrar,
-  dataDir,
-  getMainWindow,
+  voiceService,
 }: {
   registrar: IpcRegistrar;
-  dataDir: string;
-  getMainWindow: () => BrowserWindow | null;
+  voiceService: VoiceService;
 }): void {
-  const voiceService = new VoiceService(
-    join(dataDir, "voice-models"),
-    getMainWindow,
-  );
-  app.once("before-quit", () => voiceService.dispose());
-
   const { handle } = registrar;
 
   handle(IPC.invoke.voiceStart, (settings: unknown) =>
