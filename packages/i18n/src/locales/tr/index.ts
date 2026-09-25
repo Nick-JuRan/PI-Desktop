@@ -1,5 +1,33 @@
 import type { EnglishCatalog } from "../en/index.js";
-import { forkExtensionsSubagents, forkSettings } from "./fork.js";
+
+// Fork-only strings (fork features: subagent depth, subagent tool selection).
+// Kept as one block at the top of the file so upstream edits never touch it;
+// spread into `settings` and `extensions.subagents` below.
+const forkSettings = {
+  subagentExecutionTitle: "Alt ajan yürütme",
+  subagentDepthTitle: "Maksimum alt ajan derinliği",
+  subagentDepthDesc: "Kaç düzeyde devredilmiş alt ajan oluşturulabileceğini belirler. 1 doğrudan alt ajanlara, 2 onların çocuklarına da izin verir; 0 devri kapatır.",
+  subagentDepthLevel: "Düzey {{depth}}",
+  subagentDepthDisabled: "Devre dışı",
+};
+
+const forkExtensionsSubagents = {
+  toolCatalogHint: "Devralma kapalıyken yalnızca işaretlenen yetenekler etkinleştirilir. Bir MCP sunucusunu işaretlemek tüm araçlarını verir.",
+  toolCatalogSkills: "Skills",
+  toolCatalogMcp: "MCP sunucuları",
+  toolCatalogPlugins: "Eklenti araçları",
+  toolCatalogLoading: "Bu çalışma alanındaki kullanılabilir yetenekler yükleniyor…",
+  toolCatalogEmpty: "Bu çalışma alanında seçilebilir Skill, MCP sunucusu veya eklenti aracı yok.",
+  mcpAllTools: "Bu sunucuyu seçmek keşfedilen tüm araçları verir",
+  mcpToolCount: "{{count}} araç yüklendi",
+  mcpToolCount_one: "1 araç yüklendi",
+  mcpToolCount_other: "{{count}} araç yüklendi",
+  mcpStatusReady: "hazır",
+  mcpStatusConnecting: "bağlanıyor",
+  mcpStatusFailed: "başarısız",
+  mcpStatusIdle: "test edilmedi",
+};
+
 
 export const tr = {
   app: {

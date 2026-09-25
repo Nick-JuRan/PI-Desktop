@@ -1,4 +1,31 @@
-import { forkExtensionsSubagents, forkSettings } from "./fork.js";
+// Fork-only strings (fork features: subagent depth, subagent tool selection).
+// Kept as one block at the top of the file so upstream edits never touch it;
+// spread into `settings` and `extensions.subagents` below.
+const forkSettings = {
+  subagentExecutionTitle: "Subagent execution",
+  subagentDepthTitle: "Maximum subagent depth",
+  subagentDepthDesc: "Controls how many levels of delegated subagents may be created. 1 allows direct subagents; 2 also allows them to create children; 0 disables delegation.",
+  subagentDepthLevel: "Level {{depth}}",
+  subagentDepthDisabled: "Disabled",
+};
+
+const forkExtensionsSubagents = {
+  toolCatalogHint: "With inheritance off, only checked capabilities are activated. Checking an MCP server grants all of its tools.",
+  toolCatalogSkills: "Skills",
+  toolCatalogMcp: "MCP servers",
+  toolCatalogPlugins: "Plugin tools",
+  toolCatalogLoading: "Loading capabilities available in this workspace…",
+  toolCatalogEmpty: "No active Skills, MCP servers, or plugin tools are available in this workspace.",
+  mcpAllTools: "Selecting this server grants all discovered tools",
+  mcpToolCount: "{{count}} tools loaded",
+  mcpToolCount_one: "1 tool loaded",
+  mcpToolCount_other: "{{count}} tools loaded",
+  mcpStatusReady: "ready",
+  mcpStatusConnecting: "connecting",
+  mcpStatusFailed: "failed",
+  mcpStatusIdle: "not tested",
+};
+
 export const en = {
   app: {
     shellName: "PI-Desktop",
