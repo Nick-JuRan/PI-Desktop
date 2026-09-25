@@ -1,11 +1,59 @@
-# 融合检索 (Fusion Search)
+# Fusion Search
 
 `local.fusion-search` is a PI-Desktop agent-tool plugin for the intranet
-Fusion Search service. This version acquires its own authentication tokens:
+Fusion Search service. Its tools share one token manager and private settings:
 the legacy browser-extension token refresher and the `.token/neusipo_token.json`
 file channel are both retired.
 
-## Tool
+## Tools
+
+### `fusion_boolean_search`
+
+Run a Boolean search in one database using the displayed database code and a
+query expression. Supported codes are `CNTXT`, `ENTXT`, `ENTXTC`, `VEN`, and
+`DWPI`. `CTTXT` is accepted as an alias for the provider's canonical `CNTXT`
+code. The tool loads the current database catalog and resolves its internal
+`dbId`; callers never need to know or provide that identifier.
+
+The tool uses the active semantic baseline (the most recently prepared by this
+plugin, or the account's selected baseline) and retains up to 400 candidates
+for later pages. If no semantic baseline is selected, prepare one with
+`fusion_semantic_baseline` first. The result is intentionally compact:
+
+```json
+{ "ok": true, "database": "CNTXT", "total_hits": 123, "session_id": "..." }
+```
+
+`session_id` is the opaque provider `ssId`, not a visible history number such
+as `mixSsNum`. It can be passed to the result-page API to retrieve pages from
+the same search. The tool returns no patent records. A Boolean search creates
+remote search history, and the plugin never automatically replays it after an
+uncertain outcome; check the remote history before manually retrying.
+If search execution returned a session but its count lookup fails, the error
+also includes that `session_id` so result retrieval can resume without
+submitting a duplicate search.
+
+### `fusion_semantic_result_page`
+
+Read one page from an existing semantically sorted session:
+
+```json
+{ "session_id": "...", "page": 1 }
+```
+
+The page size is fixed at 20; `start` is calculated from the one-based page.
+Each record includes `pnId`, `ti`, `simVal`, `semanticSort`, `abview`, and
+`clms`. `abview` and `clms` are plain-text strings, not provider detail objects:
+the tool takes the first non-empty field value, removes HTML/XML markup, decodes
+common HTML/XML entities, and keeps paragraph breaks. Provider field labels such
+as `摘要` / `AB` or `中文权利要求` / `CLMS` are not included. Missing content is
+an empty string. The response also includes `totalPage`, calculated as the
+ceiling of `listCounts / 20`, and the requested `page`. The tool checks that
+every returned row carries semantic scores/ranks and belongs to the requested
+session; an ordinary, unranked, or mismatched page is reported as an error,
+never presented as a semantic list.
+
+### `fusion_semantic_baseline`
 
 `fusion_semantic_baseline` has two actions:
 
@@ -36,8 +84,8 @@ is no longer public; `prepare` returns generated terms immediately, while
 
 ## Authentication
 
-Semantic-baseline calls go through the host's audited `pi.net.fetch` to
-`10.160.28.16` only.
+Boolean-search and semantic-baseline API calls go through the host's audited
+`pi.net.fetch` to `10.160.28.16` only.
 
 Token acquisition is built in. The plugin runs the same HTTP chain as the
 legacy `auth_http_login.py` script — slider captcha solved by luminance
@@ -54,18 +102,21 @@ lives, and collapses repeated Set-Cookie headers, which carry the login
 
 Tokens are stored and lazily refreshed: each tool call checks the JWT `exp`,
 and a token inside the 30-minute margin triggers one single-flight re-login.
-A 401/403 triggers one forced re-login. Both public actions mutate remote
-state, so neither `prepare` nor `update_terms` is automatically replayed. They
-return `REMOTE_AUTH_REJECTED_NOT_RETRIED` after refreshing credentials; inspect
-the remote state before explicitly retrying either action.
+A 401/403 triggers one forced re-login. Semantic baseline creation/update and
+Boolean searching mutate remote state, so none of these operations is
+automatically replayed after an authentication rejection. The read-only
+result-page operation is retried once after token refresh. Mutating operations
+return `REMOTE_AUTH_REJECTED_NOT_RETRIED` after refresh; inspect remote state
+before manually retrying.
 
 Tool cancellation stops that caller's authentication wait and aborts a shared
 authentication chain only when no other caller is waiting. It prevents that
 tool call from starting later requests.
 The current PI host `pi.net.fetch` contract does not carry an `AbortSignal`, so
-an already submitted semantic request cannot be assumed to have stopped. A
-cancellation during a remote `prepare` or `update_terms` may leave the remote
-outcome unknown. Review remote state before retrying either mutation.
+an already submitted remote request cannot be assumed to have stopped. A
+cancellation during a semantic mutation or Boolean search may leave the remote
+outcome unknown. A result-page read is safe to retry with the same
+`session_id`/`page` pair.
 
 ## Credentials (one-time setup)
 
@@ -91,6 +142,8 @@ tool boundary. The token itself lands in the same file under `token`.
 node --test test/*.test.mjs
 $env:FUSION_TEST_USERNAME = "..."; $env:FUSION_TEST_PASSWORD = "..."; node --test test/live-login.test.mjs
 $env:FUSION_TEST_REFERENCE_KIND = "publication_number"; $env:FUSION_TEST_REFERENCE = "..."; node --test test/live-tool.test.mjs
+$env:FUSION_TEST_SETTINGS_PATH = "..."; $env:FUSION_TEST_DATABASE = "CNTXT"; $env:FUSION_TEST_BOOLEAN_QUERY = 'A01B1/00/IC AND PD < "1900.01.01"'; node --test test/live-boolean-search.test.mjs
+$env:FUSION_TEST_SETTINGS_PATH = "..."; $env:FUSION_TEST_SESSION_ID = "..."; node --test test/live-semantic-result-page.test.mjs
 pnpm pi-plugin check .\Extensions\fusion-search
 pnpm pi-plugin pack .\Extensions\fusion-search
 ```
@@ -99,8 +152,9 @@ pnpm pi-plugin pack .\Extensions\fusion-search
 dependencies) for decoding the captcha images.
 
 Load the folder with **Plugins → Load development plugin**, review
-`agent.tool.register` and `net.fetch`, then use the tool in Agent mode. Both
-public actions create or update remote state and are not safe for Goal-mode
-planning. The optional live-tool test requires a dedicated account and a
-controlled case-number or claim-solution paraphrase reference; `prepare` creates a
-remote baseline.
+`agent.tool.register` and `net.fetch`, then use either tool in Agent mode. Both
+tools create remote state and are not safe for Goal-mode planning. The optional
+live semantic test requires a dedicated account and a controlled case-number
+or claim-solution paraphrase reference. The live Boolean-search test requires a
+dedicated account, a database code, and a query approved for a real
+search-history entry.
