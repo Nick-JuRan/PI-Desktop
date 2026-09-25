@@ -1,4 +1,5 @@
 import type { EnglishCatalog } from "../en/index.js";
+import { forkExtensionsSubagents, forkSettings } from "./fork.js";
 
 export const de = {
   "app": {
@@ -582,6 +583,7 @@ export const de = {
     "dismiss": "Verwerfen"
   },
   "settings": {
+    ...forkSettings,
     "power": "Energie",
     "keepAwakeWhileRunning": "Computer wach halten",
     "keepAwakeWhileRunningDesc": "Verhindert den Ruhezustand bei Inaktivität, solange PI-Desktop läuft. Der Bildschirm kann sich ausschalten; manuelles Schlafen und Zuklappen bleiben möglich.",
@@ -1010,11 +1012,6 @@ sklm: {
     "skillImported": "Importiert {{name}}",
     "skillsEmpty": "Keine Fähigkeiten in diesem Ordner",
     "subagentsEmpty": "Noch keine eigenen Subagenten",
-    "subagentExecutionTitle": "Subagent-Ausführung",
-    "subagentDepthTitle": "Maximale Subagent-Tiefe",
-    "subagentDepthDesc": "Legt fest, wie viele Ebenen delegierter Subagenten erstellt werden dürfen. 1 erlaubt direkte Subagenten, 2 auch deren Kinder, 0 deaktiviert Delegation.",
-    "subagentDepthLevel": "Ebene {{depth}}",
-    "subagentDepthDisabled": "Deaktiviert",
     "addMcp": "Hinzufügen",
     "newSkill": "Neu",
     "editMcp": "Bearbeiten",
@@ -1522,9 +1519,9 @@ sklm: {
     "promptEnhancementCustomTemplate": "Eigene Vorlage verwenden",
     "promptEnhancementCustomTemplateDesc":
       "Ersetzt die eingebaute Nutzervorlage durch Ihre eigene. Der System-Prompt bleibt eingebaut.",
+    "promptEnhancementCustomTemplateActive": "Eigene Vorlage aktiv",
     "promptEnhancementCustomTemplateNeedsTemplate":
       "Speichern Sie zuerst eine eigene Vorlage; der Schalter wählt dann zwischen ihr und der eingebauten Vorlage.",
-    "promptEnhancementCustomTemplateActive": "Eigene Vorlage aktiv",
     "promptEnhancementEdit": "Bearbeiten",
     "promptEnhancementModelTitle": "Prompt-Verbesserung",
     "promptEnhancementModel": "Standardmodell",
@@ -2280,6 +2277,7 @@ sklm: {
       "errorTooBig": "Das Dokument überschreitet die Größenbeschränkung."
     },
     "subagents": {
+      ...forkExtensionsSubagents,
       fallbackModels: "Ersatzmodelle",
       fallbackModelsHint: "Nach fehlgeschlagenen Modellwiederholungen der Reihe nach versuchen. Werkzeugergebnisse bleiben erhalten; Stopp beendet die gesamte Aufgabe.",
       fallbackAdd: "Ersatzmodell hinzufügen",
@@ -2340,20 +2338,6 @@ sklm: {
       "toolsInheritHint": "Fügt Skill-, MCP- und Plugin-Tools hinzu, die der Eltern-Agent aufrufen darf. Task, Moduswechsel, Ask, ToolSearch und new_context bleiben beim Eltern-Agent.",
       "toolsHint": "Übernahme ist opt-in, oder Tools hier gewähren. Schreibende Tools brauchen eine explizite Freigabe oder Übernahme.",
       "mutatingHint": "Dieser Delegat kann Dateien selbst ändern.",
-      "toolCatalogHint": "Bei deaktivierter Vererbung werden nur ausgewählte Fähigkeiten aktiviert. Die Auswahl eines MCP-Servers gewährt alle darin enthaltenen Werkzeuge.",
-      "toolCatalogSkills": "Skills",
-      "toolCatalogMcp": "MCP-Server",
-      "toolCatalogPlugins": "Plugin-Werkzeuge",
-      "toolCatalogLoading": "Verfügbare Fähigkeiten dieses Arbeitsbereichs werden geladen…",
-      "toolCatalogEmpty": "In diesem Arbeitsbereich sind keine auswählbaren Skills, MCP-Server oder Plugin-Werkzeuge verfügbar.",
-      "mcpAllTools": "Die Auswahl gewährt alle entdeckten Werkzeuge dieses Servers",
-      "mcpToolCount": "{{count}} geladene Werkzeuge",
-      "mcpToolCount_one": "1 geladenes Werkzeug",
-      "mcpToolCount_other": "{{count}} geladene Werkzeuge",
-      "mcpStatusReady": "bereit",
-      "mcpStatusConnecting": "wird verbunden",
-      "mcpStatusFailed": "fehlgeschlagen",
-      "mcpStatusIdle": "nicht getestet",
       "model": "Modell",
       "modelHint": "Optional. Wählen Sie ein konfiguriertes Modell oder lassen Sie das Feld leer, um das Modell der Sitzung zu verwenden.",
       "modelInherit": "Identisch mit der Sitzung",

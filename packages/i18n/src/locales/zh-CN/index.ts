@@ -1,4 +1,5 @@
 import type { EnglishCatalog } from "../en/index.js";
+import { forkExtensionsSubagents, forkSettings } from "./fork.js";
 
 export const zhCN = {
   app: {
@@ -586,6 +587,7 @@ export const zhCN = {
     dismiss: "关闭",
   },
   settings: {
+    ...forkSettings,
     power: "电源",
     keepAwakeWhileRunning: "保持电脑唤醒",
     keepAwakeWhileRunningDesc: "PI-Desktop 运行期间阻止电脑因空闲自动休眠。屏幕仍可能关闭；手动睡眠和合盖休眠不受影响。",
@@ -995,11 +997,6 @@ sklm: {
     skillImported: "已导入 {{name}}",
     skillsEmpty: "此目录中没有技能",
     subagentsEmpty: "还没有你自己的子智能体",
-    subagentExecutionTitle: "子智能体执行",
-    subagentDepthTitle: "最大子智能体深度",
-    subagentDepthDesc: "控制子智能体最多可以创建多少层。1 表示主智能体可创建一级子智能体；2 表示一级子智能体还可以创建二级子智能体；0 表示关闭委派。",
-    subagentDepthLevel: "{{depth}} 级",
-    subagentDepthDisabled: "关闭",
     addMcp: "新增",
     newSkill: "新建",
     editMcp: "编辑",
@@ -1509,9 +1506,9 @@ sklm: {
     promptEnhancementCustomTemplate: "使用自定义提示词",
     promptEnhancementCustomTemplateDesc:
       "用你自己的用户模板替换内置模板。系统提示词保持内置。",
+    promptEnhancementCustomTemplateActive: "自定义模板已启用",
     promptEnhancementCustomTemplateNeedsTemplate:
       "请先保存自定义模板；保存后即可用开关在内置模板与自定义模板之间切换。",
-    promptEnhancementCustomTemplateActive: "自定义模板已启用",
     promptEnhancementEdit: "编辑",
     promptEnhancementModelTitle: "增强提示词",
     promptEnhancementModel: "默认模型",
@@ -2268,6 +2265,7 @@ sklm: {
       errorTooBig: "正文超过了大小上限。",
     },
     subagents: {
+      ...forkExtensionsSubagents,
       fallbackModels: "备用模型",
       fallbackModelsHint: "当前模型重试失败后按顺序切换，保留已完成的工具结果；停止会取消整个子任务。",
       fallbackAdd: "添加备用模型",
@@ -2329,20 +2327,6 @@ sklm: {
         "会带上主会话可用的 Skill、MCP 和插件工具。Task、模式切换、Ask、ToolSearch 和 new_context 仍留在主会话。",
       toolsHint: "可选择继承主会话工具，或在此勾选。写入类工具需要显式授予或开启继承。",
       mutatingHint: "这个子智能体可以自行改动文件。",
-      toolCatalogHint: "关闭继承时，只激活已勾选的能力。勾选 MCP 服务器会授予该服务器的全部工具。",
-      toolCatalogSkills: "Skills",
-      toolCatalogMcp: "MCP 服务器",
-      toolCatalogPlugins: "插件工具",
-      toolCatalogLoading: "正在加载当前工作区可用的能力…",
-      toolCatalogEmpty: "当前工作区没有可选择的 Skill、MCP 服务器或插件工具。",
-      mcpAllTools: "选中后加载此服务器发现的全部工具",
-      mcpToolCount: "已加载 {{count}} 个工具",
-      mcpToolCount_one: "已加载 1 个工具",
-      mcpToolCount_other: "已加载 {{count}} 个工具",
-      mcpStatusReady: "就绪",
-      mcpStatusConnecting: "连接中",
-      mcpStatusFailed: "失败",
-      mcpStatusIdle: "尚未测试",
       model: "模型",
       modelHint: "可选。从已配置的模型中选择，或留空沿用当前会话的模型。",
       modelInherit: "与会话一致",

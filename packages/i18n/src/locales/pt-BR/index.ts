@@ -1,4 +1,5 @@
 import type { EnglishCatalog } from "../en/index.js";
+import { forkExtensionsSubagents, forkSettings } from "./fork.js";
 
 export const ptBR = {
   app: {
@@ -580,6 +581,7 @@ export const ptBR = {
     dismiss: "Dispensar"
   },
   settings: {
+    ...forkSettings,
     power: "Energia",
     keepAwakeWhileRunning: "Manter o computador ativo",
     keepAwakeWhileRunningDesc: "Impede a suspensão por inatividade enquanto o PI-Desktop estiver aberto. A tela pode apagar; a suspensão manual e ao fechar a tampa continuam funcionando.",
@@ -832,12 +834,6 @@ export const ptBR = {
     skillImported: "Importado {{name}}",
     skillsEmpty: "Nenhuma habilidade nesta pasta",
     subagentsEmpty: "Nenhum subagente próprio ainda",
-    subagentExecutionTitle: "Execução do subagente",
-    subagentDepthTitle: "Profundidade máxima de subagentes",
-    subagentDepthDesc:
-      "Controla quantos níveis de subagentes delegados podem ser criados. 1 permite subagentes diretos; 2 permite que eles criem outros; 0 desativa a delegação.",
-    subagentDepthLevel: "Nível {{depth}}",
-    subagentDepthDisabled: "Desativado",
     addMcp: "Adicionar",
     newSkill: "Novo",
     editMcp: "Editar",
@@ -2230,6 +2226,7 @@ export const ptBR = {
       errorTooBig: "O documento ultrapassa o limite de tamanho."
     },
     subagents: {
+      ...forkExtensionsSubagents,
       fallbackModels: "Modelos alternativos",
       fallbackModelsHint: "Tente os modelos na ordem indicada depois que as tentativas com o modelo atual falharem. Os resultados de ferramentas concluídas são mantidos; Parar cancela a tarefa inteira.",
       fallbackAdd: "Adicionar modelo alternativo",
@@ -2290,20 +2287,6 @@ export const ptBR = {
       toolsInheritHint: "Adiciona as ferramentas de habilidades, MCP e plugins que o agente principal pode chamar. Troca de modo, tarefas, Ask, ToolSearch e new_context continuam disponíveis apenas para o agente principal.",
       toolsHint: "Ative a herança opcional ou conceda ferramentas aqui. Ferramentas que alteram arquivos ainda precisam ser concedidas explicitamente ou herdadas.",
       mutatingHint: "Este subagente pode alterar arquivos por conta própria.",
-      toolCatalogHint: "Com a herança desativada, somente os recursos marcados são ativados. Ao marcar um servidor MCP, todas as ferramentas dele são concedidas.",
-      toolCatalogSkills: "Habilidades",
-      toolCatalogMcp: "Servidores MCP",
-      toolCatalogPlugins: "Ferramentas de plugins",
-      toolCatalogLoading: "Carregando os recursos disponíveis neste espaço de trabalho…",
-      toolCatalogEmpty: "Não há habilidades, servidores MCP ou ferramentas de plugins ativos neste espaço de trabalho.",
-      mcpAllTools: "Selecionar este servidor concede acesso a todas as ferramentas encontradas",
-      mcpToolCount: "{{count}} ferramentas carregadas",
-      mcpToolCount_one: "1 ferramenta carregada",
-      mcpToolCount_other: "{{count}} ferramentas carregadas",
-      mcpStatusReady: "pronto",
-      mcpStatusConnecting: "conectando",
-      mcpStatusFailed: "falhou",
-      mcpStatusIdle: "não testado",
       model: "Modelo",
       modelHint: "Opcional. Escolha um modelo configurado ou deixe em branco para usar o modelo da sessão.",
       modelInherit: "Mesmo da sessão",

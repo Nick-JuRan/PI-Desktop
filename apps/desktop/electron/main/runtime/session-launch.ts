@@ -6,7 +6,6 @@ import {
   imageGenerationBindings,
   isImageGenerationModel,
   normalizeMode,
-  normalizeSubagentMaxDepth,
   resolveBindingLimits,
   trustedExtensionAgentKeyFromProviderId,
   type CommandShellCatalog,
@@ -15,9 +14,6 @@ import {
   type Mode,
   type Risk,
   type SessionThinkingLevel,
-  type SubagentPluginToolOption,
-  type SubagentToolCatalog,
-  subagentExtensionToolSelector,
   type TrustedExtensionLoadReport,
   type TrustedExtensionSpec,
   type UserSkillRecord,
@@ -48,6 +44,13 @@ import type { PluginRuntime } from "../plugin-runtime";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { RuntimeState } from "./context";
 import type { RuntimeProvider } from "./provider-catalog";
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import {
+  normalizeSubagentMaxDepth,
+  subagentExtensionToolSelector,
+  type SubagentPluginToolOption,
+  type SubagentToolCatalog,
+} from "@pi-desktop/shared/fork";
 
 const ErrorCodes = {
   ...SharedErrorCodes,

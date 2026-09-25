@@ -1,17 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
-  DEFAULT_SUBAGENT_MAX_DEPTH,
   DEFAULT_SUBAGENT_MAX_DURATION_SECONDS,
   DEFAULT_SUBAGENT_TOOLS,
   MAX_SUBAGENT_DEFINITIONS,
-  MAX_SUBAGENT_DEPTH,
   MAX_SUBAGENT_MAX_TOKENS,
-  MIN_SUBAGENT_MAX_DEPTH,
   SUBAGENT_ASSIGNABLE_TOOLS,
   SUBAGENT_INHERIT_DENY_TOOLS,
   mergeSubagentDefinitions,
-  normalizeSubagentMaxDepth,
   normalizeSubagentName,
   parseSubagentDefinition,
   resolveSubagentToolNames,
@@ -635,23 +631,6 @@ describe("normalizeSubagentName", () => {
       "code-reviewer",
     );
     expect(normalizeSubagentName("reviewer")).toBe("reviewer");
-  });
-});
-
-describe("normalizeSubagentMaxDepth", () => {
-  it("defaults to direct delegation and accepts bounded integer levels", () => {
-    expect(normalizeSubagentMaxDepth(undefined)).toBe(DEFAULT_SUBAGENT_MAX_DEPTH);
-    expect(normalizeSubagentMaxDepth(2)).toBe(2);
-    expect(normalizeSubagentMaxDepth(MIN_SUBAGENT_MAX_DEPTH)).toBe(0);
-    expect(normalizeSubagentMaxDepth(MAX_SUBAGENT_DEPTH)).toBe(
-      MAX_SUBAGENT_DEPTH,
-    );
-  });
-
-  it("rejects fractional, non-numeric, and out-of-range values", () => {
-    for (const value of ["2", 1.5, -1, MAX_SUBAGENT_DEPTH + 1, null]) {
-      expect(normalizeSubagentMaxDepth(value)).toBe(DEFAULT_SUBAGENT_MAX_DEPTH);
-    }
   });
 });
 

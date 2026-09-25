@@ -1,4 +1,5 @@
 import type { EnglishCatalog } from "../en/index.js";
+import { forkExtensionsSubagents, forkSettings } from "./fork.js";
 
 export const ko = {
   app: {
@@ -591,6 +592,7 @@ export const ko = {
     dismiss: "닫기",
   },
   settings: {
+    ...forkSettings,
     power: "전원",
     keepAwakeWhileRunning: "컴퓨터 절전 방지",
     keepAwakeWhileRunningDesc: "PI-Desktop 실행 중 유휴 상태로 인한 시스템 절전을 방지합니다. 화면은 꺼질 수 있으며 수동 절전과 덮개 닫기는 그대로 작동합니다.",
@@ -1018,11 +1020,6 @@ sklm: {
     skillImported: "{{name}} 가져옴",
     skillsEmpty: "이 폴더에 스킬 없음",
     subagentsEmpty: "내 서브에이전트가 아직 없음",
-    subagentExecutionTitle: "서브에이전트 실행",
-    subagentDepthTitle: "최대 서브에이전트 깊이",
-    subagentDepthDesc: "만들 수 있는 위임 서브에이전트의 수준을 설정합니다. 1은 직접 서브에이전트, 2는 그 자식까지 허용하며 0은 위임을 끕니다.",
-    subagentDepthLevel: "{{depth}}단계",
-    subagentDepthDisabled: "사용 안 함",
     addMcp: "추가",
     newSkill: "새로 만들기",
     editMcp: "편집",
@@ -1538,9 +1535,9 @@ sklm: {
     promptEnhancementCustomTemplate: "사용자 템플릿 사용",
     promptEnhancementCustomTemplateDesc:
       "내장 사용자 템플릿을 직접 만든 템플릿으로 교체합니다. 시스템 프롬프트는 내장으로 유지됩니다.",
+    promptEnhancementCustomTemplateActive: "사용자 템플릿 활성",
     promptEnhancementCustomTemplateNeedsTemplate:
       "먼저 사용자 템플릿을 저장하세요. 저장한 뒤에는 스위치로 내장 템플릿과 사용자 템플릿을 전환할 수 있습니다.",
-    promptEnhancementCustomTemplateActive: "사용자 템플릿 활성",
     promptEnhancementEdit: "편집",
     promptEnhancementModelTitle: "프롬프트 향상",
     promptEnhancementModel: "기본 모델",
@@ -2314,6 +2311,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       errorTooBig: "문서가 크기 제한을 초과했습니다.",
     },
     subagents: {
+      ...forkExtensionsSubagents,
       fallbackModels: "대체 모델",
       fallbackModelsHint: "모델 재시도 실패 후 순서대로 시도합니다. 완료된 도구 결과는 유지되며 중지하면 전체 작업이 취소됩니다.",
       fallbackAdd: "대체 모델 추가",
@@ -2374,20 +2372,6 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       toolsInheritHint: "상위가 호출할 수 있는 Skill, MCP, 플러그인 도구를 추가합니다. Task, 모드 전환, Ask, ToolSearch, new_context는 상위에 남습니다.",
       toolsHint: "상속은 선택 사항입니다. 쓰기를 쓰려면 명시적으로 허용하거나 상속하세요.",
       mutatingHint: "이 위임 작업은 자체적으로 파일을 변경할 수 있습니다.",
-      toolCatalogHint: "상속을 끄면 선택한 기능만 활성화됩니다. MCP 서버를 선택하면 해당 서버의 모든 도구가 부여됩니다.",
-      toolCatalogSkills: "Skills",
-      toolCatalogMcp: "MCP 서버",
-      toolCatalogPlugins: "플러그인 도구",
-      toolCatalogLoading: "이 작업 공간에서 사용할 수 있는 기능을 불러오는 중…",
-      toolCatalogEmpty: "이 작업 공간에 선택할 수 있는 Skill, MCP 서버 또는 플러그인 도구가 없습니다.",
-      mcpAllTools: "이 서버를 선택하면 검색된 모든 도구가 부여됩니다",
-      mcpToolCount: "로드된 도구 {{count}}개",
-      mcpToolCount_one: "로드된 도구 1개",
-      mcpToolCount_other: "로드된 도구 {{count}}개",
-      mcpStatusReady: "준비됨",
-      mcpStatusConnecting: "연결 중",
-      mcpStatusFailed: "실패",
-      mcpStatusIdle: "테스트 안 함",
       model: "모델",
       modelHint: "선택 사항입니다. 구성한 모델에서 고르거나, 비워 두면 세션의 모델을 사용합니다.",
       modelInherit: "세션과 동일",
