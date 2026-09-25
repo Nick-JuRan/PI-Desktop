@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "local.fusion-search",
   "name": "融合检索",
-  "version": "0.2.0",
-  "description": "Semantic baseline tools for the remote Fusion Search service, with built-in token acquisition and refresh.",
+  "version": "0.4.0",
+  "description": "Boolean patent search, semantic result pages, and semantic baseline tools for the remote Fusion Search service, with built-in token acquisition and refresh.",
   "main": "main.cjs",
   "contributes": {
     "agentTools": [
@@ -75,6 +75,53 @@
               "type": "boolean",
               "default": true,
               "description": "Read the saved terms again after update_terms. Defaults to true; the verified terms and weights are returned."
+            }
+          }
+        }
+      },
+      {
+        "name": "fusion_boolean_search",
+        "description": "Execute one Boolean patent search against a single database using the active semantic baseline. Inputs are the displayed database code and Boolean query; the service catalog resolves the provider's internal database ID and the current semantic element is resolved from a prepared baseline or the account's selected baseline. Returns only total_hits and the opaque semantically sorted session_id needed to retrieve result pages. Keeps up to 400 candidates. Searching creates remote search history and is never automatically replayed after an uncertain outcome. Uses the same private token settings and automatic refresh as fusion_semantic_baseline.",
+        "risk": "high",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["database", "query"],
+          "properties": {
+            "database": {
+              "type": "string",
+              "enum": ["CNTXT", "CTTXT", "ENTXT", "ENTXTC", "VEN", "DWPI"],
+              "description": "Displayed Fusion Search database code. CTTXT is accepted as an alias for the provider's canonical code CNTXT; internal dbId values are resolved automatically from the live catalog."
+            },
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 25000,
+              "description": "Boolean query expression for the selected database."
+            }
+          }
+        }
+      },
+      {
+        "name": "fusion_semantic_result_page",
+        "description": "Read one page from an existing Fusion Search session using the opaque session_id. The page size is fixed at 20, abstracts are requested, and start is calculated from page. Returns only results carrying simVal and semanticSort in semantic-rank order. Abstract and main-claim fields are plain text with HTML/XML markup and provider labels removed. Sessions without semantic-sort metadata are rejected rather than presented as ranked. Does not rerun or modify the search.",
+        "risk": "high",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["session_id", "page"],
+          "properties": {
+            "session_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Opaque session_id returned by fusion_boolean_search or another semantically sorted Fusion Search session."
+            },
+            "page": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "description": "One-based page number. The page size is fixed internally at 20."
             }
           }
         }

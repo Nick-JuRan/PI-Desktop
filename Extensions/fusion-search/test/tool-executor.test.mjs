@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { executeFusionTool } from "../src/tool-executor.mjs";
+import {
+  executeFusionTool,
+  executeFusionBooleanTool,
+  executeFusionResultPageTool,
+} from "../src/tool-executor.mjs";
 
 const unauthorized = {
   ok: false,
@@ -65,4 +69,95 @@ test("unsupported actions, including removed get_terms, are rejected before toke
     assert.equal(result.error.code, "INVALID_INPUT");
     assert.equal(tokenManager.calls.length, 0);
   }
+});
+
+test("Boolean search shares token acquisition with the semantic tool", async () => {
+  const tokenManager = managerForTests();
+  const result = await executeFusionBooleanTool({
+    args: { database: "CNTXT", query: "A01B1/00/IC" },
+    tokenManager,
+    fetchImpl: async () => ({}),
+    executeBoolean: async ({ authorization }) => ({
+      ok: true,
+      database: "CNTXT",
+      total_hits: 1,
+      session_id: "SESSION-1",
+      authorization_used: authorization,
+    }),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.authorization_used, "Bearer old-token");
+  assert.deepEqual(tokenManager.calls.map(([kind]) => kind), ["authorization"]);
+});
+
+test("Boolean search auth rejection refreshes but never replays the history-creating request", async () => {
+  const tokenManager = managerForTests();
+  let calls = 0;
+  const result = await executeFusionBooleanTool({
+    args: { database: "CNTXT", query: "A01B1/00/IC" },
+    tokenManager,
+    fetchImpl: async () => ({}),
+    executeBoolean: async () => { calls += 1; return unauthorized; },
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(tokenManager.calls.map(([kind]) => kind), ["authorization", "refresh"]);
+  assert.equal(result.error.code, "REMOTE_AUTH_REJECTED_NOT_RETRIED");
+  assert.match(result.error.message, /not replayed/i);
+});
+
+test("an auth rejection during result loading preserves the created session identifier", async () => {
+  const tokenManager = managerForTests();
+  const result = await executeFusionBooleanTool({
+    args: { database: "CNTXT", query: "A01B1/00/IC" },
+    tokenManager,
+    executeBoolean: async () => ({
+      ok: false,
+      error: { code: "REMOTE_AUTH_REJECTED", session_id: "SESSION-1", message: "rejected" },
+    }),
+  });
+  assert.equal(result.error.code, "REMOTE_AUTH_REJECTED_NOT_RETRIED");
+  assert.equal(result.error.session_id, "SESSION-1");
+  assert.match(result.error.message, /check search history/i);
+});
+
+test("Boolean input validation happens before reading credentials", async () => {
+  const tokenManager = managerForTests();
+  const result = await executeFusionBooleanTool({
+    args: { database: "DB201", query: "A01B1/00/IC" },
+    tokenManager,
+  });
+  assert.equal(result.error.code, "INVALID_INPUT");
+  assert.equal(tokenManager.calls.length, 0);
+});
+
+test("result-page auth rejection refreshes and retries the idempotent read exactly once", async () => {
+  const tokenManager = managerForTests();
+  const authorizations = [];
+  let calls = 0;
+  const result = await executeFusionResultPageTool({
+    args: { session_id: "SESSION-1", page: 2 },
+    tokenManager,
+    executeResultPage: async ({ authorization, args }) => {
+      calls += 1;
+      authorizations.push([authorization, args]);
+      return calls === 1 ? unauthorized : { ok: true, page: 2, records: [] };
+    },
+  });
+  assert.deepEqual(result, { ok: true, page: 2, records: [] });
+  assert.equal(calls, 2);
+  assert.deepEqual(authorizations, [
+    ["Bearer old-token", { session_id: "SESSION-1", page: 2 }],
+    ["Bearer new-token", { session_id: "SESSION-1", page: 2 }],
+  ]);
+  assert.deepEqual(tokenManager.calls.map(([kind]) => kind), ["authorization", "refresh"]);
+});
+
+test("invalid result-page arguments fail before reading credentials", async () => {
+  const tokenManager = managerForTests();
+  const result = await executeFusionResultPageTool({
+    args: { session_id: "SESSION-1", page: 0 },
+    tokenManager,
+  });
+  assert.equal(result.error.code, "INVALID_INPUT");
+  assert.equal(tokenManager.calls.length, 0);
 });
