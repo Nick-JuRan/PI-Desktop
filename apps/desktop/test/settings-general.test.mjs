@@ -335,7 +335,7 @@ test("model configuration lists AI services and vendor accounts together", () =>
   // Both credential kinds now pick from the same live, service-provided list.
   assert.match(vendorAccountDialogSource, /useProviderModels/);
   assert.match(vendorAccountDialogSource, /<ModelSelectionPanes/);
-  assert.match(vendorAccountDialogSource, /<ChosenModelsSummary/);
+  assert.doesNotMatch(vendorAccountDialogSource, /<ChosenModelsSummary/);
   assert.match(vendorAccountDialogSource, /modelId: persisted\[0\]\.id/);
   assert.match(vendorAccountsHookSource, /providerIsReady/);
   assert.match(vendorAccountsHookSource, /defaultProviderId: next\?\.id \?\? ""/);
