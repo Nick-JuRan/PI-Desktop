@@ -65,7 +65,6 @@ test("subagent catalog exposes arbitrary trusted-extension tools from the sideca
     getWorkspacePath: () => "D:/workspace",
     pluginActiveInProject: () => true,
     bindingForModel: () => undefined,
-    modelsDevModelFor: () => undefined,
     effectiveSubagentModelConfig: () => ({ modelConfig: {}, capabilities: {} }),
     normalizeThinkingLevel: () => "off",
   });
