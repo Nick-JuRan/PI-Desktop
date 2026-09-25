@@ -640,6 +640,9 @@ identify the platform validation still needed.
 - **Preconditions**: App running; the models.dev snapshot ships with the build; a provider editor is open.
 - **Steps**: 1) Type a model id the snapshot publishes into the add-model field and add it; confirm the new row's context window, max output tokens and thinking levels match the published record instead of 128,000 / 8,192 with none. 2) Type an id the snapshot does not publish and add it; confirm the row keeps the generic 128,000 / 8,192 seed and no thinking levels. 3) Add an id while the service list is unreachable; confirm the row still appears exactly once and stays editable. 4) Add an id and edit its limits immediately, before the lookup answers; confirm the typed values survive.
 - **Expected**: `providers.lookupModel` answers a hand-typed id from the local snapshot only — no provider network request and no host call — and a hit seeds the binding the way a picked model is seeded (published context window, max output tokens, thinking levels, `contextWindowSource: "catalog"`) while the stored id stays exactly what the user typed. A miss, a failed call, or an id the current discovery already described leaves the previous behavior intact: one usable row, the generic seed, and no stalled or duplicated list.
+  A record published under another spelling of that id — a route prefix, a dated
+  stamp, a marker the deployment appends — is a hit too: the row is upgraded in
+  place as soon as the answer arrives, without waiting for a save.
 - **Specs linked**: `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`
 - **Acceptance**: B (multi-model provider configuration)
 - **Milestone**: M2
@@ -14703,9 +14706,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 #### E2E-MODEL-catalog-window-correction-reaches-saved-bindings
 
-- **Goal**: a models.dev limit correction reaches an already saved binding without
-  deleting and re-adding the model, while a number the user entered in Settings is
-  never overwritten.
+- **Goal**: a models.dev limit correction — the context window or the output cap —
+  reaches an already saved binding without deleting and re-adding the model, while
+  a number the user entered in Settings is never overwritten.
 - **Steps**:
   1. Configure a provider, select a model models.dev publishes a `limit.context`
      for, and save. Open the row's Advanced body and read the context-window field
@@ -14719,6 +14722,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   4. Save and reopen a provider row whose binding carries no
      `contextWindowSource`: once with the generic `128000` seed, once with any
      other stored value.
+  5. Repeat step 4 with a row whose stored output cap is the generic `8192`, and
+     one whose cap the user typed, and read the cap in the settings row and in the
+     request a new session launches with.
 - **Expected**: Step 1 shows the published number with the "follows models.dev"
   hint. Step 2 shows the corrected number everywhere the effective window is used
   (settings row, context inspector, session launch) with no delete and re-add.
@@ -14726,8 +14732,10 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   the launched request, including a hand-typed `128000` for a model whose
   published window is larger, and the hint is gone. Step 4 resolves
   deterministically: the `128000` seed follows the catalog, every other value
-  stays as stored. Every step keeps the marker across the save/read round trip of
-  the provider row, and a config written before the marker stays readable.
+  stays as stored. Step 5 applies the same provenance rule to the output cap: an
+  `8192` seed follows the published `limit.output`, and a cap the user entered is
+  kept. Every step keeps the marker across the save/read round trip of the
+  provider row, and a config written before the marker stays readable.
 - **Specs linked**: `03-runtime/13-model-catalog-and-selection.md` §9.1,
   `03-runtime/12-provider-config-schema.md` §2,
   `03-runtime/11-provider-model-system.md` §2, `04-ux/06-settings-ia.md` §2
