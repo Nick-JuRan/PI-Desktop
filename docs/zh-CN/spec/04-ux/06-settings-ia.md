@@ -133,7 +133,7 @@
   搜索会索引该行和两种模式名称。
 - 基于 provider 的语音绑定（`AppSettings.speech`）**不属于设置页面**（ADR 0291）。宿主仍保留
   语音能力与 `speech/*` IPC，供插件和已存绑定使用；此处不提供 provider、协议、语音模型
-  或 TTS 音色选择。本地麦克风转写使用独立的 `AppSettings.voice` 设置（ADR 0307、
+  或 TTS 音色选择。本地麦克风转写使用独立的 `AppSettings.voice` 设置（ADR local-voice-input、
   `03-runtime/23-local-voice-input.md`），用于配置采集、语言和本地识别模型，不选择 provider。
   设置搜索会索引本地语音控件，而不是 provider 语音绑定。
 - **默认项**卡中的**命令 Shell**行：主机发现的本机 PowerShell 5.1、PowerShell 7、

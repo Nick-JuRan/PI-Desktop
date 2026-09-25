@@ -1,6 +1,6 @@
 # ADR 0291: Remove the speech settings UI
 
-- Status: Accepted; local voice input scope clarified by ADR 0307
+- Status: Accepted; local voice input scope clarified by ADR local-voice-input
 - Date: 2026-09-19
 - Deciders: PI-Desktop core
 - Amends: [ADR 0281](0281-host-speech-capability.md) (its v1 product entry)
@@ -37,7 +37,7 @@ callers.
 
 ## Decision
 
-Scope note (ADR 0307): this decision remains in force for the provider-backed
+Scope note (ADR local-voice-input): this decision remains in force for the provider-backed
 `AppSettings.speech` bindings and the withdrawn provider/TTS controls. The
 separate local microphone-to-text feature does not restore a speech-provider
 picker or text-to-speech UI.

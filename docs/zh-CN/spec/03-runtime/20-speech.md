@@ -33,7 +33,7 @@ synthesize({ sessionId, text, voice?, format? }) → { path, mimeType, dataUrl? 
 
 协议 id 匹配 `^[a-z][a-z0-9._-]{0,63}$`。speech 为空或缺省即未配置状态；应用界面
 不再读取此 provider 绑定，调用方只有插件与 `speech/*` IPC（ADR 0291）。它与
-`AppSettings.voice` 本地麦克风转写设置分离（ADR 0307、`23-local-voice-input.md`）。
+`AppSettings.voice` 本地麦克风转写设置分离（ADR local-voice-input、`23-local-voice-input.md`）。
 
 ## 3. 内置协议
 

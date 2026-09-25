@@ -197,7 +197,7 @@ accent left rule instead of a heavy pulse frame.
   the right template for the Plugins page as the catalog grows.
 - **Local voice input**: speech-to-text is available as an optional Composer
   action; text-to-speech and provider-backed speech controls remain out of
-  scope (ADR 0307).
+  scope (ADR local-voice-input).
 
 ## 5. Reject
 
