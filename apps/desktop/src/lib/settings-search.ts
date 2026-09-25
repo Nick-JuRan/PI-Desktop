@@ -69,6 +69,9 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.closeBehaviorTitle",
       "settings.closeBehaviorTray",
       "settings.closeBehaviorQuit",
+      "settings.power",
+      "settings.keepAwakeWhileRunning",
+      "settings.keepAwakeWhileRunningDesc",
       "settings.network",
       "settings.proxy",
       "settings.proxySystem",
@@ -126,6 +129,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     labelKey: "settings.nav.voice",
     titleKey: "settings.voice",
     group: "preferences",
+    developerOnly: true,
+    experimentalBadgeKey: "settings.voiceExperimental",
     keywordKeys: [
       "settings.voiceEnable",
       "settings.voiceMicrophone",

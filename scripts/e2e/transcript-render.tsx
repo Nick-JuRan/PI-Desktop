@@ -321,20 +321,36 @@ globalThis.transcriptRenderProbe = async () => {
     );
     useAppStore.setState({
       activeSessionId: "nested-session",
-      subagentPanel: null,
+      workPanelOpen: false,
+      workPanelTabs: [],
+      activeWorkPanelTabId: null,
+      workPanelContexts: {},
     });
     const nestedHeader = nestedChildNode.querySelector<HTMLButtonElement>(
       ".subagent-topology-node-header",
     );
     assert(nestedHeader, "nested topology node header is missing");
     nestedHeader.click();
+    const nestedPanelState = useAppStore.getState();
     assert(
-      useAppStore.getState().subagentPanel?.delegationId ===
-        "nested-child-delegation",
-      "nested topology node did not select its own detail panel",
+      nestedPanelState.workPanelOpen &&
+        nestedPanelState.activeWorkPanelTabId === "subagent:nested-child-delegation" &&
+        nestedPanelState.workPanelTabs.some(
+          (tab) =>
+            tab.kind === "subagent" &&
+            tab.resource === "nested-child-delegation",
+        ),
+      "nested topology node did not open its own subagent transcript tab",
     );
-    useAppStore.setState({ subagentPanel: null });
+    useAppStore.setState({
+      workPanelOpen: false,
+      workPanelTabs: [],
+      activeWorkPanelTabId: null,
+      workPanelContexts: {},
+    });
     const statusLifecycle = await transcriptStatusProbe();
+    const turnProcess = await turnProcessProbe();
+    const messageEditing = await transcriptEditProbe();
     return {
       ok: statusLifecycle.ok,
       statusLifecycle,
@@ -345,9 +361,9 @@ globalThis.transcriptRenderProbe = async () => {
       taskLifecycleUpdated: true,
       taskTimingUpdated: true,
       nestedTopologyRendered: true,
-      nestedTopologyPanelSelection: true,
-      turnProcess: await turnProcessProbe(),
-      messageEditing: await transcriptEditProbe(),
+      nestedTopologyTabSelection: true,
+      turnProcess,
+      messageEditing,
       textUpdateDurationMs,
     };
   } finally {
@@ -418,7 +434,20 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
   );
 
   const frame = () =>
-    new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      // Hidden Electron windows can suspend animation frames after background
+      // throttling, even with backgroundThrottling disabled. A bounded timer
+      // keeps deterministic layout probes progressing without waiting for paint.
+      const timer = setTimeout(finish, 50);
+      requestAnimationFrame(finish);
+    });
   const content = () => host.querySelector<HTMLElement>(".thread-content");
   const scroller = () => host.querySelector<HTMLElement>(".thread-scroll");
   const lane = () =>
@@ -544,7 +573,9 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
     // content is painted.
     for (const theme of ["dark", "light"]) {
       document.documentElement.dataset.theme = theme;
-      await frame();
+      // Style reads below synchronously flush the theme update. Do not wait for
+      // requestAnimationFrame in this hidden Electron window: Chromium may pause
+      // its compositor frames after the initial paint.
       const element = lane();
       if (!element) {
         check(false, `${theme}: the status lane is missing`);

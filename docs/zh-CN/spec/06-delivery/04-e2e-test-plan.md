@@ -9,6 +9,21 @@
 
 ---
 
+### E2E-POWER-keep-awake-setting
+
+- **前提：** 设置值缺失的隔离桌面配置；无需真实模型服务。
+- **步骤：** 在「设置 > 常规」开启「保持电脑唤醒」，确认主进程即使空闲也只持有
+  一个 `prevent-app-suspension` 阻止器。使用同一配置重启应用，确认恢复一个
+  阻止器。开启和关闭「阻止屏幕休眠」时，确认「保持电脑唤醒」的系统请求仍在。
+  关闭「保持电脑唤醒」，确认立即释放，并在退出时确认清理。
+- **预期：** 设置持久化并立即生效，不会重复创建阻止器；关闭开关或退出应用
+  时释放。屏幕开关拥有独立阻止器，不能关闭系统休眠阻止器。手动睡眠和合盖
+  不在该功能的保证范围内。
+- **状态：** `pnpm test:e2e:keep-awake` 使用隔离的真实 Electron/Host 配置。
+  Windows 基线无其他 Electron 电源请求且当前 shell 有权限查询时，以
+  `powercfg /requests` 验证；若查询要求提升权限，仅跳过该系统级断言。
+  控制器生命周期和 Host 设置往返另有定向测试。
+
 ### E2E-IMAGES-provider-save-feedback
 
 - **前提：** 生图配置 UI fixture，中英文界面。
@@ -1015,6 +1030,22 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **里程碑**：M5
 - **状态**：自动化（host-core 单元测试：登录路径探测 + 子路径注入）
 
+#### E2E-MCP-stdio-windows-npx：官方 Node 与 fnm 都能启动 `npx` MCP（issue #789）
+
+- **先决条件**：Windows；Node 要么是官方 `Program Files\nodejs` 安装
+  （PATH 上有 `node.exe`、`npx.cmd`、`npx-cli.js`），要么由 fnm 管理且不在 GUI PATH 中。
+- **步骤**：1) 从 MCP 市场添加 Memory（`npx -y @modelcontextprotocol/server-memory`）。
+  2) 测试连接。3) 再用用户手写的 `npx` 服务器重复一次。
+- **预期**：官方 Node 改写为 `node.exe` + `npx-cli.js` 并完成握手。PATH 没有
+  node 时从 `%LOCALAPPDATA%\fnm\aliases\default` 发现 fnm。其余 `.cmd` 经
+  `cmd.exe /d /s /c` 启动，参数加引号保持字面量，不用 `shell: true`。
+  与 `npx.cmd` 同目录的 Git-Bash 无扩展名 `npx` 不会被选中。真正缺失时仍报告
+  `command not found: npx`。
+- **链接规格**：ADR 0038、D624、`07-plugins/04-plugin-security.md`
+- **接受**：质量
+- **里程碑**：M6+
+- **状态**：自动化（`apps/desktop/test/mcp-stdio-launch.test.mjs`）
+
 ### 会话持续性
 
 #### E2E-020：会话在重新启动后仍然存在
@@ -1776,17 +1807,19 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 
 #### E2E-046：PI-Desktop 渲染器品牌和输入框图标边界
 
-- **先决条件**：应用程序在英语和中中文语言环境中运行，并带有
-  空荡荡的家和可用的停靠成绩单。
-- **步骤**：1) 检查展开和折叠的侧边栏。 2) 检查
-  空荡荡的英雄和停靠的输入框。 3) 观察八帧吉祥物 GIF 原地循环，
-  将指针移到其上并确认节奏与几何形状不变。开启减少动态
-  效果并确认显示静止首帧。 4）关注页脚设置和插件
+- **先决条件**：应用程序分别以英语、`zh-CN` 和 `zh-TW` 运行，并带有
+  空首页和可用的停靠成绩单。
+- **步骤**：1) 检查展开和折叠的侧边栏。 2) 在浅色模式检查英语和中文
+  空首页。 3) 切换到深色模式，确认英语使用标准深色动画，`zh-CN` 和
+  `zh-TW` 使用 30 帧中文 GIF。将指针移到吉祥物上，确认节奏和几何形状
+  不变。开启减少动态效果，并确认每种语言和主题组合都显示对应静止图。
+  4）检查停靠输入框、页脚设置和插件
   图标，然后每个 project/Temporary 会话创建控件。 5）打开设置
   和输入框输入。
-- **预期**：可见 shell 标识为 `PI-Desktop`；空荡荡的家英雄
-  渲染与当前主题匹配的 100px `HomeMascotLogo` GIF，首帧短暂停留后循环挥手；
-  指针悬停不改变节奏或几何形状，减少运动时显示对应静止首帧。
+- **预期**：可见 shell 标识为 `PI-Desktop`；空首页英雄渲染与主题和语言
+  匹配的 100px `HomeMascotLogo` GIF。只有深色中文环境使用提供的 30 帧
+  动画，其他组合保留原资源。指针悬停不改变节奏或几何形状，减少动态
+  效果时显示对应静止首帧。
   expanded/collapsed
   侧边栏通过 `BrandLogo` 呈现派生的 `src/assets/brand/logo-*.png` 资源
   并且停靠的输入框提示行没有前导
@@ -3245,16 +3278,18 @@ IPC 请求无法关闭。
      并检查空首页英雄中的浅色八帧 `HomeMascotLogo` GIF。
      将鼠标悬停在吉祥物上并验证节奏不变。
   3. 将主题切换为深色（设置→基础→外观，或系统外观更改）。
-  4. 重新检查相同的表面，无需重新加载。
+  4. 确认英语使用标准深色 GIF；将应用语言切换为 `zh-CN` 和 `zh-TW`，
+     确认无需重新加载即可显示 30 帧中文深色 GIF。开启减少动态效果，
+     确认显示对应的中文静止图。
   5. 切换回光源并重新检查。
 - **预期**：
   - 明暗模式渲染 `src/assets/brand/logo-light.png` /
     `src/assets/brand/logo-dark.png`
     位于侧边栏和启动画面中，无需重新加载窗口。
-- 空首页英雄按当前主题渲染 100 像素的八帧吉祥物 GIF
-    （`home-mascot-light.gif` / `home-mascot-dark.gif`），首帧短暂停留后
-    循环挥手。切换主题时即时更换资源，无需重新加载窗口。指针悬停
-    不改变节奏；减少运动时对应静止首帧仍然可见。
+  - 空首页英雄按当前主题和语言渲染 100 像素的吉祥物 GIF。浅色模式使用
+    `home-mascot-light.gif`；深色模式使用 `home-mascot-dark.gif`，但中文
+    环境使用 `home-mascot-dark-zh.gif`。切换主题或语言时即时更换资源，
+    无需重新加载窗口。指针悬停不改变节奏；减少动态效果时显示对应静止图。
   - 尺寸在主题变化时保持稳定（侧边栏 20 像素、英雄 100 像素、启动栏
     64px），标记保持装饰性，无需点击、键盘或焦点
     行为。
@@ -3976,14 +4011,17 @@ eleven-tool-round desktop paths are verified by
 - **覆盖**：C、品质 / 浮动 Composer 与重试表面
 - **先决条件**：渲染器 CSS 为 `apps/desktop/src/styles` 下的生产源。
 - **步骤**：
-  1. 在两套内置主题和一套自定义主题中检查 `.composer-dock-docked` 的计算背景。
-  2. 滚动长会话，让一行正文经过悬浮 Composer 下方。
+  1. 用两个不同的 `--composer-dock-height` 值检查 `.composer-dock-docked` 的计算背景（应完全透明）与 `.thread-scroll` 的遮罩，覆盖两套内置主题与一套自定义主题。
+  2. 滚动长会话，让一行正文越过 Composer 边界。
   3. 检查 Composer 停靠栏样式中的 `.plan-approval-bar`。
   4. 检查记录样式中的 `.run-activity-error-popover.message-error`。
   5. 在实时会话中悬停或聚焦正在重试的活动行。
 - **预期**：
-  - 停靠区横跨整个宽度绘制不透明的 `--ds-bg-primary` 工作区表面；正文在
-    Composer 边界处消失，不会留在输入框下方或圆角外侧。
+  - 停靠区不绘制任何底衬。正文在 Composer 边界处经 `.thread-scroll` 的遮罩
+    淡出，不会留在输入框下方或圆角外侧；遮罩的两个色标分别位于滚动容器底边
+    之上 `--composer-dock-height + 16px` 与 `--composer-dock-height - 2px`，
+    因此滚到底时最后一行保持完全不透明，会话面板自己的表面（含主题铺的背景）
+    在停靠区后面保持可见。
   - Plan/Goal 审批条使用 `--ds-bg-composer` 加 `--ds-shadow-composer`，而不是正文流里的 `--ds-tile` 薄洗，因此在透明停靠栏上仍可读。
   - 重试 hover tooltip 把错误色混在 `--ds-bg-elevated-opaque` 上，记录正文不会透出。
   - 重试 tooltip 的高度被限制在尾部状态行上方的可用空间内，其余部分可滚动，
@@ -5590,11 +5628,11 @@ eleven-tool-round desktop paths are verified by
   行，没有 Logo/Home 品牌或 back/forward 按钮。
 
 ### US-UI-17 PI-Desktop 家庭英雄标志
-- 在空聊天主页上，100px `HomeMascotLogo` GIF 在标题上方呈现
-  八帧挥手吉祥物，并在首帧稍作停留。浅色和深色主题各使用一套
-  GIF 和静止 PNG。
-- 指针悬停不改变节奏或几何形状；减少运动时显示对应静止
-  首帧。吉祥物保持装饰性。
+- 在空聊天主页上，100px `HomeMascotLogo` 显示在标题上方。浅色模式和
+  非中文深色模式使用现有八帧 GIF；深色 `zh-CN` 和 `zh-TW` 使用 30 帧
+  中文 GIF 及对应静止图。
+- 主题和语言变化无需重新加载即可选择对应图像。指针悬停不改变节奏或
+  几何形状；减少动态效果时显示对应静止图。吉祥物保持装饰性。
 - 标题为 28px / 粗细为 400；活动项目名称使用点下划线（1 像素，偏移 4 像素）。
 - Composer 不会在有效负载之前渲染附件或 appshot 控件
   首尾相连达到 pi。
@@ -8668,6 +8706,15 @@ the latest destination. These assertions measure work counts, not device FPS.
 | Scenario | Acceptance | Specification | Automation |
 | --- | --- | --- | --- |
 | E2E-IMAGE-generation-and-editing | Image capability and recovery | 03-runtime/21-image-generation | Host and UI suites above |
+| E2E-IMAGES-result-download | 下载与定位生成图片 | 03-runtime/21-image-generation | `scripts/e2e-image-chat.mjs` |
+
+### E2E-IMAGES-result-download
+
+- **前提：** Agent 会话有两张已生成的 PNG，使用本地图片夹具。
+- **步骤：** 确认一张主图和右侧两张缩略图，下载第一张结果，选中并下载第二张，在窄窗口检查聊天布局；打开选中图片的全窗口预览，双向切换并放大，用 Escape 关闭，检查“在文件夹中显示”操作。
+- **预期：** 主图和下载目标随缩略图切换；选中缩略图显示浅灰色外框，切换已加载图片时卡片和预览不会短暂空白，预览保持适配尺寸；快速反向操作会取消尚未完成的图片解码；两张下载文件分别与原图字节相同，文件名安全。窄窗口中的聊天和预览缩略图仍可操作；预览切换、缩放和焦点恢复可用，关闭后对话保留选中项，原图仍可访问；定位操作使用受限文件接口。
+- **验收：** 结果操作和图片浏览不改变图片存储和预览权限。
+- **状态：** `scripts/e2e-image-chat.mjs` 自动验证下载和预览交互；定位复用现有受限 IPC。
 
 #### E2E-CHAT-parenthesized-url：用户消息中的完整网址
 
