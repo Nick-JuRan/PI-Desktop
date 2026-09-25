@@ -1294,6 +1294,24 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **里程碑**：M4
 - **状态**：自动化（协议烟雾：调度往返主机->运行器->主机；通过PluginRuntime执行应用内JS）
 
+#### E2E-PLUGIN-fusion-boolean-search
+
+- **前提条件：** 已加载 `local.fusion-search` 开发插件；插件私有设置中含有测试账号凭据或仍有效的令牌；声明的内网主机可访问；已选定语义基线（或可以准备基线）；并已批准使用一个受支持数据库和受控布尔检索式创建真实远端检索历史。
+- **步骤：** 1）调用 `fusion_boolean_search`，将 `database` 设为对外显示代码（`CNTXT`、`ENTXT`、`ENTXTC`、`VEN` 或 `DWPI`），并将 `query` 设为受控检索式。2）只检查 `total_hits` 和 `session_id`。3）使用该 `session_id` 和 `page=1` 调用 `fusion_semantic_result_page`；确认仍在读取同一会话并返回语义排序字段。4）使用 `CTTXT` 重复测试，确认其解析为供应方目录中的规范 `CNTXT` 项。
+- **预期：** 工具通过共享 token manager 获取凭据，从实时数据库目录解析内部 `dbId`，解析当前语义基线，校验并执行检索，最多保留 400 篇排序候选，并在 `session_id` 中返回命中总数和不透明的供应方 `ssId`；不返回文献记录或内部数据库 ID。检索失败或取消后不会自动重放，因为远端检索历史可能已经创建。无效输入或语法会在执行检索前被拒绝。如果检索执行返回了会话，但读取命中数失败，错误仍保留 `session_id`，调用方可以通过该会话继续，而不必重复创建检索。
+- **链接规格：** `07-plugins/03-plugin-api.md`、`07-plugins/13-plugin-permissions-matrix.md`、`Extensions/fusion-search/README.md`
+- **验收：** 针对一个对外显示的数据库完成认证布尔检索，并取得可复用的结果会话标识和有界输出。
+- **状态：** 已有自动化单元/集成覆盖；实时内网验收需要专用账号、可访问服务，以及获准创建远端检索历史的检索式。
+
+#### E2E-PLUGIN-fusion-semantic-result-page
+
+- **前提条件：** 已加载 `local.fusion-search` 插件；插件私有设置允许访问内网检索服务；`session_id` 对应的已有检索会话已由供应方确认启用了语义排序。
+- **步骤：** 1）使用会话 ID 和 `page=1` 调用 `fusion_semantic_result_page`。2）当 `totalPage` 大于 1 时，再调用 `page=2`。3）检查公开号、标题、相似度、语义排序，以及纯文本摘要和主权利要求。
+- **预期：** 请求使用 `size=20`、`showAbsFlag="1"` 和 `start=(page-1)*20`；响应返回 `totalPage=ceil(listCounts/20)` 及请求页码。每条结果都属于传入的会话，包含 `simVal` 和 `semanticSort`，并按语义排名排序。摘要和主权利要求字段返回完整纯文本，不含供应方详情标签或 HTML/XML 标记；段落边界保持可读，缺失内容返回空字符串。遇到普通未排序会话或跨会话结果行时拒绝伪装成语义结果。该工具只读取现有检索状态，不会重新运行检索式。
+- **链接规格：** `07-plugins/03-plugin-api.md`、`Extensions/fusion-search/README.md`
+- **验收：** 在保留会话身份、相关度字段及请求文档详情的前提下，分页读取有界语义结果。
+- **状态：** 已有自动化单元/集成覆盖；实时内网验收需要一个当前启用语义排序的会话。
+
 #### E2E-024G：市场详细信息表显示自述文件、权限、版本
 
 - **先决条件**：提供官方市场目录。
@@ -5362,6 +5380,8 @@ eleven-tool-round desktop paths are verified by
 
 | 验收 | 应用场景 |
 |---|---|
+| G — Fusion Search 布尔检索工具 | E2E-PLUGIN-fusion-boolean-search |
+| G — Fusion Search 语义结果页 | E2E-PLUGIN-fusion-semantic-result-page |
 | C / F — Hourly task updates | E2E-SCHEDULED-manual-to-hourly |
 | C / F / Quality — Saved project isolation | E2E-SCHEDULED-manual-workspace-binding |
 | C / F / Quality — 桌面定时任务 | E2E-SCHEDULED-desktop-automation-lifecycle |
