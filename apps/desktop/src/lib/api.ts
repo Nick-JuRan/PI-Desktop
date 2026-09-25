@@ -92,7 +92,6 @@ import type {
   UserSubagentInput,
   UserSubagentRecord,
   SubagentDefinition,
-  SubagentToolCatalog,
   WorkspaceDiff,
   AppMenuCommand,
   AppNotification,
@@ -129,17 +128,21 @@ import {
   IPC,
   isCommandShellId,
   normalizeLargePasteThreshold,
-  normalizeSubagentMaxDepth,
   normalizeMode,
   normalizeNetworkProxy,
   normalizeNetworkPolicy,
   resolveFontScale,
   normalizeChatContentMaxWidth,
-  isValidSubagentMaxDepth,
   validateNetworkPolicy,
   validateNetworkProxy,
   validateSpeechSettings,
 } from "@pi-desktop/shared";
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import {
+  isValidSubagentMaxDepth,
+  normalizeSubagentMaxDepth,
+  type SubagentToolCatalog,
+} from "@pi-desktop/shared/fork";
 
 export type ImportSource = "claude-code" | "opencode" | "codex" | "pi";
 // One definition, owned by the shared package (the host and sidecar use the

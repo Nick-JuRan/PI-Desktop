@@ -36,7 +36,6 @@ import { NATIVE_PI_SESSION_PREFIX, nativePiService } from "./native-pi-session.j
 import {
   isCommandShellOption,
   MAX_INLINE_IMAGE_BYTES,
-  normalizeSubagentMaxDepth,
   normalizeMode,
   normalizeNetworkProxy,
   OAUTH_AUTH_KIND,
@@ -54,6 +53,8 @@ import type {
   SessionThinkingLevel,
   UiMessage,
 } from "@pi-desktop/shared";
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import { normalizeSubagentMaxDepth } from "@pi-desktop/shared/fork";
 
 type RuntimeMap = Map<string, DesktopAgentRuntime>;
 

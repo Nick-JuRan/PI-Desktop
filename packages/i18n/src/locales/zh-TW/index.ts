@@ -1,5 +1,34 @@
 import type { EnglishCatalog } from "../en/index.js";
 
+// Fork-only strings (fork features: subagent depth, subagent tool selection).
+// Kept as one block at the top of the file so upstream edits never touch it;
+// spread into `settings` and `extensions.subagents` below.
+const forkSettings = {
+  subagentExecutionTitle: "子智慧體執行",
+  subagentDepthTitle: "最大子智慧體深度",
+  subagentDepthDesc: "控制子智慧體最多可以建立多少層。1 表示主智慧體可建立第一層子智慧體；2 表示第一層子智慧體也能建立子層；0 表示停用委派。",
+  subagentDepthLevel: "第 {{depth}} 層",
+  subagentDepthDisabled: "停用",
+};
+
+const forkExtensionsSubagents = {
+  toolCatalogHint: "關閉繼承時，只會啟用已勾選的能力。勾選 MCP 伺服器會授予該伺服器的所有工具。",
+  toolCatalogSkills: "Skills",
+  toolCatalogMcp: "MCP 伺服器",
+  toolCatalogPlugins: "外掛工具",
+  toolCatalogLoading: "正在載入目前工作區可用的能力…",
+  toolCatalogEmpty: "目前工作區沒有可選擇的 Skill、MCP 伺服器或外掛工具。",
+  mcpAllTools: "選取後授予此伺服器發現的所有工具",
+  mcpToolCount: "已載入 {{count}} 個工具",
+  mcpToolCount_one: "已載入 1 個工具",
+  mcpToolCount_other: "已載入 {{count}} 個工具",
+  mcpStatusReady: "就緒",
+  mcpStatusConnecting: "連線中",
+  mcpStatusFailed: "失敗",
+  mcpStatusIdle: "尚未測試",
+};
+
+
 export const zhTW = {
   app: {
     shellName: "PI-Desktop",
@@ -586,6 +615,7 @@ export const zhTW = {
     dismiss: "關閉",
   },
   settings: {
+    ...forkSettings,
     power: "電源",
     keepAwakeWhileRunning: "保持電腦喚醒",
     keepAwakeWhileRunningDesc: "PI-Desktop 執行期間阻止電腦因閒置自動休眠。螢幕仍可能關閉；手動睡眠和闔蓋休眠不受影響。",
@@ -995,11 +1025,6 @@ sklm: {
     skillImported: "已匯入 {{name}}",
     skillsEmpty: "此目錄中沒有技能",
     subagentsEmpty: "還沒有你自己的子智慧體",
-    subagentExecutionTitle: "子智慧體執行",
-    subagentDepthTitle: "最大子智慧體深度",
-    subagentDepthDesc: "控制子智慧體最多可以建立多少層。1 表示主智慧體可建立第一層子智慧體；2 表示第一層子智慧體也能建立子層；0 表示停用委派。",
-    subagentDepthLevel: "第 {{depth}} 層",
-    subagentDepthDisabled: "停用",
     addMcp: "新增",
     newSkill: "新建",
     editMcp: "編輯",
@@ -1509,9 +1534,9 @@ sklm: {
     promptEnhancementCustomTemplate: "使用自訂提示詞",
     promptEnhancementCustomTemplateDesc:
       "用你自己的使用者範本取代內建範本。系統提示詞維持內建。",
+    promptEnhancementCustomTemplateActive: "自訂範本已啟用",
     promptEnhancementCustomTemplateNeedsTemplate:
       "請先儲存自訂範本；儲存後即可用開關在內建範本與自訂範本之間切換。",
-    promptEnhancementCustomTemplateActive: "自訂範本已啟用",
     promptEnhancementEdit: "編輯",
     promptEnhancementModelTitle: "增強提示詞",
     promptEnhancementModel: "預設模型",
@@ -2267,6 +2292,7 @@ sklm: {
       errorTooBig: "正文超過了大小上限。",
     },
     subagents: {
+      ...forkExtensionsSubagents,
       fallbackModels: "備用模型",
       fallbackModelsHint: "目前模型重試失敗後依序切換，保留已完成的工具結果；停止會取消整個子任務。",
       fallbackAdd: "新增備用模型",
@@ -2327,20 +2353,6 @@ sklm: {
       toolsInheritHint: "會帶上主會話可用的 Skill、MCP 和外掛工具。Task、模式切換、Ask、ToolSearch 和 new_context 仍留在主會話。",
       toolsHint: "可選擇繼承主會話工具，或在此勾選。寫入類工具需要明確授予或開啟繼承。",
       mutatingHint: "這個子智慧體可以自行改動檔案。",
-      toolCatalogHint: "關閉繼承時，只會啟用已勾選的能力。勾選 MCP 伺服器會授予該伺服器的所有工具。",
-      toolCatalogSkills: "Skills",
-      toolCatalogMcp: "MCP 伺服器",
-      toolCatalogPlugins: "外掛工具",
-      toolCatalogLoading: "正在載入目前工作區可用的能力…",
-      toolCatalogEmpty: "目前工作區沒有可選擇的 Skill、MCP 伺服器或外掛工具。",
-      mcpAllTools: "選取後授予此伺服器發現的所有工具",
-      mcpToolCount: "已載入 {{count}} 個工具",
-      mcpToolCount_one: "已載入 1 個工具",
-      mcpToolCount_other: "已載入 {{count}} 個工具",
-      mcpStatusReady: "就緒",
-      mcpStatusConnecting: "連線中",
-      mcpStatusFailed: "失敗",
-      mcpStatusIdle: "尚未測試",
       model: "模型",
       modelHint: "可選。從已設定的模型中選擇，或留空沿用當前會話的模型。",
       modelInherit: "與會話一致",

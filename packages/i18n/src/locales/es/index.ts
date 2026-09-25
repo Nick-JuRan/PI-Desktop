@@ -1,5 +1,34 @@
 import type { EnglishCatalog } from "../en/index.js";
 
+// Fork-only strings (fork features: subagent depth, subagent tool selection).
+// Kept as one block at the top of the file so upstream edits never touch it;
+// spread into `settings` and `extensions.subagents` below.
+const forkSettings = {
+  subagentExecutionTitle: "Ejecución de subagentes",
+  subagentDepthTitle: "Profundidad máxima de subagentes",
+  subagentDepthDesc: "Controla cuántos niveles de subagentes delegados pueden crearse. 1 permite subagentes directos, 2 también sus hijos y 0 desactiva la delegación.",
+  subagentDepthLevel: "Nivel {{depth}}",
+  subagentDepthDisabled: "Desactivado",
+};
+
+const forkExtensionsSubagents = {
+  toolCatalogHint: "Con la herencia desactivada, solo se activan las capacidades marcadas. Seleccionar un servidor MCP concede todas sus herramientas.",
+  toolCatalogSkills: "Skills",
+  toolCatalogMcp: "Servidores MCP",
+  toolCatalogPlugins: "Herramientas de plugins",
+  toolCatalogLoading: "Cargando las capacidades disponibles en este espacio de trabajo…",
+  toolCatalogEmpty: "No hay Skills, servidores MCP ni herramientas de plugins seleccionables en este espacio de trabajo.",
+  mcpAllTools: "Seleccionar este servidor concede todas las herramientas descubiertas",
+  mcpToolCount: "{{count}} herramientas cargadas",
+  mcpToolCount_one: "1 herramienta cargada",
+  mcpToolCount_other: "{{count}} herramientas cargadas",
+  mcpStatusReady: "listo",
+  mcpStatusConnecting: "conectando",
+  mcpStatusFailed: "fallido",
+  mcpStatusIdle: "sin probar",
+};
+
+
 export const es = {
   "app": {
     "shellName": "PI-Desktop",
@@ -582,6 +611,7 @@ export const es = {
     "dismiss": "Descartar"
   },
   "settings": {
+    ...forkSettings,
     "power": "Energía",
     "keepAwakeWhileRunning": "Mantener el equipo activo",
     "keepAwakeWhileRunningDesc": "Evita la suspensión por inactividad mientras PI-Desktop esté abierto. La pantalla puede apagarse; la suspensión manual y al cerrar la tapa siguen funcionando.",
@@ -1010,11 +1040,6 @@ sklm: {
     "skillImported": "Importado {{name}}",
     "skillsEmpty": "No hay habilidades en esta carpeta",
     "subagentsEmpty": "Aún no hay subagentes propios",
-    "subagentExecutionTitle": "Ejecución de subagentes",
-    "subagentDepthTitle": "Profundidad máxima de subagentes",
-    "subagentDepthDesc": "Controla cuántos niveles de subagentes delegados pueden crearse. 1 permite subagentes directos, 2 también sus hijos y 0 desactiva la delegación.",
-    "subagentDepthLevel": "Nivel {{depth}}",
-    "subagentDepthDisabled": "Desactivado",
     "addMcp": "Agregar",
     "newSkill": "Nuevo",
     "editMcp": "Editar",
@@ -1522,9 +1547,9 @@ sklm: {
     "promptEnhancementCustomTemplate": "Usar una plantilla propia",
     "promptEnhancementCustomTemplateDesc":
       "Reemplaza la plantilla de usuario integrada por la suya. El prompt del sistema sigue integrado.",
+    "promptEnhancementCustomTemplateActive": "Plantilla personalizada activa",
     "promptEnhancementCustomTemplateNeedsTemplate":
       "Guarde primero una plantilla propia; el interruptor elegirá entonces entre ella y la plantilla integrada.",
-    "promptEnhancementCustomTemplateActive": "Plantilla personalizada activa",
     "promptEnhancementEdit": "Editar",
     "promptEnhancementModelTitle": "Mejora de prompts",
     "promptEnhancementModel": "Modelo predeterminado",
@@ -2280,6 +2305,7 @@ sklm: {
       "errorTooBig": "El documento supera el límite de tamaño."
     },
     "subagents": {
+      ...forkExtensionsSubagents,
       fallbackModels: "Modelos de respaldo",
       fallbackModelsHint: "Se prueban en orden cuando fallan los reintentos. Se conservan los resultados de herramientas; Detener cancela toda la tarea.",
       fallbackAdd: "Añadir modelo de respaldo",
@@ -2340,20 +2366,6 @@ sklm: {
       "toolsInheritHint": "Añade Skill, MCP y herramientas de plugin que el padre puede llamar. Task, cambios de modo, Ask, ToolSearch y new_context se quedan en el padre.",
       "toolsHint": "La herencia es opt-in, o concede herramientas aquí. Las que mutan siguen necesitando un permiso explícito o heredar.",
       "mutatingHint": "Este delegado puede cambiar archivos por sí solo.",
-      "toolCatalogHint": "Con la herencia desactivada, solo se activan las capacidades marcadas. Seleccionar un servidor MCP concede todas sus herramientas.",
-      "toolCatalogSkills": "Skills",
-      "toolCatalogMcp": "Servidores MCP",
-      "toolCatalogPlugins": "Herramientas de plugins",
-      "toolCatalogLoading": "Cargando las capacidades disponibles en este espacio de trabajo…",
-      "toolCatalogEmpty": "No hay Skills, servidores MCP ni herramientas de plugins seleccionables en este espacio de trabajo.",
-      "mcpAllTools": "Seleccionar este servidor concede todas las herramientas descubiertas",
-      "mcpToolCount": "{{count}} herramientas cargadas",
-      "mcpToolCount_one": "1 herramienta cargada",
-      "mcpToolCount_other": "{{count}} herramientas cargadas",
-      "mcpStatusReady": "listo",
-      "mcpStatusConnecting": "conectando",
-      "mcpStatusFailed": "fallido",
-      "mcpStatusIdle": "sin probar",
       "model": "Modelo",
       "modelHint": "Opcional. Elija un modelo configurado o déjelo vacío para usar el de la sesión.",
       "modelInherit": "Igual que la sesión",

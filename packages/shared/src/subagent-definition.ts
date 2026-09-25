@@ -266,10 +266,6 @@ export const MAX_SUBAGENT_DEFINITIONS = 16;
 export const MAX_SUBAGENT_PROVIDERS = 8;
 /** Running delegates per session, across batches (see ADR 0089). */
 export const MAX_SUBAGENT_CONCURRENCY = 10;
-/** Maximum delegation depth allowed by the app setting. */
-export const DEFAULT_SUBAGENT_MAX_DEPTH = 1;
-export const MIN_SUBAGENT_MAX_DEPTH = 0;
-export const MAX_SUBAGENT_DEPTH = 5;
 /** Resumable chains kept per subagent name before the oldest is evicted
  * (ADR 0279). A chain is one delegate session across any number of `resume`s. */
 export const MAX_RESUMABLE_CHAINS_PER_AGENT = 2;
@@ -278,28 +274,6 @@ export const MAX_RESUMABLE_CHAINS_PER_AGENT = 2;
 export const MAX_RESUMABLE_READ_LINES = 50_000;
 /** Files listed per chain in the parent's resumable-session prompt block. */
 export const MAX_RESUMABLE_LISTED_FILES = 8;
-
-/** Normalize the persisted maximum delegation depth at a process boundary. */
-export function normalizeSubagentMaxDepth(value: unknown): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isInteger(value) ||
-    value < MIN_SUBAGENT_MAX_DEPTH ||
-    value > MAX_SUBAGENT_DEPTH
-  ) {
-    return DEFAULT_SUBAGENT_MAX_DEPTH;
-  }
-  return value;
-}
-
-export function isValidSubagentMaxDepth(value: unknown): value is number {
-  return (
-    typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= MIN_SUBAGENT_MAX_DEPTH &&
-    value <= MAX_SUBAGENT_DEPTH
-  );
-}
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 

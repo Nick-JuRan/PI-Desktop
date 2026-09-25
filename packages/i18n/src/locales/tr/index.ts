@@ -1,5 +1,34 @@
 import type { EnglishCatalog } from "../en/index.js";
 
+// Fork-only strings (fork features: subagent depth, subagent tool selection).
+// Kept as one block at the top of the file so upstream edits never touch it;
+// spread into `settings` and `extensions.subagents` below.
+const forkSettings = {
+  subagentExecutionTitle: "Alt ajan yürütme",
+  subagentDepthTitle: "Maksimum alt ajan derinliği",
+  subagentDepthDesc: "Kaç düzeyde devredilmiş alt ajan oluşturulabileceğini belirler. 1 doğrudan alt ajanlara, 2 onların çocuklarına da izin verir; 0 devri kapatır.",
+  subagentDepthLevel: "Düzey {{depth}}",
+  subagentDepthDisabled: "Devre dışı",
+};
+
+const forkExtensionsSubagents = {
+  toolCatalogHint: "Devralma kapalıyken yalnızca işaretlenen yetenekler etkinleştirilir. Bir MCP sunucusunu işaretlemek tüm araçlarını verir.",
+  toolCatalogSkills: "Skills",
+  toolCatalogMcp: "MCP sunucuları",
+  toolCatalogPlugins: "Eklenti araçları",
+  toolCatalogLoading: "Bu çalışma alanındaki kullanılabilir yetenekler yükleniyor…",
+  toolCatalogEmpty: "Bu çalışma alanında seçilebilir Skill, MCP sunucusu veya eklenti aracı yok.",
+  mcpAllTools: "Bu sunucuyu seçmek keşfedilen tüm araçları verir",
+  mcpToolCount: "{{count}} araç yüklendi",
+  mcpToolCount_one: "1 araç yüklendi",
+  mcpToolCount_other: "{{count}} araç yüklendi",
+  mcpStatusReady: "hazır",
+  mcpStatusConnecting: "bağlanıyor",
+  mcpStatusFailed: "başarısız",
+  mcpStatusIdle: "test edilmedi",
+};
+
+
 export const tr = {
   app: {
     shellName: "PI-Desktop",
@@ -591,6 +620,7 @@ export const tr = {
     dismiss: "Kapat",
   },
   settings: {
+    ...forkSettings,
     power: "Güç",
     keepAwakeWhileRunning: "Bilgisayarı uyanık tut",
     keepAwakeWhileRunningDesc: "PI-Desktop çalışırken boşta kalma nedeniyle uykuya geçmeyi önler. Ekran kapanabilir; elle uyutma ve kapağı kapatma etkilenmez.",
@@ -1008,11 +1038,6 @@ sklm: {
     skillImported: "{{name}} içe aktarıldı",
     skillsEmpty: "Bu klasörde beceri yok",
     subagentsEmpty: "Henüz kendi alt ajanınız yok",
-    subagentExecutionTitle: "Alt ajan yürütme",
-    subagentDepthTitle: "Maksimum alt ajan derinliği",
-    subagentDepthDesc: "Kaç düzeyde devredilmiş alt ajan oluşturulabileceğini belirler. 1 doğrudan alt ajanlara, 2 onların çocuklarına da izin verir; 0 devri kapatır.",
-    subagentDepthLevel: "Düzey {{depth}}",
-    subagentDepthDisabled: "Devre dışı",
     addMcp: "Ekle",
     newSkill: "Yeni",
     editMcp: "Düzen",
@@ -1528,9 +1553,9 @@ sklm: {
     promptEnhancementCustomTemplate: "Özel şablon kullan",
     promptEnhancementCustomTemplateDesc:
       "Yerleşik kullanıcı şablonunu kendi şablonunuzla değiştirir. Sistem promptu yerleşik kalır.",
+    promptEnhancementCustomTemplateActive: "Özel şablon etkin",
     promptEnhancementCustomTemplateNeedsTemplate:
       "Önce özel bir şablon kaydedin; ardından anahtar yerleşik şablon ile kendi şablonunuz arasında geçiş yapar.",
-    promptEnhancementCustomTemplateActive: "Özel şablon etkin",
     promptEnhancementEdit: "Düzenle",
     promptEnhancementModelTitle: "Prompt iyileştirme",
     promptEnhancementModel: "Varsayılan model",
@@ -2304,6 +2329,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       errorTooBig: "Belge boyut sınırının üzerinde.",
     },
     subagents: {
+      ...forkExtensionsSubagents,
       fallbackModels: "Yedek modeller",
       fallbackModelsHint: "Model yeniden denemeleri başarısız olursa sırayla denenir. Tamamlanan araç sonuçları korunur; Durdur tüm görevi iptal eder.",
       fallbackAdd: "Yedek model ekle",
@@ -2364,20 +2390,6 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       toolsInheritHint: "Üst oturumun çağırabildiği Skill, MCP ve eklenti araçlarını ekler. Task, kip değişimi, Ask, ToolSearch ve new_context üstte kalır.",
       toolsHint: "Devralma isteğe bağlıdır; yazan araçlar hâlâ açık izin veya devralma ister.",
       mutatingHint: "Bu devredilen kendi başına dosyaları değiştirebilir.",
-      toolCatalogHint: "Devralma kapalıyken yalnızca işaretlenen yetenekler etkinleştirilir. Bir MCP sunucusunu işaretlemek tüm araçlarını verir.",
-      toolCatalogSkills: "Skills",
-      toolCatalogMcp: "MCP sunucuları",
-      toolCatalogPlugins: "Eklenti araçları",
-      toolCatalogLoading: "Bu çalışma alanındaki kullanılabilir yetenekler yükleniyor…",
-      toolCatalogEmpty: "Bu çalışma alanında seçilebilir Skill, MCP sunucusu veya eklenti aracı yok.",
-      mcpAllTools: "Bu sunucuyu seçmek keşfedilen tüm araçları verir",
-      mcpToolCount: "{{count}} araç yüklendi",
-      mcpToolCount_one: "1 araç yüklendi",
-      mcpToolCount_other: "{{count}} araç yüklendi",
-      mcpStatusReady: "hazır",
-      mcpStatusConnecting: "bağlanıyor",
-      mcpStatusFailed: "başarısız",
-      mcpStatusIdle: "test edilmedi",
       model: "Model",
       modelHint: "İsteğe bağlı. Yapılandırılmış bir model seçin veya oturumun modelini kullanmak için boş bırakın.",
       modelInherit: "Oturumla aynı",

@@ -105,17 +105,13 @@ import {
   isCommandShellOption,
   isToolsOutputParams,
   MAX_SUBAGENT_CONCURRENCY,
-  normalizeSubagentMaxDepth,
   normalizeSubagentName,
   proposalKindForMode,
-  resolveSubagentSkillIds,
   resolveSubagentToolNames,
-  subagentExtensionToolSelector,
   subagentModelKey,
   subagentToolsLabel,
   type ProposalKind,
   type SubagentPermission,
-  type SubagentToolResolutionContext,
 } from "@pi-desktop/shared";
 import { createStreamCoalescer, type StreamCoalescer } from "./stream-coalescer.js";
 import type { RuntimeHost } from "./host-client.js";
@@ -261,6 +257,21 @@ import {
   type ProviderFetchFailure,
   type ProviderTransportHealth,
 } from "./provider-transport-recovery.js";
+// Fork-only imports (kept as separate statements so upstream import edits never conflict).
+import {
+  normalizeSubagentMaxDepth,
+  resolveSubagentSkillIds,
+  subagentExtensionToolSelector,
+  type SubagentToolResolutionContext,
+} from "@pi-desktop/shared/fork";
+import {
+  canDelegateFrom as scopeCanDelegate,
+  isDelegationControlTool,
+  ROOT_DELEGATION_SCOPE,
+  withDelegationControls,
+  withNestedDelegationGuidance,
+  type DelegationScope,
+} from "./fork/delegation-depth.js";
 
 export type { RuntimeProviderConfig } from "./provider-binding.js";
 
@@ -449,24 +460,6 @@ const TASKWAIT_MAX_TIMEOUT_SECONDS = 900;
  * must not become the context problem delegation exists to avoid.
  */
 const MAX_TASKWAIT_RESULT_CHARS = 50_000;
-
-type DelegationScope = {
-  /** The direct parent delegation, or undefined for the main agent. */
-  ownerDelegationId?: string;
-  /** Zero for the main agent; a first-level delegate runs at depth one. */
-  depth: number;
-};
-
-const ROOT_DELEGATION_SCOPE: DelegationScope = Object.freeze({ depth: 0 });
-const DELEGATION_CONTROL_TOOL_NAMES = [
-  SUBAGENT_TOOL_NAME,
-  SUBAGENT_WAIT_TOOL_NAME,
-  SUBAGENT_LIST_TOOL_NAME,
-  SUBAGENT_STOP_TOOL_NAME,
-] as const;
-const DELEGATION_CONTROL_TOOL_SET = new Set<string>(
-  DELEGATION_CONTROL_TOOL_NAMES,
-);
 
 export type DelegationStatus =
   | "running"
@@ -1871,27 +1864,23 @@ export class DesktopAgentRuntime {
       DEFAULT_RUNTIME_SYSTEM_PROMPT,
       // Workflow rules.
       "Complete the requested work and relevant checks without expanding scope. Preserve unrelated user changes. Resolve recoverable blockers yourself.",
-      // Collaboration rules (issue #542). Keep them concise but explicit so a
-      // reasoning model cannot confuse private reasoning with the answer.
-      "Answer in the user's language. Collaboration: answer in the same language the user writes in. Before each tool batch, briefly state its purpose in one short sentence in the same assistant message as those calls; never leave the user with no new text for more than one tool batch or 60 seconds. Keep the user informed during long work. Whatever the user asked must be answered in your visible text, not only in reasoning. The final response must state the outcome, verification, and remaining blockers. Make the final message self-contained: outcome, changes, and anything still open. Carry the work through end to end; clear recoverable blockers and report what you tried.",
-      "Searching and reading: prefer the Read, Grep, and Glob tools over shell text utilities. Read accepts only an existing regular text file, never a directory. If a file name is uncertain or a directory must be listed, use Glob; in Agent mode, activate it with ToolSearch for the current prompt when unavailable. Scope every call: Grep takes a file-or-directory `path` with `include`, `outputMode`, and `headLimit`; Glob takes `path` and `limit`; Read takes `offset` and `limit`, always reports `totalLines`, and paginates any supported text file however large. Use Grep to find target lines before reading large files and use `filesWithMatches` or `count` when contents are unnecessary. Grep uses the system's `rg` when it is installed and an in-process searcher otherwise; call Grep rather than shelling out to `rg`. Workspace-relative paths are portable across platforms; an explicit path outside the workspace and session scratch roots asks for permission, so do not retry it blindly. Do not re-run a search whose answer you already have.",
-      'Tool calls use the native tool-call interface only. Never write a tool call as text or emit `multi_tool_use.parallel` / `{"tool_uses": [...]}` wrappers; they do not run. Emit real calls, including multiple calls in one message when parallelism is useful.',
-      // Delegation steering (ADR 0089): default to direct execution while
-      // retaining the configured, scoped background-delegation workflow.
-      ...(this.subagents.length > 0 && this.maxSubagentDepth > 0
+      // Visibility rules.
+      "Before each tool batch, briefly state its purpose. Keep the user informed during long work. The final response must state the outcome, verification, and remaining blockers. Never claim actions or checks you did not perform.",
+      // Delegation steering (ADR 0089).
+      ...(this.subagents.length && this.maxSubagentDepth > 0
         ? [
-            `## Delegation
-Do the work yourself by default. Delegate only when separable, substantial work benefits from genuine parallelism or saves significant context: independent directions, a complete multi-file specification, one optional read-only review after non-trivial work, broad searches or long logs, or bounded batch work.
-Start independent directions in one assistant message, keep working on a separate line, and wait for reports before finishing. Describe each Task's scope and return requirements, integrate results, and tell the user what was delegated.
-Avoid duplicate work and agent debates. Never delegate small tasks or anything requiring the user. Limit review to one pass unless requested; fix and retest concrete in-scope defects without restarting broad reviews.
-The child reports return through TaskWait to their direct parent. Nested delegation is allowed only when the configured depth exposes Task tools; never exceed that boundary. Do not invent objections or speculative blockers. Stop when the request and relevant checks are complete, or report a genuine blocker.`,
+            withNestedDelegationGuidance(this.maxSubagentDepth, `## Delegation
+Do the work yourself by default. Delegate only bounded, independent tasks with a clear benefit over direct execution.
+No recursive delegation, duplicate work, or agent debates.
+Allow at most one optional review pass unless the user requests more. Fix and retest concrete, in-scope defects without restarting broad reviews.
+Do not invent objections or turn speculative risks into blockers. Stop when the requested work is complete and relevant checks pass, or report a genuine blocker.`),
             ...(this.subagentModelSummary()
               ? [this.subagentModelSummary()!]
               : []),
           ]
         : []),
       // Editing workflow.
-      `Editing workflow: inside the advertised workspace, use the built-in Edit or Write tool directly on deliverable files. Use Edit for one small, uniquely anchored line change and Write for new files or intentional whole-file rewrites; do not create or hand-edit unified-diff files; avoid any hand-edited unified-diff files. Do not use shell apply_patch, git apply, patch commands; never invoke shell apply_patch, git apply, or patch commands. Treat a failed edit as stale content: classify it, perform a fresh Read or use a complete tool-provided reveal, regenerate the change, and retry. Never modify the same path concurrently; never issue concurrent Write/Edit calls for the same path. After three failed edit attempts on the same path in one prompt, stop and report the exact mismatch; a path may have three counted failures per prompt. For an authorized worktree outside the advertised workspace, use a guarded, deterministic Bash edit, then verify the diff.`,
+      `Editing workflow: inside the advertised workspace, use Edit for small, uniquely anchored changes and Write for new files or intentional whole-file rewrites. Never modify the same path concurrently. Do not use shell apply_patch, git apply, patch, or hand-edited unified-diff files. On failure, diagnose the cause, refresh content or anchors with Read or a complete tool-provided reveal when needed, and correct the payload before retrying. After three failed edit attempts on the same path in one user turn, stop editing that path, report the exact error, and continue unblocked work. For an authorized worktree outside the advertised workspace, use a guarded, deterministic Bash edit that aborts on unexpected content, then verify the diff.`,
       // Shell dialect and scratch variable are selected by host-core.
       commandShellGuidance(this.commandShell, this.scratchDir),
       // Session scratch directory (D114).
@@ -4026,21 +4015,18 @@ The child reports return through TaskWait to their direct parent. Nested delegat
   }
 
   private canDelegateFrom(scope: DelegationScope): boolean {
-    return scope.depth < this.maxSubagentDepth;
+    return scopeCanDelegate(scope, this.maxSubagentDepth);
   }
 
   private delegationToolNames(
     definition: SubagentDefinition,
     depth: number,
   ): string[] {
-    const names = this.subagentToolSelection(definition).names.filter(
-      (name) => !DELEGATION_CONTROL_TOOL_SET.has(name),
+    return withDelegationControls(
+      this.subagentToolSelection(definition).names,
+      depth,
+      this.maxSubagentDepth,
     );
-    if (depth >= this.maxSubagentDepth) return names;
-    return [
-      ...names,
-      ...DELEGATION_CONTROL_TOOL_NAMES,
-    ];
   }
 
   /** Resolve a delegate's normal tools and, when allowed, its direct-parent
@@ -4388,7 +4374,7 @@ The child reports return through TaskWait to their direct parent. Nested delegat
         );
         const availableToolCount = declaredToolNames.filter(
           (name) =>
-            DELEGATION_CONTROL_TOOL_SET.has(name) ||
+            isDelegationControlTool(name) ||
             this.toolCatalog.has(name),
         ).length;
         if (availableToolCount === 0) {

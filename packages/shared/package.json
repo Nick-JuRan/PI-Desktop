@@ -17,6 +17,10 @@
     "./theme": {
       "types": "./dist/theme.d.ts",
       "import": "./dist/theme.js"
+    },
+    "./fork": {
+      "types": "./dist/fork/index.d.ts",
+      "import": "./dist/fork/index.js"
     }
   },
   "scripts": {

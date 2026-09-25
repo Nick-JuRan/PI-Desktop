@@ -1,3 +1,31 @@
+// Fork-only strings (fork features: subagent depth, subagent tool selection).
+// Kept as one block at the top of the file so upstream edits never touch it;
+// spread into `settings` and `extensions.subagents` below.
+const forkSettings = {
+  subagentExecutionTitle: "Subagent execution",
+  subagentDepthTitle: "Maximum subagent depth",
+  subagentDepthDesc: "Controls how many levels of delegated subagents may be created. 1 allows direct subagents; 2 also allows them to create children; 0 disables delegation.",
+  subagentDepthLevel: "Level {{depth}}",
+  subagentDepthDisabled: "Disabled",
+};
+
+const forkExtensionsSubagents = {
+  toolCatalogHint: "With inheritance off, only checked capabilities are activated. Checking an MCP server grants all of its tools.",
+  toolCatalogSkills: "Skills",
+  toolCatalogMcp: "MCP servers",
+  toolCatalogPlugins: "Plugin tools",
+  toolCatalogLoading: "Loading capabilities available in this workspace…",
+  toolCatalogEmpty: "No active Skills, MCP servers, or plugin tools are available in this workspace.",
+  mcpAllTools: "Selecting this server grants all discovered tools",
+  mcpToolCount: "{{count}} tools loaded",
+  mcpToolCount_one: "1 tool loaded",
+  mcpToolCount_other: "{{count}} tools loaded",
+  mcpStatusReady: "ready",
+  mcpStatusConnecting: "connecting",
+  mcpStatusFailed: "failed",
+  mcpStatusIdle: "not tested",
+};
+
 export const en = {
   app: {
     shellName: "PI-Desktop",
@@ -589,6 +617,7 @@ export const en = {
     dismiss: "Dismiss",
   },
   settings: {
+    ...forkSettings,
     power: "Power",
     keepAwakeWhileRunning: "Keep computer awake",
     keepAwakeWhileRunningDesc: "Prevent idle system sleep while PI-Desktop is running. The display may turn off; manual sleep and closing the lid still work.",
@@ -858,11 +887,6 @@ sklm: {
     skillImported: "Imported {{name}}",
     skillsEmpty: "No skills in this folder",
     subagentsEmpty: "No subagents of your own yet",
-    subagentExecutionTitle: "Subagent execution",
-    subagentDepthTitle: "Maximum subagent depth",
-    subagentDepthDesc: "Controls how many levels of delegated subagents may be created. 1 allows direct subagents; 2 also allows them to create children; 0 disables delegation.",
-    subagentDepthLevel: "Level {{depth}}",
-    subagentDepthDisabled: "Disabled",
     addMcp: "Add",
     newSkill: "New",
     editMcp: "Edit",
@@ -1540,9 +1564,9 @@ sklm: {
     promptEnhancementCustomTemplate: "Use a custom template",
     promptEnhancementCustomTemplateDesc:
       "Replaces the built-in user template with your own. The system prompt stays built in.",
+    promptEnhancementCustomTemplateActive: "Custom template active",
     promptEnhancementCustomTemplateNeedsTemplate:
       "Save a custom template first; the switch then chooses between it and the built-in template.",
-    promptEnhancementCustomTemplateActive: "Custom template active",
     promptEnhancementEdit: "Edit",
     promptEnhancementModelTitle: "Enhancement prompt",
     promptEnhancementModel: "Default model",
@@ -2318,6 +2342,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       errorTooBig: "The document is over the size limit.",
     },
     subagents: {
+      ...forkExtensionsSubagents,
       fallbackModels: "Fallback models",
       fallbackModelsHint: "Try in order after model retries fail. Completed tool results are kept; Stop cancels the whole task.",
       fallbackAdd: "Add fallback model",
@@ -2379,20 +2404,6 @@ importConfirm: "Imported extensions run inside the agent process with the same a
         "Adds Skill, MCP, and plugin tools the parent can call. Task, mode switches, Ask, ToolSearch, and new_context stay with the parent.",
       toolsHint: "Opt-in inherit, or grant tools here. Mutating tools still need an explicit grant or inherit.",
       mutatingHint: "This delegate can change files on its own.",
-      toolCatalogHint: "With inheritance off, only checked capabilities are activated. Checking an MCP server grants all of its tools.",
-      toolCatalogSkills: "Skills",
-      toolCatalogMcp: "MCP servers",
-      toolCatalogPlugins: "Plugin tools",
-      toolCatalogLoading: "Loading capabilities available in this workspace…",
-      toolCatalogEmpty: "No active Skills, MCP servers, or plugin tools are available in this workspace.",
-      mcpAllTools: "Selecting this server grants all discovered tools",
-      mcpToolCount: "{{count}} tools loaded",
-      mcpToolCount_one: "1 tool loaded",
-      mcpToolCount_other: "{{count}} tools loaded",
-      mcpStatusReady: "ready",
-      mcpStatusConnecting: "connecting",
-      mcpStatusFailed: "failed",
-      mcpStatusIdle: "not tested",
       model: "Model",
       modelHint: "Optional. Choose a configured model, or leave empty to use the session's.",
       modelInherit: "Same as the session",
