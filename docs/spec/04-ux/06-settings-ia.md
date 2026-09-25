@@ -286,7 +286,7 @@ Provider-backed speech bindings (`AppSettings.speech`) are **not a Settings
 surface** (ADR 0291). The host keeps the speech capability and `speech/*` IPC
 for plugins and existing bindings; this surface selects no provider, protocol,
 speech model, or TTS voice. Local microphone-to-text input uses the separate
-`AppSettings.voice` settings described in ADR 0307 and
+`AppSettings.voice` settings described in ADR local-voice-input and
 `03-runtime/23-local-voice-input.md`: it configures capture, languages, and a
 local recognition model, with no provider selection. Settings search indexes
 the local voice controls, not provider-backed speech bindings.

@@ -11,7 +11,7 @@
 本地语音输入提供可选的麦克风转写。它不是
 [`20-speech.md`](/zh-CN/spec/03-runtime/20-speech) 中基于 provider 的
 `AppSettings.speech` 能力：它不增加语音 provider 选择器、TTS 操作或
-provider 凭据，也不改变 `speech/*` 合同。ADR 0307 将 ADR 0291 的适用范围
+provider 凭据，也不改变 `speech/*` 合同。ADR local-voice-input 将 ADR 0291 的适用范围
 限定为 provider 语音能力。
 
 ## 2. 设置
@@ -53,4 +53,4 @@ Voice 设置面板用于启用功能并配置麦克风、语言、中文输出�
 提供显式下载/删除操作及进度/状态。只有启用后，Composer 才显示麦克风操作。
 开始采集时显示录音状态；停止后执行转写，并将文本插入现有 Composer 草稿（草
 稿为空时则创建草稿）。绝不会自动发送消息。取消会停止当前采集且不插入结果。
-该流程与 TTS 和基于 provider 的语音设置相互独立（ADR 0307）。
+该流程与 TTS 和基于 provider 的语音设置相互独立（ADR local-voice-input）。

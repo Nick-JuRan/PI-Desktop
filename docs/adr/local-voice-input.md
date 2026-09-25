@@ -1,4 +1,4 @@
-# ADR 0307: Local voice input is distinct from provider-backed speech
+# ADR: Local voice input is distinct from provider-backed speech
 
 - Status: Accepted
 - Date: 2026-09-24

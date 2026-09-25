@@ -9,7 +9,7 @@
 Local voice input provides optional microphone-to-text dictation. It is not the
 provider-backed `AppSettings.speech` capability in
 [`20-speech.md`](20-speech.md): it adds no speech-provider picker, TTS action,
-or provider credential, and does not change the `speech/*` contract. ADR 0307
+or provider credential, and does not change the `speech/*` contract. ADR local-voice-input
 narrows ADR 0291 to that provider-backed capability.
 
 ## 2. Settings
@@ -60,4 +60,4 @@ only while enabled. Starting capture shows recording state; stopping runs
 transcription and inserts the text into the existing Composer draft (or creates
 the draft when empty). It never sends the message automatically. Cancel stops
 the active capture without inserting a result. This flow is separate from
-text-to-speech and provider-backed speech settings (ADR 0307).
+text-to-speech and provider-backed speech settings (ADR local-voice-input).

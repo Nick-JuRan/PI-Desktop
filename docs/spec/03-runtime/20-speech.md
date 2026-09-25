@@ -33,7 +33,7 @@ when the file is larger than 8 MiB. Input is capped at 25 MiB
 Protocol ids match `^[a-z][a-z0-9._-]{0,63}$`. Absent/empty speech is a valid
 unconfigured state. No app surface reads this provider-backed binding: callers
 are plugins and `speech/*` IPC consumers (ADR 0291). It is separate from local
-microphone-to-text settings in `AppSettings.voice` (ADR 0307 and
+microphone-to-text settings in `AppSettings.voice` (ADR local-voice-input and
 `23-local-voice-input.md`).
 
 ## 3. Built-in protocols
