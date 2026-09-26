@@ -1,3 +1,10 @@
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import {
+  EMPTY_SUBAGENT_TOOL_CATALOG,
+  MAX_SUBAGENT_DEPTH,
+  normalizeSubagentMaxDepth,
+  type SubagentToolCatalog,
+} from "@pi-desktop/shared/fork";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -47,13 +54,6 @@ import {
 import { TooltipButton } from "../ui";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
 import { SettingsCard, SettingsRow } from "../../features/settings/primitives";
-// Fork-only imports (separate statement so upstream import edits never conflict).
-import {
-  EMPTY_SUBAGENT_TOOL_CATALOG,
-  MAX_SUBAGENT_DEPTH,
-  normalizeSubagentMaxDepth,
-  type SubagentToolCatalog,
-} from "@pi-desktop/shared/fork";
 
 const GLOBAL_SUBAGENTS_PATH = "~/.agents/subagents";
 

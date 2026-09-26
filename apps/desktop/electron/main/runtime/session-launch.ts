@@ -1,3 +1,10 @@
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import {
+  normalizeSubagentMaxDepth,
+  subagentExtensionToolSelector,
+  type SubagentPluginToolOption,
+  type SubagentToolCatalog,
+} from "@pi-desktop/shared/fork";
 import { join } from "node:path";
 import {
   ErrorCodes as SharedErrorCodes,
@@ -43,13 +50,7 @@ import type { PluginRuntime } from "../plugin-runtime";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { RuntimeState } from "./context";
 import type { RuntimeProvider } from "./provider-catalog";
-// Fork-only imports (separate statement so upstream import edits never conflict).
-import {
-  normalizeSubagentMaxDepth,
-  subagentExtensionToolSelector,
-  type SubagentPluginToolOption,
-  type SubagentToolCatalog,
-} from "@pi-desktop/shared/fork";
+import type { LoadedSkillDocument } from "../skill-document";
 
 const ErrorCodes = {
   ...SharedErrorCodes,
@@ -382,7 +383,7 @@ export function createSessionLaunchRuntime({
   async function loadUserSkillBody(
     id: string,
     projectPath: string | null,
-  ): Promise<{ id: string; name: string; body: string } | null> {
+  ): Promise<LoadedSkillDocument | null> {
     if (!runtimeState.host || id.includes("/")) return null;
     const result = await runtimeState.host!.call<{
       skill: UserSkillRecord | null;
@@ -393,7 +394,7 @@ export function createSessionLaunchRuntime({
     if (!isActiveInProject(skill, projectPath)) {
       throw new Error(`skill "${id}" is not enabled for this project`);
     }
-    return { id: skill.id, name: skill.name, body: result.body };
+    return { id: skill.id, name: skill.name, body: result.body, location: skill.path };
   }
 
   async function resolveEffectiveCommandShell(): Promise<CommandShellCatalog> {
