@@ -2300,11 +2300,25 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   也不能显示它。只有最新导航可以显示 guest，旧 B 查询迟到不能覆盖 C。切回 A 恢复 A，
   空会话保持空白。迟到完成不能撤销关闭或销毁。同会话正常导航保留当前页面。
   非法目标、失败或超时不能把上一个文档报告为目标会话已经就绪。切换导航超过既有
-  15 秒等待上限后保持隐藏，需重试，不承诺迟到完成自动显示。
+  15 秒主框架等待上限后保持隐藏并显示错误，需重试。慢图片或子框架不阻塞已提交页面的显示；
+  页面尚未加载完成就导航时，旧请求的 ERR_ABORTED 不得阻止新地址、标题和加载状态更新。
 - **关联规范**：`04-ux/08-component-spec.md` §5.3；ADR 0028、ADR 0170。
 - **状态**：`browser-host-session.test.mjs` 与 `browser-pane-navigation.test.mjs`
   覆盖生产 BrowserHost/BrowserPane 服务路径，控制原生浏览器与 Host 边界，采用确定性
   时钟。尚不覆盖原生 Electron 合成显示或报告者的真实会话。
+
+#### E2E-BROWSER-responsive-resource-tabs
+
+- **前提**：浏览器已启用；隔离配置；本地页面包含延迟 17 秒的图片、延迟主响应及普通/新窗口链接。
+- **步骤**：输入慢图片页面地址，检查加载反馈及图片完成前的显示；打开两个聊天链接和网页新窗口链接，
+  切换标签，在其中一个标签内导航后再切走、切回；检查慢主响应、停止、失败、重试及外部打开设置。
+- **预期**：主框架导航提交后显示页面；新链接保留原标签，各标签保留表单、滚动位置、JS 状态和独立历史，切换不重新请求页面；
+  普通导航只更新原标签。失败/停止后地址栏仍可用；外部模式不新建工作面板标签。
+  会话切换、非法协议的隔离和可见性规则继续生效。
+- **补充路径**：通过 ToolSearch/BrowserPreview 预览文件，原标签的未提交表单和地址不被改写；
+  后台导航恢复到对应会话的标签，旧加载完成不能覆盖新意图；新空白标签地址和状态为空；
+  关闭后台标签销毁对应 WebContents，不影响其他标签，删除会话或销毁插件/窗口释放所属页面。
+- **状态**：隔离 Electron 定向验证；不新增仓库测试套件。
 
 #### E2E-BROWSER-in-page-navigation：浏览器工具栏跟随同文档导航
 
@@ -5415,6 +5429,7 @@ eleven-tool-round desktop paths are verified by
 | 品质（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
 | C — 对话与流式（会话列表响应性） | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | 品质（会话列表响应性） | E2E-SESSION-list-refresh-keeps-desktop-responsive |
+| 品质（Windows 更新缓存） | E2E-260 |
 | 安全性（导入扩展依赖） | E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency |
 | 品质（导入扩展依赖） | E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency |
 | F / G / 安全性 / 品质 — 导入扩展的 npm 恢复 | E2E-PLUGIN-import-extension-recovers-missing-npm |
@@ -5450,6 +5465,7 @@ eleven-tool-round desktop paths are verified by
 | M6+（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
 | M6+（已选模型顺序） | E2E-MODEL-selected-order-persists |
 | M6+（会话列表响应性） | E2E-SESSION-list-refresh-keeps-desktop-responsive |
+| M6+（Windows 更新缓存） | E2E-260 |
 | M6+（独立会话通信） | E2E-SESSION-independent-top-level-communication、E2E-SESSION-hover-card-model-and-links |
 | M5（聊天文件引用） | E2E-CHAT-shorthand-file-ref-opens-the-matching-file、E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
 | M6+（聊天文件引用） | E2E-PLUGIN-file-view-collapse-persists |
@@ -8991,6 +9007,16 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **里程碑：** 提供商配置维护。
 - **状态：** `pnpm test:e2e:provider-api-style`、`official-native-search.test.ts`；
   共享路由测试覆盖伪装域名、不安全地址和未知中转站。未验证线上服务或 Host/SQLite 保存。
+
+#### E2E-260：Windows 更新缓存可安全迁移和回收
+
+- **前提：** 已打包的 Windows x64 NSIS 安装、隔离用户配置，以及非系统卷上的可写缓存目录。使用本地更新源 fixture；不得访问 GitHub 或付费服务。
+- **步骤：** 1）在旧 `%LOCALAPPDATA%` 更新缓存中准备 `installer.exe`、`current.blockmap` 和待安装更新。2）设置 `PI_DESKTOP_UPDATE_CACHE_DIR` 为隔离缓存根目录后启动。3）确认 Main 将差分基线和待安装更新迁移至配置目录，并清理旧目录。4）完成更新并启动新版本。5）fixture 报告没有更新后检查配置目录。
+- **预期：** 缓存子目录名以 `app-update.yml` 为准；迁移保留待安装更新及差分基线。确认当前版本已是最新版本后，只移除 `pending/`，`installer.exe` 和 `current.blockmap` 仍供下次增量更新使用。未设置覆盖变量时默认路径保持不变；应用不会将下载写入 `Program Files`。
+- **规格：** `03-runtime/07-process-model.md`、ADR 0022。
+- **验收：** 缓存路径、迁移和清理单测通过；Windows task-candidate 验证应覆盖更新源传输、安装器交接和文件系统行为，且不连接真实发布源。
+- **里程碑：** M6+
+- **状态：** 单测和源码契约覆盖（`update-cache.test.mjs`、`auto-update.test.mjs`）；仍需 Windows 安装器/E2E 验证。
 
 ## E2E-VOICE-local-dictation
 

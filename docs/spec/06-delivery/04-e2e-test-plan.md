@@ -1866,29 +1866,34 @@ identify the platform validation still needed.
 
 #### E2E-089: Composer model menu opens upward and switches model
 
-- **Preconditions**: Chat route active; provider configured.
+- **Preconditions**: Chat route active; provider configured with two reasoning
+  models whose binding defaults differ.
 - **Steps**: 1) Click the Composer-right model × reasoning chip. 2) Confirm the
   menu opens upward from the bottom composer. 3) Enter Model, select a different
-  provider/model, and return to the root. 4) Enter Reasoning level and select a
-  supported level. 5) Open Settings from the command palette or application menu.
+  provider/model, and return to the root. 4) Confirm its default thinking level,
+  choose another supported level, then reselect the same model. 5) Open Settings
+  from the command palette or application menu.
 - **Expected**: The trigger uses a Bot icon while retaining the current model
   and reasoning labels. The root shows only Model and Reasoning level entries.
   The Model submenu lists enabled runnable providers and only the model bindings
   saved for each provider, with each model row visibly indented beneath its provider
   heading. Cached or freshly discovered models may supply display names and
   metadata for those bindings, but unconfigured discovery results are absent;
-  configured IDs remain available when discovery is unavailable. The Reasoning
-  level submenu lists only the selected model's published levels. Selecting
-  updates the active session model/reasoning configuration without dismissing
-  the menu; Settings opens from the command palette/menu. The Composer model
-  trigger ellipsizes long IDs. Each option shows one display name only, and
-  hovering a long option exposes its complete display name in the tooltip
-  without changing the menu layout or adding a visible model ID.
+  configured IDs remain available when discovery is unavailable. The root slider
+  lists the selected model's supported levels. Selecting a different model
+  updates the active session to that binding's default thinking level; selecting
+  the already-active model preserves a manually selected level. Settings opens
+  from the command palette/menu. The Composer model trigger ellipsizes long IDs.
+  Each option shows one display name only, and hovering a long option exposes its
+  complete display name in the tooltip without changing the menu layout or adding
+  a visible model ID.
 - **Specs linked**: `04-ux/08-component-spec.md` (§11, model menu),
   `03-runtime/13-model-catalog-and-selection.md`
 - **Acceptance**: C
 - **Milestone**: M2
-- **Status**: Draft
+- **Status**: Component-covered by `pnpm test:e2e:composer-model-selection`
+  (isolated React/Electron with the real Composer hook); full provider/session
+  desktop journey remains Draft.
 
 #### E2E-COMPOSER-narrow-controls: Composer controls adapt to a narrow chat column
 
@@ -3811,13 +3816,40 @@ identify the platform validation still needed.
   disposing cannot be undone by a delayed completion. Same-session navigation
   keeps its current page visible. Invalid, failed, or timed-out loads do not
   report the previous document as the destination being ready. A switch that
-  exceeds the existing 15-second load wait stays hidden until retried; automatic
-  late reveal is not promised.
+  exceeds the 15-second main-frame wait stays hidden with an error until retried.
+  Slow images/subframes do not delay revealing a committed current document.
+  Start navigation during an unfinished page load: the old ERR_ABORTED event
+  must not prevent the new address, title, and loading state from updating.
 - **Specs linked**: `04-ux/08-component-spec.md` §5.3; ADR 0028, ADR 0170.
 - **Status**: Automated service-path coverage in `browser-host-session.test.mjs`
   and `browser-pane-navigation.test.mjs`: production BrowserHost/BrowserPane,
   controlled native-browser/Host boundaries, and deterministic timers. Native
   Electron compositing and the reporter's live sessions are not covered.
+
+#### E2E-BROWSER-responsive-resource-tabs
+
+- **Preconditions**: Browser enabled; isolated profile; local HTML with a
+  17-second image, a delayed main response, and ordinary/new-window links.
+- **Steps**: Submit the slow-image URL once; observe loading feedback and page
+  display before the image finishes. Open two chat links and a website
+  new-window link; switch tabs, navigate within one, then switch away and back.
+  Repeat with a delayed main response, Stop, failed navigation, and a retry.
+  Set Link open destination to External and repeat the new-window link.
+- **Expected**: The current document displays after main-frame commit; slow
+  assets do not strand the empty state. New links preserve earlier resource
+  tabs. Tab switching retains forms, scroll positions, JS state and independent history
+  without another page request. Each tab keeps its last address; same-tab navigation updates only its
+  originating tab. Failure/stop leave usable address controls. External mode
+  does not create a work-panel tab. Session switches and invalid schemes retain
+  their security and visibility gates.
+- **Additional paths**: Invoke BrowserPreview through ToolSearch/BrowserPreview
+  while a tab has unsent form input: only a new tab navigates. Queue navigation
+  for an inactive session with an existing tab, then return and verify the queued
+  destination wins over an old load completion. Open a blank tab and inspect its
+  empty address and state. Close a background tab and verify its WebContents is
+  destroyed without affecting its sibling; deleting a session and plugin/window
+  disposal release the appropriate retained pages.
+- **Status**: Targeted isolated Electron validation; no new repository test suite.
 
 #### E2E-BROWSER-in-page-navigation: Browser chrome follows same-document navigation
 
@@ -8671,6 +8703,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | F — Persistence (import visibility) | E2E-257 |
 | G — Plugins (import visibility) | E2E-257 |
 | Quality (import visibility) | E2E-257 |
+| Quality (Windows updater cache) | E2E-260 |
 | G — Plugins (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
 | Security (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
 | Quality (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
@@ -8717,6 +8750,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M6+ (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
 | M6+ (Selected model order) | E2E-MODEL-selected-order-persists |
 | M6+ (Session list responsiveness) | E2E-SESSION-list-refresh-keeps-desktop-responsive |
+| M6+ (Windows updater cache) | E2E-260 |
 | M6+ (Independent session communication) | E2E-SESSION-independent-top-level-communication, E2E-SESSION-hover-card-model-and-links |
 | M5 (Chat file references) | E2E-CHAT-shorthand-file-ref-opens-the-matching-file, E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
 | M6+ (Chat file references) | E2E-PLUGIN-file-view-collapse-persists |
@@ -15461,6 +15495,16 @@ renderer's durable transcript reads. No real model or provider is contacted.
   `official-native-search.test.ts`; shared route tests reject lookalike hosts,
   unsafe URLs and unknown gateways. The UI fixture does not prove Host/SQLite
   persistence or live provider availability.
+
+#### E2E-260: Windows updater cache can be relocated and reclaimed safely
+
+- **Preconditions:** Packaged Windows x64 NSIS install, isolated user profile, and a writable cache directory on a non-system volume. Use a local updater-feed fixture; do not contact GitHub or a paid service.
+- **Steps:** 1) Seed the legacy `%LOCALAPPDATA%` updater cache with `installer.exe`, `current.blockmap`, and a staged update. 2) Launch with `PI_DESKTOP_UPDATE_CACHE_DIR` set to the isolated cache base. 3) Confirm Main adopts the baselines and staged update into the configured cache and removes the legacy cache. 4) Complete the staged update and launch the new version. 5) When the fixture reports no newer version, inspect the configured cache.
+- **Expected:** `app-update.yml` determines the cache subdirectory; the pending update and differential baselines survive relocation; when the running version is current only `pending/` is removed, while `installer.exe` and `current.blockmap` remain for the next delta. The default path remains unchanged when the override is unset. The app does not write the download into `Program Files`.
+- **Specs:** `03-runtime/07-process-model.md`, ADR 0022.
+- **Acceptance:** Cache-path, migration, and cleanup unit tests pass; Windows task-candidate validation confirms the updater feed transport, installer handoff, and filesystem behavior without a live release feed.
+- **Milestone:** M6+
+- **Status:** Unit and source-contract covered (`update-cache.test.mjs`, `auto-update.test.mjs`); Windows installer/E2E validation remains required.
 
 ## E2E-VOICE-local-dictation
 
