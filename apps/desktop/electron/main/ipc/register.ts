@@ -332,7 +332,6 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     plugins,
     browserHost,
     clipboardHistory,
-    logger,
     recordPastedClipboardFiles,
     currentWorkspacePath,
     setCurrentWorkspacePath,
