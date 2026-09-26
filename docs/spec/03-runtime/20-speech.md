@@ -31,10 +31,8 @@ when the file is larger than 8 MiB. Input is capped at 25 MiB
 ```
 
 Protocol ids match `^[a-z][a-z0-9._-]{0,63}$`. Absent/empty speech is a valid
-unconfigured state. No app surface reads this provider-backed binding: callers
-are plugins and `speech/*` IPC consumers (ADR 0291). It is separate from local
-microphone-to-text settings in `AppSettings.voice` (ADR local-voice-input and
-`23-local-voice-input.md`).
+unconfigured state. No app surface reads it: callers are plugins and IPC
+consumers (ADR 0291).
 
 ## 3. Built-in protocols
 
@@ -71,12 +69,9 @@ unregisters.
 
 ## 6. Product
 
-Settings exposes **no provider-backed speech surface** (ADR 0291). A binding is
-written by a caller through the host settings API; plugins and the `speech/*`
-IPC are its only consumers. Local microphone-to-text input is a separate
-capability specified in `23-local-voice-input.md`; it adds no provider picker
-or text-to-speech control. Whisper / TTS models must not appear in the chat
-model picker.
+Settings exposes **no** speech surface (ADR 0291). A binding is written by a
+caller through the host settings API; plugins and the `speech/*` IPC are its
+only consumers, and the renderer has no transcription or speech control.
+Whisper / TTS models must not appear in the chat model picker.
 
-The provider-backed speech API does not implement microphone capture, Realtime,
-or agent tools. Local capture and transcription are specified separately.
+v1 does not implement microphone capture, Realtime, or agent tools.

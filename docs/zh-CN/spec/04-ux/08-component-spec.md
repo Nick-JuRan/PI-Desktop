@@ -2159,9 +2159,7 @@ MainChat 底部的输入区域，用于撰写和发送提示。支持多行输�
   SVG 输入（`image/svg+xml` 或 `.svg` 扩展名）始终被分类为文件而非模型图片，
   无论视觉能力如何（见 `03-runtime/svg-attachment-input.md`）（D361）。草稿仍是文本；芯片在发送前序列化为规范 `@<absolute-path>`，
   代理用文件工具跟随路径。
-  - 当 `AppSettings.voice.enabled` 为 true 时，Composer 工具栏显示本地麦克风操作。录音/转写
-    浮层在活动期间显示时长、输入音量和取消操作。停止后将识别文本插入当前草稿（已有文本时
-    追加），不会提交草稿。这是本地语音转文字，不是基于 provider 的语音能力或 TTS（ADR local-voice-input）。
+- 没有语音输入
 
 ### 11.8 斜线命令、@ 文件引用和剪贴板文件（D123–D125、D197、D209、D262、D362、ADR 0024、ADR 0059、ADR 0070、ADR 0131）
 

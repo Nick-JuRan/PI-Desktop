@@ -1,6 +1,6 @@
 # ADR 0291: Remove the speech settings UI
 
-- Status: Accepted; local voice input scope clarified by ADR local-voice-input
+- Status: Accepted
 - Date: 2026-09-19
 - Deciders: PI-Desktop core
 - Amends: [ADR 0281](0281-host-speech-capability.md) (its v1 product entry)
@@ -36,11 +36,6 @@ shell for a capability whose only customers today are plugins and direct IPC
 callers.
 
 ## Decision
-
-Scope note (ADR local-voice-input): this decision remains in force for the provider-backed
-`AppSettings.speech` bindings and the withdrawn provider/TTS controls. The
-separate local microphone-to-text feature does not restore a speech-provider
-picker or text-to-speech UI.
 
 1. **Remove the Voice card.** Settings → AI renders no speech surface.
    `apps/desktop/src/features/settings/voice-settings.tsx` and its

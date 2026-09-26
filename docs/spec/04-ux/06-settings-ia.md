@@ -282,14 +282,11 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   Manual `/compact` remains available from the command palette for an idle
   session; the transcript shows where each compaction happened and the context
   usage inspector shows whether a checkpoint is installed.
-Provider-backed speech bindings (`AppSettings.speech`) are **not a Settings
-surface** (ADR 0291). The host keeps the speech capability and `speech/*` IPC
-for plugins and existing bindings; this surface selects no provider, protocol,
-speech model, or TTS voice. Local microphone-to-text input uses the separate
-`AppSettings.voice` settings described in ADR local-voice-input and
-`03-runtime/23-local-voice-input.md`: it configures capture, languages, and a
-local recognition model, with no provider selection. Settings search indexes
-the local voice controls, not provider-backed speech bindings.
+Speech bindings (`AppSettings.speech`) are **not a Settings surface** (ADR
+0291). The host keeps the speech capability and the `speech/*` IPC for plugins
+and for bindings that are already stored, but nothing here picks a
+transcription or speech provider, protocol, model, or voice, and search indexes
+no speech keys.
 
 Token usage is **not a Settings destination** (D335 / ADR 0173). Completed-turn
 history stays host-owned (`session.endTurn.usage`, `stats.getTokenUsageHistory`).

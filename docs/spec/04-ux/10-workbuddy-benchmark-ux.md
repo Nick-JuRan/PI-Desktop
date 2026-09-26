@@ -195,9 +195,7 @@ accent left rule instead of a heavy pulse frame.
 - **Persona marketplace**: out of scope as a store, but the **card grammar**
   (avatar/icon, one-line tagline, capability tags, category chips, sort) is
   the right template for the Plugins page as the catalog grows.
-- **Local voice input**: speech-to-text is available as an optional Composer
-  action; text-to-speech and provider-backed speech controls remain out of
-  scope (ADR local-voice-input).
+- **Voice input / TTS**: note as future; not MVP.
 
 ## 5. Reject
 
