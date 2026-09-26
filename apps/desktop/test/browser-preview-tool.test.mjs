@@ -100,18 +100,6 @@ test("agent runtime exposes BrowserPreview in every mode and prompts for it", ()
     runtimeSource,
     /BrowserPreview: \{\s*path: pathParam\([^)]*\),\s*file_path: aliasParam\("path"\),\s*\}/,
   );
-  // The on-demand tool description limits previews to useful visual work and
-  // tells the agent to reuse the live-reloading surface while iterating.
-  const previewStart = runtimeSource.indexOf('case "BrowserPreview":');
-  const previewEnd = runtimeSource.indexOf('case "Read":', previewStart);
-  assert.ok(previewStart >= 0 && previewEnd > previewStart);
-  const previewDescription = runtimeSource.slice(previewStart, previewEnd);
-  assert.match(previewDescription, /user-visible HTML pages/);
-  assert.match(previewDescription, /first meaningful visual edit/);
-  assert.match(previewDescription, /reuse that preview while iterating/);
-  assert.match(
-    previewDescription,
-    /Skip generated, test-only, and non-visual HTML files/,
-  );
-  assert.match(previewDescription, /live-reloads/);
+  // BrowserPreview tool description mentions live-reload behaviour.
+  assert.match(runtimeSource, /live-reloads/);
 });

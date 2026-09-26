@@ -2903,12 +2903,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       if (scheduledToolDescriptions[toolName]) return scheduledToolDescriptions[toolName];
       switch (toolName) {
         case "BrowserPreview":
-          return [
-            "Preview user-visible HTML pages from the workspace in PI-Desktop's built-in browser panel.",
-            '`path` is workspace-relative (for example, "demo/index.html").',
-            "Skip generated, test-only, and non-visual HTML files.",
-            "Call BrowserPreview on the first meaningful visual edit and reuse that preview while iterating; it live-reloads later edits to the file and sibling assets.",
-          ].join(" ");
+          return "Open a workspace HTML file in PI-Desktop's built-in browser panel. `path` is workspace-relative (e.g. \"demo/index.html\"). The preview live-reloads on later edits to the file or its sibling assets, so call once per page.";
         case "Read":
           return (
             "Read a bounded window from an existing regular text file, never a directory. " +
@@ -4585,6 +4580,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             `Could not initialize the ${definition.name} subagent. No work was started.`,
           );
         }
+
         let runPromise: Promise<SubagentRunResult>;
         try {
           runPromise = subagentRun.run();

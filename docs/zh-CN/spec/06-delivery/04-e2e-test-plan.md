@@ -19,10 +19,9 @@
 - **预期：** 设置持久化并立即生效，不会重复创建阻止器；关闭开关或退出应用
   时释放。屏幕开关拥有独立阻止器，不能关闭系统休眠阻止器。手动睡眠和合盖
   不在该功能的保证范围内。
-- **状态：** `pnpm test:e2e:keep-awake` 使用隔离的真实 Electron/Host 配置。
-  Windows 基线无其他 Electron 电源请求且当前 shell 有权限查询时，以
-  `powercfg /requests` 验证；若查询要求提升权限，仅跳过该系统级断言。
-  控制器生命周期和 Host 设置往返另有定向测试。
+- **状态：** `pnpm test:e2e:keep-awake` 使用隔离的真实 Electron/Host 配置；
+  当基线不存在其他 Electron 电源请求时，以 Windows `powercfg /requests`
+  验证系统请求。控制器生命周期和 Host 设置往返另有定向测试。
 
 ### E2E-IMAGES-provider-save-feedback
 
@@ -1734,28 +1733,6 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **状态**：源代码/单元已覆盖（`apps/desktop/test/agent-capability-settings.test.mjs`、
   `apps/desktop/test/subagent-wiring.test.mjs`、`packages/agent-runtime/src/subagent-definitions.test.ts`、
   `packages/shared/src/subagent-presets.test.ts`）；完整 UI 旅程为草稿
-
-#### E2E-SUBAGENT-trusted-extension-tool-selection
-
-- **前置条件**：Agent 模式；一个已启用的插件声明可信的
-  `contributes.agentExtensions` 模块，模块代码注册任意工具名。当前项目在插件范围内；
-  不要求已有绑定提供商的会话加载，因为设置请求可以使用 sidecar 目录探测。
-- **步骤**：
-  1. 打开设置 → 智能体 → 子智能体，编辑一个用户自建的子智能体。
-  2. 展开“高级”，确认扩展报告的工具出现在插件工具分组中，源代码没有工具名列表。
-     选中它并保存；重新打开编辑器，确认选择仍然存在。
-  3. 开始新的 Agent 回合并委派给该子智能体。检查子代理工具目录，并要求它调用选中的扩展工具。
-  4. 禁用或卸载扩展，开始下一回合，再次检查目录。
-- **预期**：`subagent/tool-catalog` 在没有会话报告时使用 sidecar 目录探测，然后为每个实时
-  扩展工具暴露自动生成的选择器；渲染器把它显示为可单独选择的卡片。保存的定义包含选择器，
-  而不是硬编码的项目工具列表。委托时选择器解析为当前 sidecar 工具，子代理可以调用它；
-  禁用或卸载后，下一次目录和委托都会省略该工具。
-- **链接规格**：`03-runtime/01-ipc-protocol.md` §12c、`03-runtime/02-agent-runtime.md` §5f、
-  `03-runtime/03-tools-and-permissions.md` §11、`07-plugins/16-trusted-extensions.md` §7
-- **验收**：E（工具与权限）、G（Skill/MCP/插件激活）
-- **里程碑**：M6+
-- **状态**：`packages/shared`、`apps/desktop/test/subagent-tool-catalog.test.mjs` 和桌面接线测试已覆盖；
-  带已加载扩展的原生设置/sidecar 旅程仍需运行
 
 #### E2E-200：Linux RPM 保留 Wayland 桌面身份
 
@@ -5484,7 +5461,6 @@ eleven-tool-round desktop paths are verified by
 | 品质（旧版子代理回合上限） | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 | M6+（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | M6+（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
-| E — 可信扩展工具授权 | E2E-SUBAGENT-trusted-extension-tool-selection |
 | E — 工具与权限（内置子智能体默认项） | E2E-SUBAGENT-settings-lists-builtin-defaults |
 | 品质（内置子智能体默认项） | E2E-SUBAGENT-settings-lists-builtin-defaults |
 | C — 对话与流式（不透明浮动表面） | E2E-CHAT-opaque-floating-decision-and-retry-surfaces |

@@ -252,10 +252,6 @@ never in Electron main, the renderer, or a plugin host process.
 - Enabling, disabling, or rescanning invalidates every Runner; affected
   sessions reload extensions at the next turn boundary. A running turn is
   never interrupted by a reload.
-- Settings may ask the sidecar for a catalog probe before any provider-bound
-  session has loaded the module. The probe runs the same enabled extension
-  specs with an inert bridge, reports registrations, and is not an agent
-  session or a substitute for the per-session Runner.
 
 ### 4.4 Load failures
 
@@ -392,12 +388,6 @@ the UI broker's own prompt timeout does not extend that budget.
    duration. Parameters are not logged.
 5. `exec` runs in the sidecar with the session's working directory and the
    session's proxy and environment settings.
-6. After a successful session load or catalog probe, the desktop's Subagents
-   Advanced catalog includes every tool name reported by the extension. Each
-   row carries a generated persisted selector; the editor and runtime do not
-   hardcode extension tool names. Delegation maps the selector back to the
-   currently registered name, so a disabled, unloaded, or out-of-scope
-   extension cannot keep the grant.
 
 ## 8. Commands
 

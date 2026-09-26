@@ -100,5 +100,13 @@
 - [decisions-log.md](08-meta/decisions-log.md)
 - [open-questions.md](08-meta/open-questions.md)
 
+## 90. Fork
+- [00-overview.md](90-fork/00-overview.md)
+- [01-subagent-depth.md](90-fork/01-subagent-depth.md)
+- [02-subagent-tool-selection.md](90-fork/02-subagent-tool-selection.md)
+- [03-fusion-search.md](90-fork/03-fusion-search.md)
+- [04-classification-query.md](90-fork/04-classification-query.md)
+- [05-windows-portability.md](90-fork/05-windows-portability.md)
+
 ## ADR
 - [../adr/README.md](../adr/README.md)

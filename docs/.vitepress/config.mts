@@ -23,6 +23,7 @@ const specSections: SpecSection[] = [
   { directory: '06-delivery', en: 'Delivery', zh: '交付', collapsed: true },
   { directory: '07-plugins', en: 'Plugins', zh: '插件', collapsed: true },
   { directory: '08-meta', en: 'Decisions & metadata', zh: '决策与元数据', collapsed: true },
+  { directory: '90-fork', en: 'Fork', zh: 'Fork 扩展', collapsed: true }, // fork
 ]
 
 const preferredRootFiles = ['README.md', '00-baseline.md', 'NAV.md']

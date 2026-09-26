@@ -1341,3 +1341,4 @@ preference does not rewrite provider configuration or require a schema migration
 schedule 就推断为日历配置；旧版 Hourly 行保留字段，但转换时需要明确确认日历时间。
 已知意图在周期切换和数据库重开后仍然保留。该新增 JSON 字段不需要表或 schema
 版本迁移；旧版本会忽略它，也无法执行新的转换保护。
+

@@ -39,10 +39,9 @@
   its own blocker and cannot disable the system blocker. Manual sleep and lid
   close are outside this contract.
 - **Status:** Automated in `pnpm test:e2e:keep-awake`, with a real isolated
-  Electron/Host profile. On Windows, `powercfg /requests` is asserted when no
-  other Electron power request is present and the runner can query it; an
-  elevation-required response skips only that OS-level assertion. Controller
-  lifecycle and Host settings round-trip also have targeted tests.
+  Electron/Host profile and a Windows `powercfg /requests` assertion when no
+  other Electron power request is present at baseline. Controller lifecycle
+  and Host settings round-trip also have targeted tests.
 
 ### E2E-IMAGES-provider-save-feedback
 
@@ -2615,41 +2614,6 @@ identify the platform validation still needed.
 - **Acceptance**: G (plugin agent tool)
 - **Milestone**: M4
 - **Status**: Automated (protocol smoke: dispatch roundtrip host->runner->host; in-app JS execution via PluginRuntime)
-
-#### E2E-PLUGIN-fusion-search-authenticated-semantic-baseline
-
-- **Preconditions**: The `local.fusion-search` development plugin is loaded; a
-  dedicated intranet test account is configured only in that plugin's private
-  settings; the declared authentication and search hosts are reachable; the
-  user grants the manifest's requested high-risk permissions; a controlled
-  test claim reference is available. `prepare` creates a remote baseline, so
-  use only a test case or target-claim text approved for that side effect.
-- **Steps**: 1) Start with no stored token. 2) Invoke
-  `fusion_semantic_baseline` with `action=prepare`, an explicit
-  `reference_kind` (`application_number`, `publication_number`, or `text`), and
-  the controlled reference. For `text`, provide your own concise paraphrase of
-  the technical solution in that claim; do not copy it verbatim or use the
-  whole application.
-  3) Inspect the returned `element_id` and Chinese/English terms and weights,
-  comparing them to that one claim. 4) If needed, invoke `update_terms` with
-  corrected lists. Inspect plugin settings without displaying credentials or
-  token values.
-- **Expected**: The first call completes the built-in login chain, persists a
-  usable token in the plugin-private settings, and returns the baseline terms
-  and weights immediately. The workflow targets one specified claim, not the
-  whole application; do not assume a case-number response is already
-  claim-specific. Prefer an application/publication number, refine its terms
-  with `update_terms`, and fall back to your own paraphrase of the target
-  claim's technical solution when the case-number baseline remains unsuitable. Neither credentials nor token appear
-  in tool arguments, results, or logs. The tool exposes exactly `prepare` and
-  `update_terms`; both actions mutate remote state and are never automatically
-  replayed after an ambiguous remote outcome.
-- **Specs linked**: `07-plugins/03-plugin-api.md`,
-  `07-plugins/13-plugin-permissions-matrix.md`, `Extensions/fusion-search/README.md`
-- **Acceptance**: Plugin authentication, private persistence, and semantic
-  baseline preparation with immediate term output
-- **Status**: Automated unit/integration coverage; live intranet test requires
-  the dedicated test account and reachable service
 
 #### E2E-024G: Marketplace detail sheet shows README, permissions, versions
 
@@ -6871,106 +6835,6 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Milestone**: M6+
 - **Status**: Automated by `test:e2e:subagents` (host-core create/read/on-disk/active/loader inherit round-trip) and `test:e2e:subagent-models` (real sidecar/local transport Task spawn, inherited Skill/plugin catalog minus the deny list, and builtin explorer isolation). Unit coverage remains in `packages/shared`, `packages/agent-runtime`, and host-core `user_subagents`; the UI inherit-checkbox journey remains Draft. Required suites: `test:e2e`, `test:e2e:subagents`, `test:e2e:subagent-models`.
 
-#### E2E-SUBAGENT-explicit-capability-selection
-
-- **Preconditions**: Agent mode; one active user Skill and one active user MCP
-  server have been added in Settings → Agent; the MCP fixture advertises at
-  least two tools; a plugin with at least two agent tools is enabled.
-- **Steps**:
-  1. Open Settings → Agent → Subagents and edit a user-owned subagent.
-  2. Under **Available tools**, expand **Advanced** and confirm the active Skill,
-     MCP server, and plugin tools appear as separate grouped checkbox cards with
-     source/status text. Select the Skill, the MCP server, and exactly one of the
-     plugin tools; leave the other plugin tool unchecked. Save and reopen the
-     editor to verify the selections persist.
-  3. Start a new Agent turn and delegate to the edited subagent. Inspect the
-     child tool catalog and prompt, then ask it to load the selected Skill and
-     call the selected plugin tool.
-  4. Ask the child to load the unselected Skill or call the unselected plugin
-     tool, and ask the child to use both discovered MCP tools.
-- **Expected**: The editor loads its catalog through the host-backed IPC path.
-  The child receives `Skill`, only the checked Skill id in its Skill prompt,
-  every tool from the checked MCP server, and only the checked plugin tool.
-  The unselected plugin tool is absent from the child tool list. The selected
-  Skill loads successfully; a manually requested unselected Skill returns a
-  bounded grant error. A disabled or out-of-scope capability disappears from
-  the next catalog/runtime resolution rather than remaining callable.
-- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
-  `04-ux/06-settings-ia.md` §7, `07-plugins/03-plugin-api.md`, ADR 0038
-- **Acceptance**: E (tools & permissions), G (Skill/MCP/plugin activation)
-- **Milestone**: M6+
-- **Status**: Unit-covered (`packages/shared`, `packages/agent-runtime`,
-  `apps/desktop/test/subagent-wiring.test.mjs`); real Settings/sidecar journey
-  remains to be run with the user's active Skill, MCP, and plugin fixtures.
-
-#### E2E-SUBAGENT-trusted-extension-tool-selection
-
-- **Preconditions**: Agent mode; an enabled plugin declares a trusted
-  `contributes.agentExtensions` module whose code registers an arbitrary tool
-  name. The active project is in the plugin's scope; no provider-bound session
-  load is required because the Settings request can use the sidecar catalog
-  probe.
-- **Steps**:
-  1. Open Settings → Agent → Subagents and edit a user-owned subagent.
-  2. Expand **Advanced** and confirm the extension's reported tool appears in
-     the plugin-tools group without a source-code tool-name list. Select it and
-     save; reopen the editor and verify the selection persists.
-  3. Start a new Agent turn and delegate to the edited subagent. Inspect the
-     child tool catalog and ask it to call the selected extension tool.
-  4. Disable or unload the extension, start the next turn, and inspect the
-     catalog again.
-- **Expected**: `subagent/tool-catalog` uses the sidecar catalog probe when no
-  session report exists, then exposes each live extension tool with a generated
-  selector and the renderer displays it as an individually optional card. The
-  saved definition contains the selector, not a hardcoded project tool list.
-  Delegation resolves the selector to the current sidecar tool and the child
-  can call it; after disable/unload the next catalog and delegation omit it.
-- **Specs linked**: `03-runtime/01-ipc-protocol.md` §12c,
-  `03-runtime/02-agent-runtime.md` §5f, `03-runtime/03-tools-and-permissions.md`
-  §11, `07-plugins/16-trusted-extensions.md` §7
-- **Acceptance**: E (tools & permissions), G (Skill/MCP/plugin activation)
-- **Milestone**: M6+
-- **Status**: Unit/source-contract covered by `packages/shared`,
-  `apps/desktop/test/subagent-tool-catalog.test.mjs`, and the desktop wiring
-  tests; the native Settings/sidecar journey remains to be run with a loaded
-  extension fixture.
-
-#### E2E-PLUGIN-classification-query-tree
-
-- **Preconditions**: Agent mode; the local `classification-queryer` plugin is
-  loaded with `agent.extension` granted; its official IPC/CPC classifier fixture
-  is available; a user-owned subagent can be edited in Settings → Agent.
-- **Steps**:
-  1. Open Settings → Agent → Subagents, edit the user-owned subagent, expand
-     **Advanced**, and confirm `classification_query` is discovered from the
-     loaded extension catalog. Select it and save; reopen the editor to verify
-     the selection persists.
-  2. Start a new Agent turn and delegate to the edited subagent. Ask it to call
-     `classification_query` once with nested `ipc` and `cpc` objects containing
-     code and keyword arrays.
-  3. Inspect the tool result for both classification systems and repeat with a
-     code-only query and a keyword-only query.
-- **Expected**: The tool selector is populated from the live extension tool
-  catalog rather than a project-source hardcoded name list. The schema presents
-  only concise `ipc.codes`, `ipc.keywords`, `cpc.codes`, and `cpc.keywords`
-  inputs. One call executes all requested query types. The result is plain text
-  rooted at `IPC` and/or `CPC`, with classification codes grouped as a readable
-  tree and leaf descriptions attached to codes. It contains no `request`,
-  `year`, `language`, endpoint, operation, or per-query response-envelope
-  fields. Code queries retain the official ancestor/descendant tree; keyword
-  hits are merged into a sparse hierarchy; failures are concise query lines.
-- **Specs linked**: `03-runtime/01-ipc-protocol.md` §12c,
-  `03-runtime/02-agent-runtime.md` §5f,
-  `07-plugins/16-trusted-extensions.md` §7,
-  `Extensions/classification-queryer/README.md`
-- **Acceptance**: E (tools & permissions), G (plugin activation), Quality
-- **Milestone**: M6+
-- **Status**: Unit-covered by
-  `Extensions/classification-queryer/test/query.test.mjs` and
-  `Extensions/classification-queryer/test/presentation.test.mjs`; the loaded
-  plugin Settings/sidecar journey remains to be run in a capable desktop
-  environment.
-
 #### E2E-145: Tool results read as structured blocks, never JSON
 
 - **Preconditions**: A project-bound Agent session with permissions allowed for
@@ -8688,13 +8552,13 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | C — Conversation & stream (composer drafts) | E2E-011c, E2E-011c-1 |
 | D — Workspace | E2E-012, E2E-013, E2E-022B, E2E-024I, E2E-047, E2E-049, E2E-057, E2E-058, E2E-060, E2E-068, E2E-075, E2E-078, E2E-153, E2E-158, E2E-182, E2E-187, E2E-252 |
 | D — Workspace (project ordering) | E2E-253 |
-| E — Tools & permissions | E2E-008a, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-024I, E2E-024K, E2E-040, E2E-049, E2E-074, E2E-093, E2E-097, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102d, E2E-102e, E2E-102g, E2E-103, E2E-105, E2E-106, E2E-107, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-119, E2E-121, E2E-122, E2E-142, E2E-145, E2E-147, E2E-155, E2E-158, E2E-166, E2E-181, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-classification-query-tree |
+| E — Tools & permissions | E2E-008a, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-024I, E2E-024K, E2E-040, E2E-049, E2E-074, E2E-093, E2E-097, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102d, E2E-102e, E2E-102g, E2E-103, E2E-105, E2E-106, E2E-107, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-119, E2E-121, E2E-122, E2E-142, E2E-145, E2E-147, E2E-155, E2E-158, E2E-166, E2E-181, E2E-PLUGIN-imported-pi-package-skills |
 | F — Persistence | E2E-020, E2E-021, E2E-021a, E2E-036, E2E-037, E2E-038, E2E-040, E2E-042, E2E-047, E2E-048, E2E-051, E2E-054, E2E-056, E2E-061, E2E-062, E2E-064, E2E-066, E2E-068, E2E-071, E2E-072, E2E-073, E2E-082, E2E-084, E2E-096, E2E-098, E2E-102, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-102i, E2E-103, E2E-AGENTS-001, E2E-061a, E2E-073a, E2E-104, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-118, E2E-119, E2E-120, E2E-121, E2E-123, E2E-142, E2E-146, E2E-146a, E2E-148, E2E-151, E2E-158, E2E-160, E2E-168, E2E-171, E2E-177, E2E-178, E2E-183, E2E-186, E2E-005J, E2E-PLUGIN-session-orchestrator-real-workers |
 | F — Persistence (project ordering) | E2E-251 |
-| G — Plugins | E2E-022, E2E-022A, E2E-022B, E2E-022C, E2E-023, E2E-024, E2E-024B, E2E-024C, E2E-024D, E2E-024AA, E2E-024E, E2E-024W, E2E-024F, E2E-024G, E2E-024H, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M, E2E-024N, E2E-024O, E2E-024P, E2E-025, E2E-026, E2E-105, E2E-117, E2E-120, E2E-122, E2E-123, E2E-024Q, E2E-148, E2E-152, E2E-153, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-imported-pi-package-wrapper, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-PLUGIN-classification-query-tree |
+| G — Plugins | E2E-022, E2E-022A, E2E-022B, E2E-022C, E2E-023, E2E-024, E2E-024B, E2E-024C, E2E-024D, E2E-024AA, E2E-024E, E2E-024W, E2E-024F, E2E-024G, E2E-024H, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M, E2E-024N, E2E-024O, E2E-024P, E2E-025, E2E-026, E2E-105, E2E-117, E2E-120, E2E-122, E2E-123, E2E-024Q, E2E-148, E2E-152, E2E-153, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-imported-pi-package-wrapper, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection, E2E-PLUGIN-fs-root-follows-the-calling-session |
 | H — Diagnostics | E2E-027, E2E-031, E2E-034, E2E-042, E2E-096, E2E-098, E2E-104, E2E-107, E2E-108, E2E-109, E2E-110, E2E-113, E2E-115, E2E-116, E2E-118, E2E-121, E2E-146, E2E-146a, E2E-155, E2E-159, E2E-176, E2E-194, E2E-195 |
 | Security | E2E-028, E2E-029, E2E-030, E2E-024J, E2E-024K, E2E-024M, E2E-049, E2E-068, E2E-086, E2E-102c, E2E-102d, E2E-102e, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-113, E2E-115, E2E-116, E2E-117, E2E-119, E2E-121, E2E-122, E2E-123, E2E-142, E2E-148, E2E-151, E2E-153, E2E-158, E2E-187, E2E-196c, E2E-196b, E2E-196, E2E-PLUGIN-fs-root-follows-the-calling-session |
-| Quality | E2E-CHAT-running-status-survives-output-pauses, E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174, E2E-011g, E2E-176, E2E-177, E2E-178, E2E-179, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-196, E2E-201, E2E-204, E2E-202, E2E-203, E2E-205, E2E-206, E2E-207, E2E-208, E2E-209, E2E-210, E2E-218, E2E-259, E2E-219, E2E-250, E2E-252, E2E-102i, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation, E2E-PLUGIN-classification-query-tree |
+| Quality | E2E-CHAT-running-status-survives-output-pauses, E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174, E2E-011g, E2E-176, E2E-177, E2E-178, E2E-179, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-196, E2E-201, E2E-204, E2E-202, E2E-203, E2E-205, E2E-206, E2E-207, E2E-208, E2E-209, E2E-210, E2E-218, E2E-259, E2E-219, E2E-250, E2E-252, E2E-102i, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation |
 | Quality (project ordering) | E2E-253 |
 | C — Conversation & stream (IME slash alias) | E2E-255 |
 | E — Tools & permissions (Skill residency) | E2E-254 |
@@ -8769,7 +8633,6 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | Quality (legacy subagent turn limit) | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 | M6+ (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | M6+ (capability level move) | E2E-CAPABILITY-move-across-levels |
-| E — Trusted extension tool grants | E2E-SUBAGENT-trusted-extension-tool-selection |
 | E — Tools & permissions (builtin subagent defaults) | E2E-SUBAGENT-settings-lists-builtin-defaults |
 | Quality (builtin subagent defaults) | E2E-SUBAGENT-settings-lists-builtin-defaults |
 | C — Conversation & stream (opaque floating surfaces) | E2E-CHAT-opaque-floating-decision-and-retry-surfaces |
@@ -14870,27 +14733,33 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 ### E2E-CHAT-turn-process-and-thinking-display
 
-- **Preconditions:** A turn with thinking, multiple tools, intermediate progress
-  and a final answer; detailed and compact display modes.
-- **Steps:** Stream the turn; finish it; expand/collapse its process; search an
-  intermediate message; switch display modes through Settings → AI → Defaults.
-  Repeat with a stopped partial answer, an assistant error and a failed tool.
-- **Expected:** In detailed mode, thinking, tools and intermediate text stay
-  in place with no process wrapper, and the last tool-call of the last activity
-  group starts expanded. Compact mode keeps that process collapsed
-  until expanded, with tool payloads collapsed. Manual choices survive updates; search reveals its target; live answer text
-  stays readable. Errors and stopped trailing text stay visible. Compact mode
-  exposes no reasoning text or excerpt, shows a live indicator, and leaves no
-  completed thinking-only header. Tools and progress remain accessible. Switching
-  to detailed restores reasoning from unchanged messages. Saved mode survives
-  application restart; an older settings blob without the field uses detailed.
-- **Automation:** `test:e2e:transcript` covers the mounted renderer interactions,
-  nested delegation topology rendering, settings control and unchanged-group
-  performance. `test:e2e:transcript-disclosure`
-  covers scroll anchoring; `test:e2e:theme-surfaces` covers the shared theme
-  controls. Isolated Host `settings.set/get` checks verify both modes across
-  process restart and preservation during unrelated partial settings writes.
-  Renderer fixtures alone do not prove settings persistence.
+- **Preconditions:** A turn with progress paragraph A, multiple searches plus
+  thinking, progress paragraph B, multiple commands plus thinking, and a final
+  answer; Detailed and Compact display modes; legacy message-level transcript
+  search targets.
+- **Steps:** Review the nested disclosure path in Detailed, including independent
+  group/item toggles, parent close/reopen, a singleton segment, literal-final-item
+  leaf selection, failure/denial/recovery, retained-pane remounts and a legacy
+  search reveal. Repeat in Compact and with permission/question/plan/goal action
+  cards, a stopped partial answer, an assistant error and delegated child work.
+- **Expected:** Both modes use one whole-process disclosure and leave the final
+  answer, assistant errors, stopped trailing text and pending actions outside it.
+  Detailed starts active/completed processes open; the active multi-item group is
+  open and an untouched group closes on completion. Compact starts processes and
+  groups closed, hides reasoning, and keeps payloads closed; an untouched active
+  process with a recorded failed/denied tool stays open through recovery and closes
+  on completion. Singletons have no group. Detailed auto-opens only an eligible
+  literal final tool/search item of the last activity group; it does not scan past
+  thinking, and failed/denied leaves stay closed. Parent/child/sibling states remain
+  independent, pane-owned user choices survive updates, mode changes and remounts,
+  and renderer restart reapplies defaults. Search reveals the process and activity
+  group that own the named message once per request; item-level targeting is not
+  part of this change, and Compact reasoning requires an
+  explicit switch to Detailed. Saved mode survives restart and a missing/unknown
+  setting resolves to Detailed.
+- **Validation scope for the 2026-09-20 change:** Nested disclosure and activity
+  group presentation only; precise item-level transcript search targeting is out
+  of scope and keeps the existing message-level search behavior.
 - **Specs:** 04-ux/06-settings-ia, 04-ux/08-component-spec,
   04-ux/09-interaction-patterns; ADR turn-process-and-thinking-display.
 
@@ -14913,42 +14782,6 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Milestone:** M6+.
 - **Status:** Automated; run against the task/PR integration candidate.
 
-#### E2E-SUBAGENT-nested-depth-direct-parent-rounds: Nested delegation is depth-bounded and resumes through the direct parent
-
-- **Preconditions**: A deterministic Agent runtime fixture has at least one
-  enabled subagent definition and a local provider fixture. Settings → Agent →
-  Subagents is reachable.
-- **Steps**: 1) Set **Maximum subagent depth** to `1` and start a root `Task`;
-  confirm the first-level tool set has no `Task` control tools. 2) Set it to
-  `2`, start a root `Task`, then have that first-level delegate start a child
-  `Task`. 3) From the first-level delegate, use `TaskWait` and read the child
-  report. 4) Resume the settled child with its `delegationId` from the same
-  first-level parent and complete a second round. 5) Attempt to list, wait for,
-  or resume the nested child from the main agent. 6) In the conversation UI,
-  expand the delegation card, select the first-level node, then select its
-  second-level child node. 7) Set the value to `0` and start a new root prompt.
-- **Expected**: At depth `1`, only the main agent can create direct children.
-  At depth `2`, the first-level delegate can create and repeatedly resume its
-  own direct child, while `TaskWait`, `TaskList`, and `TaskStop` expose only
-  that direct-parent scope. The second-level delegate's prompt has no main-agent
-  or user channel, and the main agent cannot consume its report directly.
-  The conversation graph shows the main-agent root, the first-level node, and
-  a connected second-level child node in order. The child has the same status,
-  model, duration, step-count and side-panel behavior as the first-level node;
-  selecting it opens its own live process and repeated child rounds. A replayed
-  `Task` snapshot with the same `delegationId` does not create a second visual
-  child card; the latest snapshot remains connected to the existing process.
-  Depth `0`
-  removes delegation controls from the root runtime. A parent that finishes
-  without waiting aborts unfinished descendants, so no orphaned child remains.
-- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
-  `04-ux/06-settings-ia.md` Agent capability destinations
-- **Acceptance**: C (conversation), Quality (bounded delegation and lifecycle)
-- **Status**: Runtime and prompt boundaries are covered by
-  `packages/agent-runtime/src/runtime.test.ts` and
-  `packages/agent-runtime/src/subagent.test.ts`; settings persistence is
-  covered by the host-core RPC test. The full Electron UI journey remains
-  pending and should run only in the repository's integration environment.
 
 ### E2E-PROVIDER-ORDER: Reorder configured AI services
 

@@ -71,3 +71,4 @@ setting can retarget every automation. Adding physical columns was rejected
 because the existing validated JSON boundary already owns optional task
 configuration. Backfilling old rows was rejected because it would turn their
 dynamic default behavior into a fixed selection during upgrade.
+
