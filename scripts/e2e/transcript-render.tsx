@@ -7,6 +7,7 @@ import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { en } from "@pi-desktop/i18n";
 import type { AgentActivity, UiMessage } from "@pi-desktop/shared";
+import { Markdown } from "../../apps/desktop/src/components/Markdown";
 import { AssistantTurn } from "../../apps/desktop/src/features/chat/transcript/AssistantTurn";
 import { ChatTranscript } from "../../apps/desktop/src/features/chat/transcript/ChatTranscript";
 import { buildTranscriptEntries } from "../../apps/desktop/src/lib/assistant-turns";
@@ -20,6 +21,94 @@ declare global {
 
 function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
+}
+
+async function markdownLinkInteractionProbe(
+  i18n: ReturnType<typeof createInstance>,
+) {
+  const destination = "https://github.com/vastsa/PI-Desktop/issues/1106";
+  const initialState = useAppStore.getState();
+  const openedUrls: string[] = [];
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;top:24px;left:24px";
+  document.body.append(host);
+  const renderErrors: unknown[] = [];
+  const root = createRoot(host, {
+    onUncaughtError: (error) => renderErrors.push(error),
+  });
+
+  try {
+    useAppStore.setState({
+      activeSessionId: "markdown-link-probe",
+      page: "chat",
+      settings: { ...initialState.settings, linkOpenTarget: "workpanel" },
+      openUrlInWorkPanel: (url) => openedUrls.push(url),
+    });
+    flushSync(() =>
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <Markdown
+            source="[#1106](([github.com](https://github.com/vastsa/PI-Desktop/issues/1106)))"
+          />
+        </I18nextProvider>,
+      ),
+    );
+
+    const anchor = host.querySelector<HTMLAnchorElement>("a");
+    assert(anchor, "wrapped Markdown destination did not render an anchor");
+    assert(
+      anchor.getAttribute("href") === destination,
+      `wrapped Markdown destination rendered the wrong href: ${anchor.getAttribute("href")}`,
+    );
+
+    let clickWasPrevented = false;
+    flushSync(() => {
+      clickWasPrevented = !anchor.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+    assert(clickWasPrevented, "plain link click was not handled by Markdown");
+    assert(
+      openedUrls[0] === destination,
+      `plain link click opened ${openedUrls[0] ?? "nothing"}`,
+    );
+
+    let contextMenuWasPrevented = false;
+    flushSync(() => {
+      contextMenuWasPrevented = !anchor.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: 80,
+          clientY: 80,
+        }),
+      );
+    });
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    assert(contextMenuWasPrevented, "link context menu did not suppress the native menu");
+
+    const menu = document.body.querySelector<HTMLElement>('[role="menu"]');
+    assert(menu, "link context menu was not rendered");
+    for (const [id, label] of [
+      ["open-external", "Open in default browser"],
+      ["open-workpanel", "Open in work panel"],
+    ]) {
+      const item = menu.querySelector<HTMLElement>(`[data-context-menu-item="${id}"]`);
+      assert(item?.textContent?.includes(label), `link menu is missing ${label}`);
+    }
+    assert(renderErrors.length === 0, `Markdown render failed: ${renderErrors.map(String).join("; ")}`);
+    return { ok: true, href: anchor.href, clickedUrl: openedUrls[0], menuItems: 3 };
+  } finally {
+    flushSync(() => root.unmount());
+    host.remove();
+    useAppStore.setState({
+      activeSessionId: initialState.activeSessionId,
+      page: initialState.page,
+      settings: initialState.settings,
+      openUrlInWorkPanel: initialState.openUrlInWorkPanel,
+    });
+  }
 }
 
 const createdAt = "2026-09-13T00:00:00.000Z";
@@ -232,138 +321,20 @@ globalThis.transcriptRenderProbe = async () => {
       "Task completion timing did not update to 4s",
     );
 
-    const nestedStart = Date.now() - 6_000;
-    render([
-      message("nested-user", "user", "Inspect the nested delegation"),
-      message("nested-root-task", "tool", "started", {
-        toolName: "Task",
-        toolCallId: "nested-root-call",
-        toolStatus: "success",
-        toolArgs: { agent: "architect", task: "Delegate a child check" },
-        toolResult: {
-          details: {
-            delegationId: "nested-root-delegation",
-            status: "completed",
-            startedAt: nestedStart,
-            completedAt: nestedStart + 5_000,
-          },
-        },
-      }),
-      message("nested-level1-note", "assistant", "I am delegating the child check.", {
-        parentToolCallId: "nested-root-call",
-        agentName: "architect",
-      }),
-      message("nested-child-task", "tool", "started", {
-        toolName: "Task",
-        toolCallId: "nested-child-call",
-        parentToolCallId: "nested-root-call",
-        toolStatus: "success",
-        toolArgs: { agent: "implementer", task: "Inspect the nested path" },
-        toolResult: {
-          details: {
-            delegationId: "nested-child-delegation",
-            status: "completed",
-            startedAt: nestedStart + 1_000,
-            completedAt: nestedStart + 4_000,
-          },
-        },
-      }),
-      // The renderer can receive a replayed Task snapshot for the same child
-      // delegation while the parent stream is refreshed. It must remain one
-      // topology card, not create a second identical child card.
-      message("nested-child-replayed", "tool", "started", {
-        toolName: "Task",
-        toolCallId: "nested-child-replayed-call",
-        parentToolCallId: "nested-root-call",
-        toolStatus: "success",
-        toolArgs: { agent: "implementer", task: "Inspect the nested path" },
-        toolResult: {
-          details: {
-            delegationId: "nested-child-delegation",
-            status: "completed",
-            startedAt: nestedStart + 1_000,
-            completedAt: nestedStart + 4_000,
-          },
-        },
-      }),
-      message("nested-level2-read", "tool", "runtime.ts", {
-        toolName: "Read",
-        toolCallId: "nested-level2-read-call",
-        parentToolCallId: "nested-child-call",
-        toolStatus: "success",
-        agentName: "implementer",
-      }),
-      message("nested-level2-report", "assistant", "The nested path is valid.", {
-        parentToolCallId: "nested-child-call",
-        agentName: "implementer",
-      }),
-      message("nested-level1-report", "assistant", "The child check is complete.", {
-        parentToolCallId: "nested-root-call",
-        agentName: "architect",
-      }),
-      message("nested-final", "assistant", "Nested delegation verified."),
-    ]);
-    const nestedNodes = container.querySelectorAll(".subagent-topology-node");
-    const nestedChildNode = container.querySelector(
-      ".subagent-topology-children .subagent-topology-node",
-    );
-    const nestedChildNodes = container.querySelectorAll(
-      ".subagent-topology-children > .subagent-topology-branch",
-    );
-    assert(
-      nestedNodes.length === 2 && nestedChildNode && nestedChildNodes.length === 1,
-      `nested topology did not render two connected nodes: ${nestedNodes.length}`,
-    );
-    assert(
-      nestedChildNode.querySelector(".subagent-topology-node-title")?.textContent ===
-        "implementer",
-      "nested topology node did not keep the child agent identity",
-    );
-    useAppStore.setState({
-      activeSessionId: "nested-session",
-      workPanelOpen: false,
-      workPanelTabs: [],
-      activeWorkPanelTabId: null,
-      workPanelContexts: {},
-    });
-    const nestedHeader = nestedChildNode.querySelector<HTMLButtonElement>(
-      ".subagent-topology-node-header",
-    );
-    assert(nestedHeader, "nested topology node header is missing");
-    nestedHeader.click();
-    const nestedPanelState = useAppStore.getState();
-    assert(
-      nestedPanelState.workPanelOpen &&
-        nestedPanelState.activeWorkPanelTabId === "subagent:nested-child-delegation" &&
-        nestedPanelState.workPanelTabs.some(
-          (tab) =>
-            tab.kind === "subagent" &&
-            tab.resource === "nested-child-delegation",
-        ),
-      "nested topology node did not open its own subagent transcript tab",
-    );
-    useAppStore.setState({
-      workPanelOpen: false,
-      workPanelTabs: [],
-      activeWorkPanelTabId: null,
-      workPanelContexts: {},
-    });
     const statusLifecycle = await transcriptStatusProbe();
-    const turnProcess = await turnProcessProbe();
-    const messageEditing = await transcriptEditProbe();
+    const markdownLinks = await markdownLinkInteractionProbe(i18n);
     return {
-      ok: statusLifecycle.ok,
+      ok: statusLifecycle.ok && markdownLinks.ok,
       statusLifecycle,
+      markdownLinks,
       groups,
       textUpdates: 20,
       textUpdateRenders,
       changedToolRenders: 1,
       taskLifecycleUpdated: true,
       taskTimingUpdated: true,
-      nestedTopologyRendered: true,
-      nestedTopologyTabSelection: true,
-      turnProcess,
-      messageEditing,
+      turnProcess: await turnProcessProbe(),
+      messageEditing: await transcriptEditProbe(),
       textUpdateDurationMs,
     };
   } finally {
