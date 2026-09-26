@@ -400,6 +400,8 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     maxSubagentDepth?: unknown;
     infiniteProviderRetry?: unknown;
     smoothStreaming?: unknown;
+    updatePreference?: unknown;
+    lastNotifiedUpdateVersion?: unknown;
     networkProxy?: unknown;
     networkPolicy?: unknown;
   };
@@ -457,6 +459,25 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     typeof value.smoothStreaming !== "boolean"
   ) {
     throw Object.assign(new Error("smoothStreaming is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "updatePreference") &&
+    value.updatePreference !== "automatic" &&
+    value.updatePreference !== "manual"
+  ) {
+    throw Object.assign(new Error("updatePreference is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "lastNotifiedUpdateVersion") &&
+    (typeof value.lastNotifiedUpdateVersion !== "string" ||
+      value.lastNotifiedUpdateVersion.trim().length === 0 ||
+      value.lastNotifiedUpdateVersion.length > 128)
+  ) {
+    throw Object.assign(new Error("lastNotifiedUpdateVersion is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
   }
