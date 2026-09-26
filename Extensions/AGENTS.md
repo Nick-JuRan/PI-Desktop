@@ -11,8 +11,9 @@ on placement questions (root `AGENTS.md` §1 "Workflow policy precedence").
 
 - New code for a fork feature lives in this directory (or another `fork/`
   island), never inline in an upstream file. An upstream file may receive one
-  hook per feature: one separate import statement placed after upstream's
-  imports, one call / field / spread, or a `withX(upstreamValue)` wrapper.
+  hook per feature: one separate import statement placed at the very top of
+  the file (before upstream's first import — upstream appends new imports at
+  the end), one call / field / spread, or a `withX(upstreamValue)` wrapper.
 - Never edit upstream prompt text, i18n strings, import lists, formatting, or
   comments to make room for fork code; wrap or hook instead.
 

@@ -1,3 +1,5 @@
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import { normalizeSubagentMaxDepth } from "@pi-desktop/shared/fork";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -31,8 +33,6 @@ import {
 } from "@pi-desktop/agent-runtime";
 
 import type { HostRpc } from "./host-ports.js";
-// Fork-only imports (separate statement so upstream import edits never conflict).
-import { normalizeSubagentMaxDepth } from "@pi-desktop/shared/fork";
 
 /** A provider row as `providers.list` returns it. */
 export type HostProviderRecord = {

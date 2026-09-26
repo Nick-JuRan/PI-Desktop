@@ -62,7 +62,7 @@
 
 允许的形态，每个功能在同一个 upstream 文件里尽量只有一处：
 
-- **import**：独立的一条 import 语句，放在 upstream 全部 import 之后，前面加注释 `// Fork-only imports (separate statement so upstream import edits never conflict).`。绝不把符号插进 upstream 的 import 列表——历史上两次冲突都在那里。
+- **import**：独立的一条 import 语句，放在**文件最顶部、upstream 第一条 import 之前**（文件以块注释开头时放在注释之后），前面加注释 `// Fork-only imports (separate statement so upstream import edits never conflict).`。绝不把符号插进 upstream 的 import 列表，也不要放在 import 块末尾——upstream 新增 import 时习惯追加在末尾，2026-09-27 的同步正是在那里撞的；文件顶部是 upstream 几乎不会动的位置。
 - **调用 / 字段 / 展开**：一行。例如 `maxSubagentDepth: normalizeSubagentMaxDepth(settings.maxSubagentDepth),`、`...forkSettings,`、`<ForkDepthCard … />`。
 - **包裹而不是修改**：要改变 upstream 某段输出（提示词、列表、配置）时，在岛屿里写 `withX(upstreamValue)`，调用处把 upstream 原值原样传进去。示例：`withNestedDelegationGuidance(this.maxSubagentDepth, <upstream 的 Delegation 模板字面量原文>)`——upstream 字面量一个字都不动，默认值下输出与 upstream 逐字节相同。
 - **类型扩展**：`AppSettings` 等 upstream 类型加字段允许，1–2 行，行尾注释 `// fork`。

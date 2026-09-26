@@ -1,3 +1,11 @@
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import {
+  EMPTY_SUBAGENT_TOOL_CATALOG,
+  isSubagentDynamicSelection,
+  subagentMcpSelector,
+  subagentSkillSelector,
+  type SubagentToolCatalog,
+} from "@pi-desktop/shared/fork";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -32,14 +40,6 @@ import { SubagentModelPicker } from "./SubagentModelPicker";
 import { SubagentFallbackModels } from "./SubagentFallbackModels";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
 import { subagentPresetCopyKey } from "./subagent-presets";
-// Fork-only imports (separate statement so upstream import edits never conflict).
-import {
-  EMPTY_SUBAGENT_TOOL_CATALOG,
-  isSubagentDynamicSelection,
-  subagentMcpSelector,
-  subagentSkillSelector,
-  type SubagentToolCatalog,
-} from "@pi-desktop/shared/fork";
 
 /** Hard cap host-core enforces on a definition document. */
 export const MAX_SUBAGENT_BYTES = 32 * 1024;

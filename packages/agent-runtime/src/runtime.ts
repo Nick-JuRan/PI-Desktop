@@ -1,3 +1,18 @@
+// Fork-only imports (kept as separate statements so upstream import edits never conflict).
+import {
+  normalizeSubagentMaxDepth,
+  resolveSubagentSkillIds,
+  subagentExtensionToolSelector,
+  type SubagentToolResolutionContext,
+} from "@pi-desktop/shared/fork";
+import {
+  canDelegateFrom as scopeCanDelegate,
+  isDelegationControlTool,
+  ROOT_DELEGATION_SCOPE,
+  withDelegationControls,
+  withNestedDelegationGuidance,
+  type DelegationScope,
+} from "./fork/delegation-depth.js";
 import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
 import { requestExtensionUi } from "./extensions/ui-request.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
@@ -257,21 +272,6 @@ import {
   type ProviderFetchFailure,
   type ProviderTransportHealth,
 } from "./provider-transport-recovery.js";
-// Fork-only imports (kept as separate statements so upstream import edits never conflict).
-import {
-  normalizeSubagentMaxDepth,
-  resolveSubagentSkillIds,
-  subagentExtensionToolSelector,
-  type SubagentToolResolutionContext,
-} from "@pi-desktop/shared/fork";
-import {
-  canDelegateFrom as scopeCanDelegate,
-  isDelegationControlTool,
-  ROOT_DELEGATION_SCOPE,
-  withDelegationControls,
-  withNestedDelegationGuidance,
-  type DelegationScope,
-} from "./fork/delegation-depth.js";
 
 export type { RuntimeProviderConfig } from "./provider-binding.js";
 
@@ -516,7 +516,6 @@ export type DelegationRecord = {
   pendingToolCallIds?: Set<string>;
 };
 
-
 function delegationSummary(record: DelegationRecord): Record<string, unknown> {
   return {
     delegationId: record.delegationId,
@@ -707,7 +706,6 @@ const AGENT_CORE_TOOL_NAMES = new Set([
 ]);
 const MAX_ON_DEMAND_TOOL_PROMPT_ENTRIES = 64;
 const MAX_TOOL_SEARCH_RESULT_NAMES = 24;
-
 
 /** Tools that ask the host to switch this session into a contract mode (D198). */
 const ENTER_TOOL_NAMES: Record<ProposalKind, string> = {
@@ -902,7 +900,6 @@ function contextFallbackReminder(): string {
     "</context_budget>",
   ].join("\n");
 }
-
 
 export type PluginToolDef = {
   /** Full exposed name (`plugin_<pluginIdSafe>_<toolName>`, D015). */
@@ -6581,7 +6578,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         : { code: "CONTEXT_COMPACTION_FAILED", message },
     });
   }
-
 
   private reasoningReplayIdentity(): ReasoningReplayIdentity {
     const requiresCompletionsReasoningReplay =

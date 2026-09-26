@@ -3,6 +3,8 @@
  * Protocol: NDJSON JSON-RPC on stdio with Electron main.
  * Host access is proxied through main (single host-core process).
  */
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import { normalizeSubagentMaxDepth } from "@pi-desktop/shared/fork";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import type { ModelAuth } from "@earendil-works/pi-ai";
@@ -53,8 +55,6 @@ import type {
   SessionThinkingLevel,
   UiMessage,
 } from "@pi-desktop/shared";
-// Fork-only imports (separate statement so upstream import edits never conflict).
-import { normalizeSubagentMaxDepth } from "@pi-desktop/shared/fork";
 
 type RuntimeMap = Map<string, DesktopAgentRuntime>;
 
