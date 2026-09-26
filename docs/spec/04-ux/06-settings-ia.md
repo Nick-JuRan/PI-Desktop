@@ -583,14 +583,6 @@ system while preserving their different data ownership:
   inverted primary text in both light and dark themes, so the enabled level is
   visually distinct from the track.
 
-- The Subagents page includes a **Subagent execution** card with a **Maximum
-  subagent depth** setting. The persisted values are `0` (delegation disabled),
-  `1` (the main agent may create direct subagents), and `2` (a first-level
-  subagent may also create a second-level child); higher bounded levels are
-  available for deeper nested workflows. The description explains that child
-  communication is direct-parent scoped, so nested reports return through
-  `TaskWait` to the first-level parent rather than directly to the main agent.
-
 - Subagents open one **New subagent / Edit subagent** sheet that
   pre-fills the same fields the runtime's `BUILTIN_SUBAGENT_DOCUMENTS` ship
   with. Above the name field the sheet shows a "Start from template" row of
@@ -626,18 +618,6 @@ system while preserving their different data ownership:
   intentionally tall control, and Advanced remains a compact disclosure. Hover
   and focus lift a control without adding a persistent in-flow divider; invalid
   form state is announced from the shared error region.
-
-- Under **Available tools**, the sheet keeps the seven stable built-in tool
-  checkboxes visible and adds a separate **Advanced** disclosure. Its groups
-  show the active Skills, user MCP servers, and plugin agent tools for the
-  current workspace. The picker stays compact: Skills and plugin tools show
-  only their names, while an MCP row shows its name and the number of loaded
-  tools; selected counts appear beside the disclosure. Selecting a Skill grants
-  only that Skill to the delegate, selecting an MCP server grants all tools
-  discovered from that server, and plugin tools are selected one by one. A
-  loading state and an empty state are shown instead of a blank panel. The
-  catalog refreshes when the sheet opens, while scope-disabled capabilities are
-  omitted from the list.
 
 ### Instructions (`instructions` tab)
 - Edit the global instruction Markdown used by every PI-Desktop Agent session.

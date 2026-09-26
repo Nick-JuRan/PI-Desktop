@@ -609,14 +609,6 @@ Naming:
 - Internal full name: `plugin.<pluginId>.<toolName>`
 - Name exposed to the model: forced prefix `plugin_<pluginIdSafe>_<toolName>` (D015) to avoid conflicts
 
-Trusted ExtensionAPI tools are registered under the declared name in the live
-sidecar catalog. After a successful extension load or catalog probe, Electron
-includes those reported names in the project-scoped Subagents Advanced catalog
-with generated selectors. Delegation resolves a selected selector back to the
-declared name and validates it against the current session catalog; unloading,
-disabling, or losing the extension therefore removes the grant on the next
-resolution.
-
 ## 12. Future Extensions
 
 - MCP tools

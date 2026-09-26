@@ -11,14 +11,12 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
-const [apiSource, appSource, composerSource, settingsSource, uiSource, segmentedControlAttributesSource, commandsSource, storeSource, surfaceSource, transcriptSource, barSource, topbarSource, componentSpec, englishSource, chineseSource, planStateSource, composerCss] =
+const [apiSource, appSource, composerSource, settingsSource, commandsSource, storeSource, surfaceSource, transcriptSource, barSource, topbarSource, componentSpec, englishSource, chineseSource, planStateSource, composerCss] =
   await Promise.all([
     read("../src/lib/api.ts"),
     readAppSource(),
     readComposerSource(),
     readSettingsSource(),
-    read("../src/components/ui.tsx"),
-    read("../src/components/segmented-control-attributes.ts"),
     read("../src/lib/commands.ts"),
     readStoreSource(),
     read("../src/components/ChatSurface.tsx"),
@@ -48,8 +46,6 @@ test("renderer exposes Agent, Plan, and Goal as the only operating modes", () =>
   assert.match(composerSource, /IconTarget/);
   assert.match(settingsSource, /value: "plan", label: t\("settings\.modePlan"\)/);
   assert.match(settingsSource, /value: "goal", label: t\("settings\.modeGoal"\)/);
-  assert.match(uiSource, /getSegmentedControlItemAttributes\(role, label, value, option\)/);
-  assert.match(segmentedControlAttributesSource, /"aria-pressed": selected/);
   assert.match(commandsSource, /case "builtin\.mode\.plan"/);
   assert.match(commandsSource, /case "builtin\.mode\.goal"/);
   for (const source of [composerSource, settingsSource, commandsSource]) {

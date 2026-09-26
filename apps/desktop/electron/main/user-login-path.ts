@@ -89,3 +89,4 @@ export function userLookupPath(
   if (process.platform === "win32") return inherited;
   return mergePathParts(probedLoginPath(probe), wellKnownUserBinDirs().join(delimiter), inherited);
 }
+

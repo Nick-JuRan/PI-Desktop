@@ -56,6 +56,7 @@
 - 文件名和导出名用 `fork` 前缀或放在 `fork/` 目录，一眼能分辨归属。
 - 岛屿之间可以互相依赖；岛屿依赖 upstream 代码随意；**upstream 代码只能通过钩子依赖岛屿**。
 - 常量只写一份（shared）；Rust 侧不得不重复时，两处都写注释指向对方。
+- 每个岛屿目录放一个简短的 `AGENTS.md`（`packages/shared/src/fork/`、`packages/agent-runtime/src/fork/`、`Extensions/` 已有；新建 `apps/desktop/electron/main/fork/`、`apps/desktop/src/fork/`、`crates/host-core/src/fork/` 时照抄一份）。根 `AGENTS.md` §1.2 规定离目标最近的 `AGENTS.md` 优先，所以即使代理没有被告知本文件，读到岛屿目录里的 `AGENTS.md` 也会把文档写到 `90-fork/`、把钩子控制在一行。
 
 ### B3. 钩子：允许怎样改 upstream 文件
 
@@ -73,7 +74,7 @@
 
 - **i18n**：fork 文案放在每个 `packages/i18n/src/locales/<lang>/index.ts` 顶部的 `const fork<Namespace> = {…}` 块里（文件第一行 `import type` 之后），通过 `...fork<Namespace>,` 展开到目标对象的**第一行**。新命名空间就新加一个 const。9 种语言都要有同样的 key（`packages/i18n/test/catalogs.test.mjs` 校验）。不把 key 插进 upstream 对象中间。**语言文件里不能有运行时的兄弟模块 import**：upstream 测试用 Node 原生 TS 加载器直接 import 语言文件，`./fork.js` 之类会直接报 ERR_MODULE_NOT_FOUND。
 - **ADR**：slug 文件名 `docs/adr/<slug>.md`，H1 写 `# ADR: <title>`，引用写 `ADR <slug>`。`docs/adr/README.md` 索引加一行（钩子）。仓库的 docs 检查强制 ADR id 唯一，领号迟早和 upstream 撞。
-- **spec**：fork 功能规格页放独立章节 `docs/spec/90-fork/<slug>.md`，`docs/zh-CN/spec/90-fork/<slug>.md` 成对（`check-locales` 强制；章节目录必须带编号，侧栏由 readdir 自动生成）。两份 `NAV.md` 各加一行（钩子）。不在 upstream 规格页里插段落，只加一行交叉引用。
+- **spec**：fork 功能规格页放独立章节 `docs/spec/90-fork/NN-<slug>.md`，`docs/zh-CN/spec/90-fork/NN-<slug>.md` 成对（`check-locales` 强制：中文页必须含 `[英文源规格](/spec/90-fork/NN-<slug>)` 说明行，表格与代码块数量与英文页一致；章节目录必须带编号）。两份 `NAV.md` 的 `## 90. Fork` 段各加一行（钩子）。侧栏来自 `docs/.vitepress/config.mts` 的 `specSections` 数组，`90-fork` 那一行钩子已存在，不要再改该文件。不在 upstream 规格页里插段落；upstream 页面与 fork 行为矛盾时最多加一行 `Fork note: … see 90-fork/…` 指向 fork 页。E2E 场景也写在对应的 fork 页里（`#### E2E-<FEATURE>-<slug>` 小节），**不进** `06-delivery/04-e2e-test-plan.md`——`AGENTS.md` §13 只要求更新“对应的” E2E 场景文档，没有规定文件；把它钉在 `04-e2e-test-plan.md` 上的是 delivery 文档，而 `AGENTS.md` §1 规定 delivery 文档与其流程冲突时以 `AGENTS.md` 为准，本文件依 §11 生效。
 - **e2e 脚本**：不修改 upstream 的 `scripts/e2e/*`；fork 场景写新文件 `scripts/e2e/fork-<slug>.tsx`。
 - **设置项**：字段进 `AppSettings`（钩子），默认值和校验进 `shared/fork` 与 `host-core/fork`。
 - **IPC**：新通道常量进 `packages/shared/src/protocol.ts` 只加行、不改行；handler 写在 `electron/main/fork/`，注册处一行。

@@ -15,10 +15,6 @@ import {
   portalToBody,
   visiblePortalContent,
 } from "../lib/portal-visibility";
-import {
-  getSegmentedControlItemAttributes,
-  type SegmentedControlRole,
-} from "./segmented-control-attributes";
 
 import { IconEye, IconEyeOff, IconHelp } from "./icons";
 
@@ -705,11 +701,12 @@ export function SegmentedControl<T extends string>({
     readonly controls?: string;
   }[];
   label: string;
-  role?: SegmentedControlRole;
+  role?: "group" | "radiogroup" | "tablist";
   className?: string;
   itemClassName?: string;
   disabled?: boolean;
 }) {
+  const itemRole = role === "tablist" ? "tab" : role === "radiogroup" ? "radio" : undefined;
   return (
     <div
       className={cx("settings-segment", className)}
@@ -720,7 +717,11 @@ export function SegmentedControl<T extends string>({
         <button
           key={option.value}
           type="button"
-          {...getSegmentedControlItemAttributes(role, label, value, option)}
+          {...(itemRole === "tab"
+            ? { role: "tab", id: option.id ?? `${label}-tab-${option.value}`, "aria-controls": option.controls, "aria-selected": value === option.value }
+            : itemRole === "radio"
+              ? { role: "radio", "aria-checked": value === option.value }
+              : { "aria-pressed": value === option.value })}
           className={cx(
             "settings-segment-item",
             value === option.value && "active",

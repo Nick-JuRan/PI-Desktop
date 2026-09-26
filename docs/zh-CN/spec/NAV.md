@@ -103,5 +103,13 @@
 - [decisions-log.md](/zh-CN/spec/08-meta/decisions-log)
 - [open-questions.md](/zh-CN/spec/08-meta/open-questions)
 
+## 90. Fork 扩展
+- [00-overview.md](/zh-CN/spec/90-fork/00-overview)
+- [01-subagent-depth.md](/zh-CN/spec/90-fork/01-subagent-depth)
+- [02-subagent-tool-selection.md](/zh-CN/spec/90-fork/02-subagent-tool-selection)
+- [03-fusion-search.md](/zh-CN/spec/90-fork/03-fusion-search)
+- [04-classification-query.md](/zh-CN/spec/90-fork/04-classification-query)
+- [05-windows-portability.md](/zh-CN/spec/90-fork/05-windows-portability)
+
 ## ADR
 - [../adr/README.md](/adr/README)

@@ -560,10 +560,8 @@ than appending it to answer `content`.
 ### Shells
 - `commandShells.list`
 - `settings.set` with a partial settings object; omitted fields are preserved,
-  including `maxSubagentDepth`. A changed effective `defaultCommandShell` is
-  accepted only when every session has no active turn and no pending/queued/
-  running Plan/Goal work. `maxSubagentDepth` is validated as an integer in
-  `0..5`.
+  and a changed effective `defaultCommandShell` is accepted only when every
+  session has no active turn and no pending/queued/running Plan/Goal work
 
 Tool execution starts only after admission. Shell spawn retries transient
 resource exhaustion (`EAGAIN` / `WouldBlock`) with bounded backoff, never

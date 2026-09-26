@@ -1165,10 +1165,6 @@ Non-sensitive config that can be returned to the UI:
 - persisted `defaultCommandShell` from the host shell catalog
 - persisted `largePasteThreshold` for oversized text-only composer pastes;
   host reads missing values as 600 and accepts integers from 1 through 1,000,000
-- persisted `maxSubagentDepth` for bounded nested delegation; host reads missing
-  values as 1 and accepts integers from 0 through 5. `0` disables delegation,
-  `1` allows only direct main-agent children, and `2` also allows a first-level
-  child to create second-level children
 - permission policy toggles
 - UI preferences, including optional `AppSettings.keybindings` overrides keyed
   by the shared shortcut action ids; values are either `null` or portable
@@ -1693,20 +1689,6 @@ definition that still wins its handle, each carrying `enabled`, so the page can
 render a switched-off default as a row with its own switch. The runtime catalog
 combines the same sources and applies the same exclusions; it does not scan
 `.pi/agents` or any project capability directory.
-
-`subagent/tool-catalog` returns the project-scoped editor catalog:
-`skills` contains active built-in, plugin, and user Skill ids with display
-metadata; `mcpServers` contains active user MCP records plus the latest cached
-connection state and discovered tool names; and `pluginTools` contains active
-plugin agent tools and tools reported by trusted extensions through a session
-load or catalog probe. Ordinary
-plugin tools use their full runtime name. Trusted-extension rows carry a
-generated selector alongside the declared tool name, so the renderer persists
-the selector without hardcoding any extension tool name. The renderer persists
-Skill selections as `skill:<id>`, MCP selections as `mcp:<server-id>`, and
-plugin or trusted-extension selections in the subagent `tools` array. The
-channel is a discovery surface only: delegation resolves those selectors again
-against the live sidecar catalog before constructing the child tool list.
 
 ## 12d. Capability level and local activation
 

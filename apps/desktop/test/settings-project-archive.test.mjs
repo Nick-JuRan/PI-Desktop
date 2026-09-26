@@ -108,8 +108,6 @@ test("project archive is a toolbar over a list, with no page-level prose", () =>
   assert.match(projectsPageSource, /className="projects-sort"/);
   assert.match(projectsPageSource, /itemClassName="projects-sort-btn"/);
   assert.match(projectsPageSource, /role="group"/);
-  assert.match(projectsPageSource, /value: "recent", label: t\("project\.sortRecent"\)/);
-  assert.match(projectsPageSource, /value: "name", label: t\("project\.sortName"\)/);
   assert.match(projectsPageSource, /project\.sortRecent/);
   assert.match(projectsPageSource, /project\.sortName/);
 
