@@ -46,4 +46,4 @@ fork 功能。扩展 `03-runtime/02-agent-runtime.md` §5f（委派）、`03-run
 - **预期**：深度 `1` 时只有主智能体能创建直接子代理。深度 `2` 时一级子代理可以创建并反复恢复自己的直接子代理，而 `TaskWait`、`TaskList`、`TaskStop` 只暴露直接父级范围。二级子代理的提示词没有主智能体或用户通道，主智能体不能直接消费其报告。会话图依次显示主智能体根节点、一级节点和相连的二级子节点。子节点与一级节点有相同的状态、模型、时长、步数和侧栏行为；选择它会打开其自己的实时进程和多轮记录。`delegationId` 相同的重放 `Task` 快照不会产生第二张子卡片；最新快照仍连接到既有进程。深度 `0` 会移除根运行时的委派控制。未等待就结束的父级会中止未完成的后代，不留下孤儿子代理。
 - **关联规格**：本页；`03-runtime/02-agent-runtime.md` §5f；`04-ux/06-settings-ia.md` 智能体能力目标页
 - **验收**：C（会话）、Quality（有界委派与生命周期）
-- **状态**：运行时与提示词边界由 `packages/agent-runtime/src/runtime.test.ts` 和 `packages/agent-runtime/src/subagent.test.ts` 覆盖；归一化由 `packages/shared/src/fork/subagent-depth.test.ts` 覆盖；设置持久化由 host-core RPC 测试覆盖。完整的 Electron 界面旅程仍待执行，且只应在仓库的集成环境中运行。
+- **状态**：运行时与提示词边界由 `packages/agent-runtime/src/runtime.test.ts` 和 `packages/agent-runtime/src/subagent.test.ts` 覆盖；归一化由 `packages/shared/src/fork/subagent-depth.test.ts` 覆盖；设置持久化由 host-core RPC 测试覆盖。拓扑渲染与标签选择步骤由 fork 自有的运行器 `node scripts/e2e-fork-nested-topology.mjs`（探针 `scripts/e2e/fork-nested-topology.tsx`）在真实的隐藏 Electron 窗口中运行。其余的设置页旅程只应在仓库的集成环境中运行。

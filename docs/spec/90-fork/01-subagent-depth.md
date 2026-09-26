@@ -122,5 +122,8 @@ retaining the linked child process.
   `packages/agent-runtime/src/runtime.test.ts` and
   `packages/agent-runtime/src/subagent.test.ts`; the normalizer by
   `packages/shared/src/fork/subagent-depth.test.ts`; settings persistence is
-  covered by the host-core RPC test. The full Electron UI journey remains
-  pending and should run only in the repository's integration environment.
+  covered by the host-core RPC test. The topology rendering and tab selection
+  steps run in a real hidden Electron window through the fork-owned runner
+  `node scripts/e2e-fork-nested-topology.mjs` (probe
+  `scripts/e2e/fork-nested-topology.tsx`). The remaining Settings journey
+  should run only in the repository's integration environment.

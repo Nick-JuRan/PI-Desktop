@@ -175,8 +175,6 @@ app.whenReady().then(async () => {
   console.log("TRANSCRIPT_RENDER_PROBE " + JSON.stringify(result));
   assert.equal(code, 0, output.slice(-6000));
   assert.equal(result.ok, true);
-  assert.equal(result.nestedTopologyRendered, true);
-  assert.equal(result.nestedTopologyTabSelection, true);
   // The merged result above already carries the geometry snapshots; this turns
   // a failed scenario into a message that names the checks that failed.
   // check can be read from the scenario output alone.
