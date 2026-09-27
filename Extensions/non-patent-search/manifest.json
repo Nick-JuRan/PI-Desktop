@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "local.non-patent-search",
+  "name": "非专利检索",
+  "version": "0.1.0",
+  "description": "Non-patent literature search tools for the agent. Ships CNKI (China National Knowledge Infrastructure) paper search and full-text reading with automatic IP-based login; other academic databases can be added as further CNKI-style tool families.",
+  "main": "main.cjs",
+  "contributes": {
+    "agentTools": [
+      {
+        "name": "CNKI_ScanPaper",
+        "description": "Search CNKI (中国知网) academic literature by subject keyword (主题字段) and return, for each hit, Title, Href (the abstract page), Abstract, and HTML_READING_URL (the online HTML reading link, the input for CNKI_GetPaperMainBody). Login is automatic (IP-based, the CNKI whitelist of the current network); no cookie handling is needed or exposed. Each returned paper costs one extra throttled request for its abstract page, so keep pageSize small (default 10, maximum 50) and ask for more pages only when needed. Impact factors are not included.",
+        "risk": "medium",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value"],
+          "properties": {
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "description": "Search keyword(s) for the CNKI subject field (主题)."
+            },
+            "pageSize": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10,
+              "description": "How many papers to return, 1-50 (default 10). CNKI serves pages of 10/20/50; the request is rounded up to the nearest tier and paginated as needed. Every paper adds one throttled abstract-page request (about 1.2-2 s each)."
+            },
+            "pageNum": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "description": "One-based CNKI result page to start from (default 1)."
+            }
+          }
+        }
+      },
+      {
+        "name": "CNKI_GetPaperMainBody",
+        "description": "Fetch the full text of one CNKI paper from its HTML_READING_URL (as returned by CNKI_ScanPaper) and return it as plain text: the title, then each chapter heading followed by its paragraphs. No HTML, no JSON, no escape sequences. Only papers whose full text the current CNKI subscription may read are available; otherwise a structured error explains why.",
+        "risk": "medium",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["href"],
+          "properties": {
+            "href": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "description": "The HTML_READING_URL of one paper, exactly as returned by CNKI_ScanPaper."
+            }
+          }
+        }
+      }
+    ]
+  },
+  "permissions": ["agent.tool.register", "net.fetch"],
+  "net": {
+    "domains": ["*.cnki.net"]
+  },
+  "engines": {
+    "piDesktop": ">=0.15.2"
+  },
+  "activationEvents": ["onStartup"]
+}

@@ -29,6 +29,9 @@ of it is what makes `Sync fork` merge cleanly.
   IPC/CPC classification tree tool. See `04-classification-query.md`.
 - **Windows test-gate portability** — Windows-safe adaptations of upstream's
   test gates and E2E scripts. See `05-windows-portability.md`.
+- **Non-patent search plugin** — `Extensions/non-patent-search`, CNKI paper
+  search and full-text tools with automatic IP login. See
+  `06-non-patent-search.md`.
 
 ## 3. How fork pages relate to upstream pages
 

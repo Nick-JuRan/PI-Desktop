@@ -1,0 +1,284 @@
+/**
+ * Parsing of the CNKI pages the tools read. No HTML library is available to a
+ * plugin, so these are focused, attribute-order-agnostic extractors for the
+ * few structures the crawler depends on:
+ *
+ * - the search grid (`table.result-table-list tbody tr`, title link
+ *   `td.name a.fz14`, `#countPageDiv`),
+ * - the abstract page (`input#abstract_text[value]`, `.btn-html a[href]`),
+ * - the reader JSON (`{ success, content: { title, catalogInfos[] } }`).
+ *
+ * Every function is pure; fixtures under test/fixtures mirror the markup.
+ */
+
+export const KNS_ORIGIN = "https://kns.cnki.net";
+
+const NAMED_ENTITIES = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: "\u00a0",
+  ensp: "\u2002",
+  emsp: "\u2003",
+  hellip: "\u2026",
+  middot: "\u00b7",
+  ldquo: "\u201c",
+  rdquo: "\u201d",
+  lsquo: "\u2018",
+  rsquo: "\u2019",
+  mdash: "\u2014",
+  ndash: "\u2013",
+  times: "\u00d7",
+  deg: "\u00b0",
+  plusmn: "\u00b1",
+  micro: "\u00b5",
+  copy: "\u00a9",
+  reg: "\u00ae",
+};
+
+/** Decode numeric and the common named HTML entities. */
+export function unescapeHtml(text) {
+  return String(text ?? "")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => safeCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => safeCodePoint(parseInt(dec, 10)))
+    .replace(/&([a-zA-Z]+);/g, (match, name) => (name in NAMED_ENTITIES ? NAMED_ENTITIES[name] : match));
+}
+
+function safeCodePoint(value) {
+  try {
+    return Number.isFinite(value) && value >= 0 && value <= 0x10ffff ? String.fromCodePoint(value) : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Remove tags, decode entities, collapse whitespace. */
+export function stripHtml(html) {
+  const withBreaks = String(html ?? "")
+    .replace(/<\s*(br|\/p|\/div|\/li|\/tr|\/h[1-6])\s*\/?>/gi, "\n")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, "");
+  return unescapeHtml(withBreaks)
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t\f\v]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+}
+
+/** Attribute value from a tag string, order-agnostic, quoted or bare. */
+export function attr(tag, name) {
+  const re = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i");
+  const match = re.exec(tag);
+  if (!match) return null;
+  return unescapeHtml(match[1] ?? match[2] ?? match[3] ?? "");
+}
+
+function hasClass(tag, className) {
+  const classes = attr(tag, "class");
+  return Boolean(classes && classes.split(/\s+/).includes(className));
+}
+
+export function absoluteUrl(href, base = KNS_ORIGIN) {
+  const value = String(href ?? "").trim();
+  if (!value) return "";
+  try {
+    return new URL(value, base).toString();
+  } catch {
+    return value;
+  }
+}
+
+const LOGIN_MARKERS = ["用户登录", "登录知网", "账号登录", "个人登录", "IP登录", "login.cnki.net"];
+const VERIFY_MARKERS = ["滑动验证", "人机验证", "安全验证", "请完成验证", "拖动滑块", "captcha", "verifycode"];
+
+export function looksLikeLogin(body) {
+  return LOGIN_MARKERS.some((marker) => body.includes(marker));
+}
+
+export function looksLikeVerify(body) {
+  const lower = body.toLowerCase();
+  return VERIFY_MARKERS.some((marker) => lower.includes(marker.toLowerCase()));
+}
+
+/**
+ * Parse one search-grid response.
+ * Returns `{ hasResultsTable, hasToolbar, total, totalPage, papers: [{ title, href }] }`.
+ */
+export function parseSearchPage(html) {
+  const body = String(html ?? "");
+  const hasToolbar = /id\s*=\s*["']countPageDiv["']/i.test(body);
+  const tableMatch = /<table\b[^>]*class\s*=\s*["'][^"']*\bresult-table-list\b[^"']*["'][^>]*>([\s\S]*?)<\/table>/i.exec(body);
+  const hasResultsTable = Boolean(tableMatch);
+
+  let total = -1;
+  const totalMatch = /id\s*=\s*["']countPageDiv["'][^>]*>[\s\S]*?<em[^>]*>\s*([\d,]+)\s*<\/em>/i.exec(body);
+  if (totalMatch) {
+    const parsed = Number.parseInt(totalMatch[1].replace(/,/g, ""), 10);
+    if (Number.isFinite(parsed)) total = parsed;
+  }
+
+  let totalPage = 0;
+  const markMatch = /<span\b[^>]*class\s*=\s*["'][^"']*\bcountPageMark\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i.exec(body);
+  if (markMatch) {
+    const dataPageNum = attr(markMatch[0].slice(0, markMatch[0].indexOf(">") + 1), "data-pagenum");
+    const fromAttr = Number.parseInt(dataPageNum ?? "", 10);
+    if (Number.isFinite(fromAttr) && fromAttr > 0) {
+      totalPage = fromAttr;
+    } else {
+      const text = stripHtml(markMatch[1]);
+      const slash = text.lastIndexOf("/");
+      const fromText = slash >= 0 ? Number.parseInt(text.slice(slash + 1).trim(), 10) : NaN;
+      if (Number.isFinite(fromText) && fromText > 0) totalPage = fromText;
+    }
+  }
+
+  const papers = [];
+  if (tableMatch) {
+    const tableHtml = tableMatch[1];
+    const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+    let row;
+    while ((row = rowRe.exec(tableHtml)) !== null) {
+      const cells = splitCells(row[1]);
+      const nameCell = cells.find((cell) => hasClass(cell.openTag, "name"));
+      if (!nameCell) continue;
+      const anchor = findAnchor(nameCell.inner, (tag) => hasClass(tag, "fz14")) ?? findAnchor(nameCell.inner, () => true);
+      if (!anchor) continue;
+      const hrefRaw = (attr(anchor.openTag, "href") ?? "").trim();
+      if (!hrefRaw || hrefRaw.toLowerCase().startsWith("javascript:")) continue;
+      if (!hrefRaw.includes("/kcms2/article/abstract")) continue;
+      const href = absoluteUrl(hrefRaw);
+      const title = stripHtml(anchor.inner);
+      if (!title) continue;
+      papers.push({ title, href });
+    }
+  }
+
+  return { hasToolbar, hasResultsTable, total, totalPage, papers };
+}
+
+function splitCells(rowHtml) {
+  const cells = [];
+  const cellRe = /<td\b([^>]*)>([\s\S]*?)<\/td>/gi;
+  let match;
+  while ((match = cellRe.exec(rowHtml)) !== null) {
+    cells.push({ openTag: `<td${match[1]}>`, inner: match[2] });
+  }
+  return cells;
+}
+
+function findAnchor(html, predicate) {
+  const anchorRe = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = anchorRe.exec(html)) !== null) {
+    const openTag = `<a${match[1]}>`;
+    if (predicate(openTag)) return { openTag, inner: match[2] };
+  }
+  return null;
+}
+
+/**
+ * Parse an abstract page. Returns `{ abstract, htmlReadingUrl, pdfUrl, cajUrl }`
+ * with absolute URLs and a decoded abstract; missing pieces are "".
+ */
+export function parseAbstractPage(html, pageUrl = KNS_ORIGIN) {
+  const body = String(html ?? "");
+  let abstract = "";
+  const inputRe = /<input\b[^>]*>/gi;
+  let input;
+  while ((input = inputRe.exec(body)) !== null) {
+    if ((attr(input[0], "id") ?? "") === "abstract_text") {
+      abstract = stripHtml(attr(input[0], "value") ?? "");
+      break;
+    }
+  }
+  if (!abstract) {
+    // Some layouts render the abstract inline instead of the hidden input.
+    const span = /<span\b[^>]*id\s*=\s*["']ChDivSummary["'][^>]*>([\s\S]*?)<\/span>/i.exec(body);
+    if (span) abstract = stripHtml(span[1]);
+  }
+
+  let htmlReadingUrl = "";
+  const btnHtml = /<[a-z]+\b[^>]*class\s*=\s*["'][^"']*\bbtn-html\b[^"']*["'][^>]*>/i.exec(body);
+  if (btnHtml) {
+    // The element is either the <a> itself or a wrapper whose first <a> is the link.
+    const openTag = btnHtml[0];
+    let href = /^<a\b/i.test(openTag) ? attr(openTag, "href") : null;
+    if (!href) {
+      const following = body.slice(btnHtml.index + openTag.length, btnHtml.index + openTag.length + 4000);
+      const anchorTag = /<a\b[^>]*>/i.exec(following);
+      href = anchorTag ? attr(anchorTag[0], "href") : null;
+    }
+    if (href) htmlReadingUrl = absoluteUrl(href, pageUrl);
+  }
+
+  const pdfUrl = anchorHrefById(body, "pdfDown", pageUrl);
+  const cajUrl = anchorHrefById(body, "cajDown", pageUrl);
+  return { abstract, htmlReadingUrl, pdfUrl, cajUrl };
+}
+
+function anchorHrefById(body, id, pageUrl) {
+  const anchorRe = /<a\b[^>]*>/gi;
+  let match;
+  while ((match = anchorRe.exec(body)) !== null) {
+    if ((attr(match[0], "id") ?? "") === id) {
+      const href = attr(match[0], "href");
+      return href ? absoluteUrl(href, pageUrl) : "";
+    }
+  }
+  return "";
+}
+
+/** The reader query parameters, or null when any of the four is missing. */
+export function parseReaderParams(url) {
+  let parsed;
+  try {
+    parsed = new URL(String(url));
+  } catch {
+    return null;
+  }
+  const params = parsed.searchParams;
+  const fileName = params.get("fileName") ?? "";
+  const tableName = params.get("tableName") ?? "";
+  const dbCode = params.get("dbCode") ?? "";
+  const invoice = params.get("invoice") ?? "";
+  if (!fileName || !tableName || !dbCode || !invoice) return null;
+  return { fileName, tableName, dbCode, invoice };
+}
+
+/**
+ * Turn the reader JSON into plain text: title, then each chapter heading and
+ * its paragraphs in `orderNum` order. Tags and entities are removed; the result
+ * contains real newlines only.
+ */
+export function restoreArticleText(jsonText) {
+  let data;
+  try {
+    data = JSON.parse(String(jsonText));
+  } catch (error) {
+    throw Object.assign(new Error(`reader response is not JSON: ${error.message}`), { code: "MAIN_BODY_UNAVAILABLE" });
+  }
+  if (!data || data.success !== true || !data.content || typeof data.content !== "object") {
+    const message = typeof data?.message === "string" ? data.message : typeof data?.msg === "string" ? data.msg : "";
+    throw Object.assign(
+      new Error(`CNKI did not return the article body${message ? `: ${message}` : ""}`),
+      { code: "MAIN_BODY_UNAVAILABLE" },
+    );
+  }
+  const content = data.content;
+  const chapters = Array.isArray(content.catalogInfos) ? [...content.catalogInfos] : [];
+  chapters.sort((a, b) => Number(a?.orderNum ?? 0) - Number(b?.orderNum ?? 0));
+  const parts = [];
+  const title = stripHtml(content.title ?? "");
+  if (title) parts.push(title);
+  for (const chapter of chapters) {
+    const heading = stripHtml(chapter?.cataTitle ?? "");
+    const text = stripHtml(chapter?.content ?? "");
+    if (!heading && !text) continue;
+    parts.push([heading, text].filter(Boolean).join("\n"));
+  }
+  return parts.join("\n\n");
+}
