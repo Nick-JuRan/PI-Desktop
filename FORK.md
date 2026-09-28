@@ -1,6 +1,6 @@
 # FORK.md — upstream files touched by the fork
 
-Registry required by `FORK-STANDARD.md` D3. Every **upstream** file that differs from `vastsa/PI-Desktop` main in this fork, grouped by the fork feature that owns the change. Fork-only files (islands: `packages/*/src/fork/`, `Extensions/`, `docs/spec/90-fork/`, `docs/zh-CN/spec/90-fork/`, `apps/desktop/test/subagent-tool-catalog.test.mjs`, `apps/desktop/test/voice-ipc-contract.test.mjs`, `packages/shared/src/subagent-tools.ts`, `apps/desktop/src/components/settings/subagent-presets.ts`, `packages/agent-runtime/src/extensions/catalog-probe-ui*.ts`, `FORK-STANDARD.md`, this file) are not listed because they cannot conflict.
+Registry required by `FORK-STANDARD.md` D3. Every **upstream** file that differs from `vastsa/PI-Desktop` main in this fork, grouped by the fork feature that owns the change. Fork-only files (islands: `packages/*/src/fork/`, `Extensions/` (fusion-search, classification-queryer, non-patent-search), `docs/spec/90-fork/`, `docs/zh-CN/spec/90-fork/`, `apps/desktop/test/subagent-tool-catalog.test.mjs`, `apps/desktop/test/voice-ipc-contract.test.mjs`, `packages/shared/src/subagent-tools.ts`, `apps/desktop/src/components/settings/subagent-presets.ts`, `packages/agent-runtime/src/extensions/catalog-probe-ui*.ts`, `FORK-STANDARD.md`, this file) are not listed because they cannot conflict.
 
 How to use it: (1) it shows the conflict surface at a glance — the fewer rows and the smaller the numbers, the cleaner every upstream sync; (2) during a sync, a conflicting file that is **not** listed here is resolved by taking upstream's version (`FORK-STANDARD.md` C2); (3) every PR that touches an upstream file updates this table. `hook` = a few added lines only (an import statement, a call, a spread, a note). `integration point` = the fork had to change upstream lines; each is a candidate to shrink into a hook or to send upstream as a `fix`.
 
@@ -84,8 +84,8 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `0433e7
 | `docs/.vitepress/config.mts` | +1 −0 | hook | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue |
 | `docs/spec/03-runtime/02-agent-runtime.md` | +2 −0 | hook | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue |
 | `docs/spec/04-ux/08-component-spec.md` | +1 −0 | hook | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue |
-| `docs/spec/NAV.md` | +8 −0 | hook | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue |
-| `docs/zh-CN/spec/NAV.md` | +8 −0 | hook | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue |
+| `docs/spec/NAV.md` | +9 −0 | hook | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue |
+| `docs/zh-CN/spec/NAV.md` | +9 −0 | hook | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue |
 
 ## windows portability / test-gate adaptations
 

@@ -107,6 +107,7 @@
 - [03-fusion-search.md](90-fork/03-fusion-search.md)
 - [04-classification-query.md](90-fork/04-classification-query.md)
 - [05-windows-portability.md](90-fork/05-windows-portability.md)
+- [06-non-patent-search.md](90-fork/06-non-patent-search.md)
 
 ## ADR
 - [../adr/README.md](../adr/README.md)

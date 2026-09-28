@@ -15,6 +15,7 @@ fork 在 upstream 之上只维护少量私有功能。相应的仓库策略是�
 - **Fusion Search 插件**——`Extensions/fusion-search`，带认证的语义检索插件。见 `03-fusion-search.md`。
 - **分类查询插件**——`Extensions/classification-queryer`，IPC/CPC 分类树工具。见 `04-classification-query.md`。
 - **Windows 测试门禁可移植性**——对 upstream 测试门禁与 E2E 脚本的 Windows 适配。见 `05-windows-portability.md`。
+- **非专利检索插件**——`Extensions/non-patent-search`，带自动 IP 登录的 CNKI 论文检索与全文工具。见 `06-non-patent-search.md`。
 
 ## 3. fork 页面与 upstream 页面的关系
 

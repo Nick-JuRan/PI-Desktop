@@ -1,0 +1,10 @@
+{
+  "name": "local-non-patent-search",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PI-Desktop non-patent literature search tools (CNKI paper search and full-text reading).",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "success": true,
+  "content": {
+    "title": "基于格罗皮乌斯的现代建筑教育研究",
+    "catalogInfos": [
+      { "cataTitle": "2 包豪斯的教育实践", "content": "<p>包豪斯将&ldquo;艺术与技术的新统一&rdquo;作为宗旨。</p><p>课程分为&lt;基础课程&gt;与&lt;工坊课程&gt;两部分。</p>", "orderNum": 2 },
+      { "cataTitle": "1 引言", "content": "<p>格罗皮乌斯（Walter Gropius）&nbsp;是现代建筑教育的奠基人之一。</p>", "orderNum": 1 },
+      { "cataTitle": "参考文献", "content": "<div class=\"ref\">[1] 张三. 建筑教育史[M]. 北京: 建筑工业出版社, 2020.</div>", "orderNum": 3 }
+    ]
+  }
+}
