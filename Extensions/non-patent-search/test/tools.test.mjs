@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import test from "node:test";
 
 import { executeGetPaperMainBody, executeScanPaper } from "../src/tools.mjs";
 import { READER_ENDPOINT, resolveReaderParams } from "../src/paper.mjs";
 import { createThrottle } from "../src/throttle.mjs";
+
+const require = createRequire(import.meta.url);
+const { createRequestStub } = require("./helpers/fake-cnki.cjs");
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
 const noWait = () => createThrottle({ minGapMs: 0, jitterMs: 0 });
@@ -28,62 +31,37 @@ function cookieStub(cookies = ["c1"]) {
   };
 }
 
-/** `pi.net.fetch` stub routed by URL. */
-function fetchStub(routes) {
-  const calls = [];
-  const fetchImpl = async (input) => {
-    calls.push(input);
-    for (const [test, reply] of routes) {
-      if (typeof test === "function" ? test(input) : input.url.startsWith(test)) {
-        return typeof reply === "function" ? reply(input, calls) : reply;
+/** Route `https.request` calls by URL prefix (or predicate) to canned replies. */
+function routes(table) {
+  return createRequestStub((call, n) => {
+    for (const [match, reply] of table) {
+      if (typeof match === "function" ? match(call) : call.url.startsWith(match)) {
+        return typeof reply === "function" ? reply(call, n) : reply;
       }
     }
-    throw new Error(`unexpected fetch ${input.url}`);
-  };
-  return { fetchImpl, calls };
+    throw new Error(`unexpected request ${call.url}`);
+  });
 }
 
-/** `node:https.request` stub for redirect resolution. */
-function requestStub(respond) {
-  const calls = [];
-  const request = (url, options, onResponse) => {
-    const req = new EventEmitter();
-    req.write = () => {};
-    req.destroy = (error) => req.emit("error", error ?? new Error("destroyed"));
-    req.end = () => {
-      calls.push(String(url));
-      queueMicrotask(() => {
-        const reply = respond(String(url));
-        const res = new EventEmitter();
-        res.statusCode = reply.status;
-        res.headers = reply.headers ?? {};
-        onResponse(res);
-        res.emit("data", Buffer.from(reply.body ?? "", "utf8"));
-        res.emit("end");
-        req.emit("close");
-      });
-    };
-    return req;
-  };
-  return { request, calls };
-}
-
-const html = (body) => ({ status: 200, headers: {}, bodyText: body });
+const html = (body, status = 200) => ({ status, body });
+const GRID = "https://kns.cnki.net/kns8s/brief/grid";
 const ABSTRACT_1 = "https://kns.cnki.net/kcms2/article/abstract?v=ABC123&uniplatform=NZKPT";
 const ABSTRACT_2 = "https://kns.cnki.net/kcms2/article/abstract?v=DEF456";
+const VERIFY_URL = "https://kns.cnki.net/kns8s/security/verify?returnUrl=%2Fkcms2%2Farticle%2Fabstract";
 
 test("CNKI_ScanPaper returns Title, Href, Abstract and HTML_READING_URL per hit and nothing else", async () => {
-  const { fetchImpl, calls } = fetchStub([
-    ["https://kns.cnki.net/kns8s/brief/grid", html(fixture("search-page.html"))],
+  const { request, calls } = routes([
+    [GRID, html(fixture("search-page.html"))],
     [ABSTRACT_1, html(fixture("abstract-page.html"))],
     [ABSTRACT_2, html("<html><body><input type=hidden id=abstract_text value='第二篇摘要'><li class='btn-html'><a href='/kcms2/article/htmlreading?v=READ456'>HTML阅读</a></li></body></html>")],
   ]);
   const cookies = cookieStub(["session=1"]);
-  const result = await executeScanPaper({ args: { value: "格罗皮乌斯", pageSize: 2 }, cookies, fetchImpl, throttle: noWait() });
+  const result = await executeScanPaper({ args: { value: "格罗皮乌斯", pageSize: 2 }, cookies, request, throttle: noWait() });
   assert.equal(result.ok, true);
   assert.equal(result.query, "格罗皮乌斯");
   assert.equal(result.returned, 2);
   assert.equal(result.totalHits, 1234);
+  assert.equal(result.withDetails, true);
   assert.deepEqual(Object.keys(result.papers[0]), ["Title", "Href", "Abstract", "HTML_READING_URL"]);
   assert.deepEqual(result.papers[0], {
     Title: "基于格罗皮乌斯的现代建筑教育研究",
@@ -99,38 +77,59 @@ test("CNKI_ScanPaper returns Title, Href, Abstract and HTML_READING_URL per hit 
   });
   assert.equal(result.warnings, undefined);
   assert.equal(calls.length, 3, "one search page + one abstract page per hit");
-  assert.ok(calls.every((call) => call.headers.Cookie === "session=1"), "every request carries the session cookie");
+  for (const call of calls) {
+    assert.equal(call.headers.Cookie, "session=1", "every request carries the login cookie verbatim");
+    assert.match(call.headers["User-Agent"], /Chrome\/114/);
+    assert.equal(call.headers.Referer, "https://kns.cnki.net/");
+    assert.match(call.headers["Content-Type"], /x-www-form-urlencoded/);
+  }
   assert.equal(JSON.stringify(result).includes("withFactors"), false);
   assert.equal(JSON.stringify(result).includes("Authors"), false);
 });
 
-test("CNKI_ScanPaper re-logs in once when CNKI answers with the login page", async () => {
+test("CNKI_ScanPaper with withDetails=false makes exactly one request, like the original MCP", async () => {
+  const { request, calls } = routes([[GRID, html(fixture("search-page.html"))]]);
+  const result = await executeScanPaper({ args: { value: "x", pageSize: 2, withDetails: false }, cookies: cookieStub(), request, throttle: noWait() });
+  assert.equal(calls.length, 1);
+  assert.equal(result.withDetails, false);
+  assert.equal(result.returned, 2);
+  assert.deepEqual(result.papers[0], { Title: "基于格罗皮乌斯的现代建筑教育研究", Href: ABSTRACT_1, Abstract: "", HTML_READING_URL: "" });
+  assert.equal(result.warnings, undefined);
+});
+
+test("CNKI_ScanPaper re-logs in once when the search is redirected to login.cnki.net", async () => {
   let searches = 0;
-  const { fetchImpl } = fetchStub([
+  const { request, calls } = routes([
     [
-      "https://kns.cnki.net/kns8s/brief/grid",
+      GRID,
       () => {
         searches += 1;
-        return html(searches === 1 ? fixture("login-page.html") : fixture("search-page.html"));
+        return searches === 1
+          ? { status: 302, headers: { location: "https://login.cnki.net/TopLogin/api/loginapi/Login?returnUrl=x" } }
+          : html(fixture("search-page.html"));
       },
     ],
+    ["https://login.cnki.net/", html(fixture("login-page.html"))],
     [ABSTRACT_1, html(fixture("abstract-page.html"))],
     [ABSTRACT_2, html("<html></html>")],
   ]);
   const cookies = cookieStub(["stale", "fresh"]);
-  const result = await executeScanPaper({ args: { value: "x", pageSize: 2 }, cookies, fetchImpl, throttle: noWait() });
+  const result = await executeScanPaper({ args: { value: "x", pageSize: 2 }, cookies, request, throttle: noWait() });
   assert.equal(searches, 2);
   assert.equal(cookies.calls.refresh, 1);
   assert.equal(result.returned, 2);
+  assert.ok(calls.slice(-3).every((call) => call.headers.Cookie === "fresh"), "the retry and the detail pages use the fresh cookie");
+  assert.equal(result.warnings.length, 1, "the empty second abstract page is reported, not treated as a login page");
+  assert.match(result.warnings[0], /no abstract or HTML reading link found/);
 });
 
 test("CNKI_ScanPaper keeps a hit whose abstract page fails and reports it in warnings", async () => {
-  const { fetchImpl } = fetchStub([
-    ["https://kns.cnki.net/kns8s/brief/grid", html(fixture("search-page.html"))],
-    [ABSTRACT_1, { status: 500, headers: {}, bodyText: "boom" }],
+  const { request } = routes([
+    [GRID, html(fixture("search-page.html"))],
+    [ABSTRACT_1, html("boom", 500)],
     [ABSTRACT_2, html("<html><body><input id=abstract_text value=ok></body></html>")],
   ]);
-  const result = await executeScanPaper({ args: { value: "x", pageSize: 2 }, cookies: cookieStub(), fetchImpl, throttle: noWait() });
+  const result = await executeScanPaper({ args: { value: "x", pageSize: 2 }, cookies: cookieStub(), request, throttle: noWait() });
   assert.equal(result.returned, 2);
   assert.equal(result.papers[0].Abstract, "");
   assert.equal(result.papers[0].HTML_READING_URL, "");
@@ -139,26 +138,87 @@ test("CNKI_ScanPaper keeps a hit whose abstract page fails and reports it in war
   assert.match(result.warnings[0], /基于格罗皮乌斯的现代建筑教育研究: abstract page unavailable \(abstract page returned HTTP 500\)/);
 });
 
-test("CNKI_ScanPaper validates its arguments and refuses withFactors-era extras via the schema owner", async () => {
-  const { fetchImpl, calls } = fetchStub([]);
+test("a healthy abstract page that links to login.cnki.net and loads captcha scripts is not misread as a login or verification page", async () => {
+  const noisy = fixture("abstract-page.html").replace(
+    "<body>",
+    `<body><div class="header"><a href="https://login.cnki.net/TopLogin/api/loginapi/Login?returnUrl=x">登录</a> | <a href="https://my.cnki.net/">注册</a></div><script src="https://kns.cnki.net/dist/captcha/verifycode.min.js"></script><script>var loginUrl = "https://login.cnki.net/";</script>`,
+  );
+  const { request } = routes([
+    [GRID, html(fixture("search-page.html"))],
+    [ABSTRACT_1, html(noisy)],
+    [ABSTRACT_2, html(noisy.replace(/<input[^>]*abstract_text[^>]*>/, "").replace(/<li class="btn-html">[\s\S]*?<\/li>/, ""))],
+  ]);
+  const cookies = cookieStub(["c"]);
+  const result = await executeScanPaper({ args: { value: "x", pageSize: 2 }, cookies, request, throttle: noWait() });
+  assert.equal(result.papers[0].Abstract.startsWith("本文以格罗皮乌斯"), true);
+  assert.equal(result.papers[1].Abstract, "");
+  assert.equal(cookies.calls.refresh, 0, "no re-login was triggered by the navigation link");
+  assert.equal(result.warnings.length, 1);
+  assert.match(result.warnings[0], /包豪斯设计理念的当代价值 & 反思: no abstract or HTML reading link found on the abstract page \(title: /);
+});
+
+test("CNKI_ScanPaper stops reading abstract pages at the first human-verification page and still returns the search", async () => {
+  const grid = fixture("search-page.html").replace(
+    "</tbody>",
+    `<tr><td class="name"><a class="fz14" href="/kcms2/article/abstract?v=GHI789">第三篇</a></td></tr></tbody>`,
+  );
+  const { request, calls } = routes([
+    [GRID, html(grid)],
+    [ABSTRACT_1, html(fixture("abstract-page.html"))],
+    [ABSTRACT_2, { status: 302, headers: { location: VERIFY_URL } }],
+    [VERIFY_URL, html(fixture("verify-page.html"))],
+  ]);
+  const result = await executeScanPaper({ args: { value: "x", pageSize: 3 }, cookies: cookieStub(), request, throttle: noWait() });
+  assert.equal(result.ok, true);
+  assert.equal(result.returned, 3);
+  assert.equal(result.papers[0].Abstract.startsWith("本文以格罗皮乌斯"), true);
+  assert.equal(result.papers[1].Abstract, "");
+  assert.equal(result.papers[2].Abstract, "");
+  assert.equal(calls.length, 4, "the third abstract page is never requested");
+  assert.equal(result.warnings.length, 2);
+  assert.match(result.warnings[0], /包豪斯设计理念的当代价值 & 反思: abstract page unavailable \(CNKI asked for human verification/);
+  assert.match(result.warnings[1], /human verification after 1 abstract page\(s\).*withDetails=false/);
+});
+
+test("CNKI_ScanPaper re-logs in at most once per call when abstract pages report a stale session", async () => {
+  const loginPage = { status: 302, headers: { location: "https://login.cnki.net/TopLogin/api/loginapi/Login" } };
+  const { request, calls } = routes([
+    [GRID, html(fixture("search-page.html"))],
+    ["https://login.cnki.net/", html(fixture("login-page.html"))],
+    [ABSTRACT_1, loginPage],
+    [ABSTRACT_2, loginPage],
+  ]);
+  const cookies = cookieStub(["stale", "fresh"]);
+  const result = await executeScanPaper({ args: { value: "x", pageSize: 2 }, cookies, request, throttle: noWait() });
+  assert.equal(result.ok, true);
+  assert.equal(cookies.calls.refresh, 1, "one IP login for the whole call");
+  const abstractCalls = calls.filter((call) => call.url.startsWith("https://kns.cnki.net/kcms2/article/abstract"));
+  assert.equal(abstractCalls.length, 2, "first paper, retry with the fresh cookie, then details stop");
+  assert.equal(abstractCalls[1].headers.Cookie, "fresh");
+  assert.match(result.warnings.at(-1), /kept answering with its login page after a fresh IP login/);
+});
+
+test("CNKI_ScanPaper validates its arguments before any request", async () => {
+  const { request, calls } = routes([]);
   const cookies = cookieStub();
-  await assert.rejects(executeScanPaper({ args: {}, cookies, fetchImpl, throttle: noWait() }), (e) => e.code === "INVALID_ARGUMENT");
-  await assert.rejects(executeScanPaper({ args: { value: "x", pageSize: 0 }, cookies, fetchImpl, throttle: noWait() }), (e) => e.code === "INVALID_ARGUMENT");
-  await assert.rejects(executeScanPaper({ args: { value: "x", pageSize: 51 }, cookies, fetchImpl, throttle: noWait() }), (e) => e.code === "INVALID_ARGUMENT");
-  await assert.rejects(executeScanPaper({ args: { value: "x", pageNum: 1.5 }, cookies, fetchImpl, throttle: noWait() }), (e) => e.code === "INVALID_ARGUMENT");
+  const run = (args) => executeScanPaper({ args, cookies, request, throttle: noWait() });
+  await assert.rejects(run({}), (e) => e.code === "INVALID_ARGUMENT");
+  await assert.rejects(run({ value: "x", pageSize: 0 }), (e) => e.code === "INVALID_ARGUMENT");
+  await assert.rejects(run({ value: "x", pageSize: 51 }), (e) => e.code === "INVALID_ARGUMENT");
+  await assert.rejects(run({ value: "x", pageNum: 1.5 }), (e) => e.code === "INVALID_ARGUMENT");
+  await assert.rejects(run({ value: "x", withDetails: "no" }), (e) => e.code === "INVALID_ARGUMENT");
   assert.equal(calls.length, 0);
 });
 
 test("resolveReaderParams follows redirects by hand until the reader URL carries all four parameters", async () => {
-  const { request, calls } = requestStub((url) => {
-    if (url.startsWith("https://kns.cnki.net/kcms2/article/htmlreading")) {
-      return { status: 302, headers: { location: "https://kns.cnki.net/nzkhtml/knsread/login-check?token=1" } };
-    }
-    if (url.includes("/nzkhtml/knsread/login-check")) {
-      return { status: 302, headers: { location: "/nzkhtml/knsread/index?fileName=F1&tableName=CJFDLAST2024&dbCode=CJFD&invoice=INV%2F1" } };
-    }
-    return { status: 200, headers: {}, body: "<html>reader</html>" };
-  });
+  const { request, calls } = routes([
+    ["https://kns.cnki.net/kcms2/article/htmlreading", { status: 302, headers: { location: "https://kns.cnki.net/nzkhtml/knsread/login-check?token=1" } }],
+    [
+      "https://kns.cnki.net/nzkhtml/knsread/login-check",
+      { status: 302, headers: { location: "/nzkhtml/knsread/index?fileName=F1&tableName=CJFDLAST2024&dbCode=CJFD&invoice=INV%2F1" } },
+    ],
+    [() => true, html("<html>reader</html>")],
+  ]);
   const params = await resolveReaderParams({
     href: "https://kns.cnki.net/kcms2/article/htmlreading?v=READ123",
     cookie: "c",
@@ -167,27 +227,26 @@ test("resolveReaderParams follows redirects by hand until the reader URL carries
   });
   assert.deepEqual(params, { fileName: "F1", tableName: "CJFDLAST2024", dbCode: "CJFD", invoice: "INV/1" });
   assert.equal(calls.length, 2, "stops as soon as a Location carries the parameters");
+  assert.ok(calls.every((call) => call.headers.Cookie === "c"));
 });
 
 test("resolveReaderParams falls back to parameters embedded in a final page and classifies login pages", async () => {
-  const embedded = requestStub(() => ({
-    status: 200,
-    headers: {},
-    body: `<html><script>var url="/nzkhtml/knsread/litNotes/getPaperInfo?fileName=F9&amp;tableName=T9&amp;dbCode=D9&amp;invoice=I9";</script></html>`,
-  }));
+  const embedded = routes([
+    [() => true, html(`<html><script>var url="/nzkhtml/knsread/litNotes/getPaperInfo?fileName=F9&amp;tableName=T9&amp;dbCode=D9&amp;invoice=I9";</script></html>`)],
+  ]);
   assert.deepEqual(
     await resolveReaderParams({ href: "https://kns.cnki.net/kcms2/article/htmlreading?v=1", cookie: "c", request: embedded.request, throttle: noWait() }),
     { fileName: "F9", tableName: "T9", dbCode: "D9", invoice: "I9" },
   );
-  const login = requestStub(() => ({ status: 200, headers: {}, body: fixture("login-page.html") }));
+  const login = routes([[() => true, html(fixture("login-page.html"))]]);
   await assert.rejects(
     resolveReaderParams({ href: "https://kns.cnki.net/kcms2/article/htmlreading?v=1", cookie: "c", request: login.request, throttle: noWait() }),
     (error) => error.code === "COOKIE_EXPIRED",
   );
-  const dead = requestStub(() => ({ status: 200, headers: {}, body: "<html>no reader here</html>" }));
+  const dead = routes([[() => true, html("<html><title>知网节</title><body>no reader here</body></html>")]]);
   await assert.rejects(
     resolveReaderParams({ href: "https://kns.cnki.net/kcms2/article/htmlreading?v=1", cookie: "c", request: dead.request, throttle: noWait() }),
-    (error) => error.code === "MAIN_BODY_UNAVAILABLE",
+    (error) => error.code === "MAIN_BODY_UNAVAILABLE" && error.title === "知网节" && error.snippet === "知网节 no reader here",
   );
   await assert.rejects(
     resolveReaderParams({ href: "https://evil.example.com/x", cookie: "c", request: dead.request, throttle: noWait() }),
@@ -196,11 +255,11 @@ test("resolveReaderParams falls back to parameters embedded in a final page and 
 });
 
 test("CNKI_GetPaperMainBody returns the article as a plain string with real newlines", async () => {
-  const { fetchImpl, calls } = fetchStub([[READER_ENDPOINT, html(fixture("reader-response.json"))]]);
+  const { request, calls } = routes([[READER_ENDPOINT, html(fixture("reader-response.json"))]]);
   const text = await executeGetPaperMainBody({
     args: { href: "https://kns.cnki.net/nzkhtml/knsread/index?fileName=F1&tableName=T1&dbCode=CJFD&invoice=INV" },
     cookies: cookieStub(["session=9"]),
-    fetchImpl,
+    request,
     throttle: noWait(),
   });
   assert.equal(typeof text, "string");
@@ -215,29 +274,28 @@ test("CNKI_GetPaperMainBody returns the article as a plain string with real newl
   assert.equal(calls[0].headers.Cookie, "session=9");
 });
 
-test("CNKI_GetPaperMainBody surfaces subscription refusals and empty bodies as MAIN_BODY_UNAVAILABLE", async () => {
-  const refused = fetchStub([[READER_ENDPOINT, html(JSON.stringify({ success: false, message: "暂无阅读权限" }))]]);
+test("CNKI_GetPaperMainBody surfaces subscription refusals, empty bodies and verification pages", async () => {
+  const href = "https://kns.cnki.net/x?fileName=F&tableName=T&dbCode=D&invoice=I";
+  const refused = routes([[READER_ENDPOINT, html(JSON.stringify({ success: false, message: "暂无阅读权限" }))]]);
   await assert.rejects(
-    executeGetPaperMainBody({
-      args: { href: "https://kns.cnki.net/x?fileName=F&tableName=T&dbCode=D&invoice=I" },
-      cookies: cookieStub(),
-      fetchImpl: refused.fetchImpl,
-      throttle: noWait(),
-    }),
+    executeGetPaperMainBody({ args: { href }, cookies: cookieStub(), request: refused.request, throttle: noWait() }),
     (error) => error.code === "MAIN_BODY_UNAVAILABLE" && /暂无阅读权限/.test(error.message),
   );
-  const empty = fetchStub([[READER_ENDPOINT, html(JSON.stringify({ success: true, content: { title: "", catalogInfos: [] } }))]]);
+  const empty = routes([[READER_ENDPOINT, html(JSON.stringify({ success: true, content: { title: "", catalogInfos: [] } }))]]);
   await assert.rejects(
-    executeGetPaperMainBody({
-      args: { href: "https://kns.cnki.net/x?fileName=F&tableName=T&dbCode=D&invoice=I" },
-      cookies: cookieStub(),
-      fetchImpl: empty.fetchImpl,
-      throttle: noWait(),
-    }),
+    executeGetPaperMainBody({ args: { href }, cookies: cookieStub(), request: empty.request, throttle: noWait() }),
     (error) => error.code === "MAIN_BODY_UNAVAILABLE",
   );
+  const verify = routes([
+    [READER_ENDPOINT, { status: 302, headers: { location: VERIFY_URL } }],
+    [VERIFY_URL, html(fixture("verify-page.html"), 200)],
+  ]);
   await assert.rejects(
-    executeGetPaperMainBody({ args: {}, cookies: cookieStub(), fetchImpl: empty.fetchImpl, throttle: noWait() }),
+    executeGetPaperMainBody({ args: { href }, cookies: cookieStub(), request: verify.request, throttle: noWait() }),
+    (error) => error.code === "BLOCKED" && error.finalUrl === VERIFY_URL && error.title === "安全验证",
+  );
+  await assert.rejects(
+    executeGetPaperMainBody({ args: {}, cookies: cookieStub(), request: empty.request, throttle: noWait() }),
     (error) => error.code === "INVALID_ARGUMENT",
   );
 });

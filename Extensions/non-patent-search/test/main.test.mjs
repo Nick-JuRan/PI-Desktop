@@ -1,31 +1,29 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
+const fakeCnki = require("./helpers/fake-cnki.cjs");
+const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 /**
- * A `pi`-shaped stub. The cookie comes from private settings so the entry
- * never reaches login.cnki.net here; `net.fetch` answers by URL.
+ * A `pi`-shaped stub plus a fake CNKI installed at the `https.request`
+ * boundary. The cookie comes from private settings so the entry never reaches
+ * login.cnki.net here.
  */
 function setupPi({ settings = { cookie: "manual=1" }, failRegisterName } = {}) {
   const registeredTools = new Map();
-  const netCalls = [];
+  const { calls: netCalls } = fakeCnki.install(fakeCnki.fixtureHandler(fixturesDir));
   const pi = {
     plugin: {
       getSettings: async () => ({ ...settings }),
       setSettings: async (partial) => Object.assign(settings, partial),
     },
     net: {
-      fetch: async (input) => {
-        netCalls.push(input);
-        const { url } = input;
-        if (url.startsWith("https://kns.cnki.net/kns8s/brief/grid")) return { status: 200, headers: {}, bodyText: fixture("search-page.html") };
-        if (url.startsWith("https://kns.cnki.net/kcms2/article/abstract")) return { status: 200, headers: {}, bodyText: fixture("abstract-page.html") };
-        if (url.startsWith("https://kns.cnki.net/nzkhtml/knsread/litNotes/getPaperInfo")) return { status: 200, headers: {}, bodyText: fixture("reader-response.json") };
-        return { status: 404, headers: {}, bodyText: "not found" };
+      fetch: async () => {
+        throw new Error("pi.net.fetch must not be used for CNKI: Chromium replaces the Cookie header");
       },
     },
     agent: {
@@ -38,7 +36,7 @@ function setupPi({ settings = { cookie: "manual=1" }, failRegisterName } = {}) {
       },
     },
   };
-  return { pi, registeredTools, netCalls };
+  return { pi, registeredTools, netCalls, cleanup: () => fakeCnki.uninstall() };
 }
 
 function loadEntry() {
@@ -46,8 +44,9 @@ function loadEntry() {
   return require("../main.cjs");
 }
 
-test("onLoad registers both CNKI tools from the manifest with their schemas and risk", async () => {
-  const { pi, registeredTools } = setupPi();
+test("onLoad registers both CNKI tools from the manifest with their schemas and risk", async (t) => {
+  const { pi, registeredTools, cleanup } = setupPi();
+  t.after(cleanup);
   globalThis.pi = pi;
   const entry = loadEntry();
   await entry.onLoad();
@@ -55,7 +54,8 @@ test("onLoad registers both CNKI tools from the manifest with their schemas and 
   const scan = registeredTools.get("CNKI_ScanPaper");
   assert.equal(scan.risk, "medium");
   assert.deepEqual(scan.schema.required, ["value"]);
-  assert.deepEqual(Object.keys(scan.schema.properties), ["value", "pageSize", "pageNum"]);
+  assert.deepEqual(Object.keys(scan.schema.properties), ["value", "pageSize", "pageNum", "withDetails"]);
+  assert.equal(scan.schema.properties.withDetails.default, true);
   assert.equal("withFactors" in scan.schema.properties, false);
   const body = registeredTools.get("CNKI_GetPaperMainBody");
   assert.deepEqual(body.schema.required, ["href"]);
@@ -64,8 +64,9 @@ test("onLoad registers both CNKI tools from the manifest with their schemas and 
   delete globalThis.pi;
 });
 
-test("the registered tools execute end to end against stubbed CNKI responses", async () => {
-  const { pi, registeredTools, netCalls } = setupPi();
+test("the registered tools execute end to end against a fake CNKI behind https.request", async (t) => {
+  const { pi, registeredTools, netCalls, cleanup } = setupPi();
+  t.after(cleanup);
   globalThis.pi = pi;
   const entry = loadEntry();
   await entry.onLoad();
@@ -74,7 +75,9 @@ test("the registered tools execute end to end against stubbed CNKI responses", a
   assert.equal(result.ok, true);
   assert.equal(result.returned, 2);
   assert.equal(result.papers[0].HTML_READING_URL, "https://kns.cnki.net/kcms2/article/htmlreading?v=READ123&uniplatform=NZKPT");
+  assert.equal(netCalls.length, 3, "one search + two abstract pages");
   assert.ok(netCalls.every((call) => call.headers.Cookie === "manual=1"), "the settings cookie is used without any login");
+  assert.ok(netCalls.every((call) => new URL(call.url).hostname.endsWith(".cnki.net")), "only cnki.net hosts");
 
   const body = registeredTools.get("CNKI_GetPaperMainBody");
   const text = await body.execute({ href: "https://kns.cnki.net/nzkhtml/knsread/index?fileName=F&tableName=T&dbCode=D&invoice=I" }, { log: () => {} });
@@ -88,8 +91,9 @@ test("the registered tools execute end to end against stubbed CNKI responses", a
   delete globalThis.pi;
 });
 
-test("a registration failure rolls back the tools already registered", async () => {
-  const { pi, registeredTools } = setupPi({ failRegisterName: "CNKI_GetPaperMainBody" });
+test("a registration failure rolls back the tools already registered", async (t) => {
+  const { pi, registeredTools, cleanup } = setupPi({ failRegisterName: "CNKI_GetPaperMainBody" });
+  t.after(cleanup);
   globalThis.pi = pi;
   const entry = loadEntry();
   await assert.rejects(entry.onLoad(), /refused CNKI_GetPaperMainBody/);

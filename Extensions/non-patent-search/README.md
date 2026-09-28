@@ -1,6 +1,6 @@
 # 非专利检索 (`local.non-patent-search`)
 
-A PI-Desktop agent-tool plugin for non-patent literature. Version 0.1.0 ships
+A PI-Desktop agent-tool plugin for non-patent literature. Version 0.2.0 ships
 the CNKI (中国知网) family; further academic databases are meant to join as
 additional tool families in this same plugin. It is a fork island: it hooks no
 upstream file (see `Extensions/AGENTS.md` and `FORK-STANDARD.md`).
@@ -12,7 +12,7 @@ follows:
 | CNKICrawlerMCP | This plugin |
 | --- | --- |
 | `ScanPaper` (title, authors, source, impact factors, `withFactors`) | `CNKI_ScanPaper` — no `withFactors`; returns `Title`, `Href`, `Abstract`, `HTML_READING_URL` |
-| `GetPaperInfo` (abstract, CAJ/PDF/HTML links from an abstract page) | merged into `CNKI_ScanPaper`, which reads each hit's abstract page |
+| `GetPaperInfo` (abstract, CAJ/PDF/HTML links from an abstract page) | merged into `CNKI_ScanPaper`, which reads each hit's abstract page unless `withDetails` is false |
 | `GetPaperMainBody` (JSON-encoded text) | `CNKI_GetPaperMainBody` — plain text, no escape sequences |
 | `SetGlobalCookie` / `GetGlobalCookie` | removed; the cookie is prepared automatically before the first call |
 
@@ -23,14 +23,21 @@ follows:
 Subject-field (主题) search on `https://kns.cnki.net/kns8s/brief/grid`.
 
 - Arguments: `value` (required keyword), `pageSize` (1–50, default 10),
-  `pageNum` (≥1, default 1). CNKI serves pages of 10/20/50, so the request is
-  rounded up to the nearest tier and paginated until `pageSize` unique papers
-  are collected (capped at 50, because deeper pages depend on a session-bound
-  `turnpage` token).
-- For every hit the plugin then reads the abstract page, which is where the
-  abstract and the HTML reading link live. Each of those reads is throttled
-  (see below), so a page of 10 costs roughly 15–30 s and 50 costs 1–2 min.
-  Keep `pageSize` small and paginate.
+  `pageNum` (≥1, default 1), `withDetails` (default `true`). CNKI serves
+  pages of 10/20/50, so the request is rounded up to the nearest tier and
+  paginated until `pageSize` unique papers are collected (capped at 50,
+  because deeper pages depend on a session-bound `turnpage` token).
+- The search itself is one request, exactly the original MCP's `ScanPaper`.
+  With `withDetails` the plugin then reads every hit's abstract page, which
+  is where the abstract and the HTML reading link live. Each of those reads
+  is throttled (see below), so a page of 10 costs roughly 15–30 s and 50
+  costs 1–2 min. Keep `pageSize` small and paginate.
+- Detail reads never fail the search. A page that cannot be read leaves
+  `Abstract` / `HTML_READING_URL` empty and adds a `warnings` line; the first
+  human-verification page (or a second login page after the automatic
+  re-login) stops the remaining detail reads so a rate-limited session is not
+  hammered further, and the closing warning says so. `withDetails: false`
+  is the single-request fallback for that situation (titles and links only).
 - Result:
 
 ```json
@@ -41,6 +48,7 @@ Subject-field (主题) search on `https://kns.cnki.net/kns8s/brief/grid`.
   "requested": 10,
   "returned": 10,
   "totalHits": 1234,
+  "withDetails": true,
   "papers": [
     {
       "Title": "…",
@@ -66,16 +74,28 @@ Subject-field (主题) search on `https://kns.cnki.net/kns8s/brief/grid`.
   JSON answer into plain text: title, then each chapter heading followed by
   its paragraphs, chapters in `orderNum` order, tags and entities removed.
 - The result is a **string**, so the model sees real line breaks rather than
-  `\n` sequences. Failures come back as `{ "ok": false, "error": { "code", "message" } }`.
+  `\n` sequences. Failures come back as `{ "ok": false, "error": { "code",
+  "message", … } }`; when CNKI answered with a page instead of data the error
+  also carries `finalUrl`, `status`, `title` and a short visible-text
+  `snippet` of that page, so it can be reported without guessing.
 
 ### Error codes
 
 `INVALID_ARGUMENT`, `LOGIN_FAILED` (IP login rejected — the network is not on
 the CNKI whitelist), `COOKIE_EXPIRED` (CNKI answered with its login page; the
-plugin re-logs in once automatically), `BLOCKED` (CNKI asked for human
-verification — slow down), `UNEXPECTED_PAGE`, `HTTP_ERROR`,
+plugin re-logs in once per tool call automatically), `BLOCKED` (CNKI asked for
+human verification — slow down), `UNEXPECTED_PAGE`, `HTTP_ERROR`,
 `MAIN_BODY_UNAVAILABLE` (no reader parameters or no reading permission),
 `HOST_NOT_ALLOWED`, `CANCELLED`.
+
+Login and verification pages are recognised the way a visitor would see them:
+by the final URL after redirects (`login.cnki.net`, a `…/verify` or
+`…/captcha` path), the page title and its visible text, or a script/form that
+sends the visitor there. Ordinary CNKI pages link to `login.cnki.net` and load
+captcha scripts in their markup, so raw-HTML matching would misreport healthy
+pages; only the result-less search fragment is classified at all, and an
+abstract page without the expected markup is reported as a warning, never as
+a blocked session.
 
 ## Login and cookie
 
@@ -83,8 +103,9 @@ No cookie tool exists. On load the plugin starts an **IP login**
 (`POST https://login.cnki.net/TopLoginCore/api/loginapi/IpLoginFlushPo`, empty
 JSON body); CNKI answers `IsSuccess` for whitelisted IPs and sets several
 cookies, which are joined into one `Cookie` header and kept in memory. Every
-tool call reuses it; a login page in any response triggers exactly one
-re-login and retry.
+tool call sends it verbatim on every request, exactly as CNKICrawlerMCP does;
+a login page in any response triggers exactly one re-login and retry per
+tool call.
 
 For a machine outside the whitelist, put a browser cookie in the plugin's
 private settings file — it takes precedence over IP login and is never shown
@@ -105,11 +126,29 @@ One shared throttle spaces every CNKI request (login, search, abstract pages,
 redirect hops, reader JSON) by 1.2 s plus up to 0.9 s of jitter, the pacing
 the original crawler settled on to stay below CNKI's captcha threshold.
 
-Page requests go through `pi.net.fetch`, so the host audits them and confines
-them to `manifest.net.domains` (`*.cnki.net`). Two operations the host fetch
-cannot express use a minimal `node:https` client confined to the same hosts:
-reading every `Set-Cookie` header of the login response and reading a redirect
-`Location` without following it.
+Every CNKI request is made by the plugin's own `node:https` client
+(`src/http.mjs`), which sends the crawler's exact header set — form content
+type, `Cookie`, Chrome user agent, `Referer: https://kns.cnki.net/`,
+`Accept-Encoding: gzip` — follows redirects itself (at most 6 hops, each one
+re-checked against `*.cnki.net`, cookies set inside a chain carried to the
+next hop), and reports the final URL. The host's `pi.net.fetch` is **not**
+used for CNKI on purpose: in the desktop it is Electron's `net.fetch`
+(Chromium's network stack), and measured against a local server it
+
+- replaces the plugin's `Cookie` header with Chromium's own session jar as
+  soon as any earlier response has set a cookie for the host — so the
+  IP-login cookie stopped reaching CNKI after the first request and CNKI
+  treated the plugin as an anonymous client, which is what produced the
+  human-verification pages the original MCP never saw;
+- fails every 30x response with "Redirect was cancelled" instead of
+  returning it, so redirect targets can never be inspected;
+- collapses multiple `Set-Cookie` headers into one string.
+
+The manifest still declares `net.fetch` and `net.domains` (`*.cnki.net`) as
+the plugin's egress statement; the same allowlist is enforced by
+`assertAllowedUrl` before every connection and every redirect hop. Requests
+do not pass through the desktop's proxy settings (the whitelist network is
+reached directly).
 
 ## Development
 
@@ -120,9 +159,10 @@ pnpm pi-plugin pack .\Extensions\non-patent-search
 ```
 
 `test/host-runtime.test.mjs` loads the folder in the real plugin runtime (a
-forked plugin host process) with CNKI stubbed through the runtime's fetch
-service; it needs `pnpm --filter @pi-desktop/desktop build:deps` first and
-skips itself otherwise. No test contacts CNKI.
+forked plugin host process) with CNKI faked at the `https.request` boundary
+(`test/helpers/fake-cnki.cjs`, loaded into the host with `--require`); it
+needs `pnpm --filter @pi-desktop/desktop build:deps` first and skips itself
+otherwise. No test contacts CNKI.
 
 Load the folder with **Plugins → Load development plugin**, review
 `agent.tool.register` and `net.fetch`, then use the tools in Agent mode. The

@@ -1,9 +1,11 @@
 /**
  * Loads this extension in the real PI-Desktop plugin runtime: a forked plugin
  * host process, the real manifest validation and permission gateway, and the
- * real tool registration IPC. CNKI itself is replaced by the runtime's `fetch`
- * service (so `pi.net.fetch` never leaves the process) and the session cookie
- * comes from the private settings file, so no login request is made.
+ * real tool registration IPC. CNKI itself is faked at the network edge: the
+ * forked host is started with `--require test/helpers/fake-cnki.cjs`, which
+ * answers `https.request` from the fixtures and logs every request, so nothing
+ * leaves the process. The session cookie comes from the private settings file,
+ * so no login request is made.
  *
  * Needs the desktop workspace dependencies built (`pnpm --filter
  * @pi-desktop/desktop build:deps`); it skips itself otherwise.
@@ -21,7 +23,6 @@ const here = dirname(fileURLToPath(import.meta.url));
 const extensionDir = join(here, "..");
 const repoRoot = join(here, "..", "..", "..");
 const desktopRoot = join(repoRoot, "apps", "desktop");
-const fixture = (name) => readFileSync(join(here, "fixtures", name), "utf8");
 
 const depsBuilt = existsSync(join(repoRoot, "packages", "shared", "dist", "index.js"));
 
@@ -31,9 +32,14 @@ process.env.PI_DESKTOP_DATA_DIR = dataDir;
 const settingsDir = join(dataDir, "plugins", "data", "local.non-patent-search");
 mkdirSync(settingsDir, { recursive: true });
 writeFileSync(join(settingsDir, "settings.json"), JSON.stringify({ cookie: "harness=cookie" }), "utf8");
+const requestLog = join(dataDir, "cnki-requests.jsonl");
 
 function forkPluginProcess({ entry }) {
-  const child = fork(entry, [], { stdio: ["ignore", "pipe", "pipe", "ipc"] });
+  const child = fork(entry, [], {
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
+    execArgv: ["--require", join(here, "helpers", "fake-cnki.cjs")],
+    env: { ...process.env, FAKE_CNKI_FIXTURES: join(here, "fixtures"), FAKE_CNKI_LOG: requestLog },
+  });
   child.stderr.on("data", () => {});
   child.stdout.on("data", () => {});
   return {
@@ -50,19 +56,15 @@ test("the extension loads in the real plugin runtime and both CNKI tools work th
   register(pathToFileURL(join(desktopRoot, "test", "helpers", "ts-import-hooks.mjs")));
   const { PluginRuntime } = await import(pathToFileURL(join(desktopRoot, "electron", "main", "plugin-runtime.ts")).href);
 
-  const fetched = [];
   const audits = [];
+  const hostFetches = [];
   const runtime = new PluginRuntime({
     hostEntry: join(desktopRoot, "electron", "main", "plugin-host-process.mjs"),
     spawnProcess: forkPluginProcess,
     audit: (entry) => audits.push(entry),
     fetch: async (input) => {
-      fetched.push(input);
-      const { url } = input;
-      if (url.startsWith("https://kns.cnki.net/kns8s/brief/grid")) return { status: 200, headers: {}, bodyText: fixture("search-page.html") };
-      if (url.startsWith("https://kns.cnki.net/kcms2/article/abstract")) return { status: 200, headers: {}, bodyText: fixture("abstract-page.html") };
-      if (url.startsWith("https://kns.cnki.net/nzkhtml/knsread/litNotes/getPaperInfo")) return { status: 200, headers: {}, bodyText: fixture("reader-response.json") };
-      return { status: 404, headers: {}, bodyText: "not found" };
+      hostFetches.push(input);
+      return { status: 500, headers: {}, bodyText: "pi.net.fetch must not carry CNKI traffic" };
     },
   });
   t.after(async () => {
@@ -85,6 +87,10 @@ test("the extension loads in the real plugin runtime and both CNKI tools work th
   assert.deepEqual(Object.keys(result.papers[0]), ["Title", "Href", "Abstract", "HTML_READING_URL"]);
   assert.equal(result.papers[0].HTML_READING_URL, "https://kns.cnki.net/kcms2/article/htmlreading?v=READ123&uniplatform=NZKPT");
 
+  const titlesOnly = await scan.execute({ value: "格罗皮乌斯", pageSize: 2, withDetails: false }, { sessionId: "harness", log: () => {} });
+  assert.equal(titlesOnly.ok, true);
+  assert.equal(titlesOnly.papers[0].Abstract, "");
+
   const body = tools.find((tool) => tool.name === "CNKI_GetPaperMainBody");
   const text = await body.execute(
     { href: "https://kns.cnki.net/nzkhtml/knsread/index?fileName=F&tableName=T&dbCode=D&invoice=I" },
@@ -93,9 +99,12 @@ test("the extension loads in the real plugin runtime and both CNKI tools work th
   assert.equal(typeof text, "string");
   assert.match(text, /^基于格罗皮乌斯的现代建筑教育研究\n\n1 引言\n格罗皮乌斯/);
 
-  assert.ok(fetched.length >= 4, `every CNKI request went through the host fetch (${fetched.length})`);
-  assert.ok(fetched.every((call) => new URL(call.url).hostname.endsWith(".cnki.net")), "only cnki.net hosts");
-  assert.ok(fetched.every((call) => call.headers.Cookie === "harness=cookie"), "the settings cookie is sent, no login happened");
+  const requests = readFileSync(requestLog, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  assert.equal(requests.length, 5, `search + 2 abstract pages, titles-only search, reader JSON (${requests.length})`);
+  assert.ok(requests.every((call) => new URL(call.url).hostname.endsWith(".cnki.net")), "only cnki.net hosts");
+  assert.ok(requests.every((call) => call.headers.Cookie === "harness=cookie"), "the settings cookie is sent verbatim on every request, no login happened");
+  assert.ok(requests.every((call) => call.headers.Referer === "https://kns.cnki.net/" && /Chrome\/114/.test(call.headers["User-Agent"])), "crawler headers on every request");
+  assert.deepEqual(hostFetches, [], "no CNKI request went through pi.net.fetch");
   const denied = audits.filter((entry) => entry.ok === false);
   assert.deepEqual(denied, [], "no permission or egress denials");
 });

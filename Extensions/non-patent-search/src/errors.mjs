@@ -27,16 +27,22 @@ export const ERROR_CODES = Object.freeze({
   UNEXPECTED_ERROR: "UNEXPECTED_ERROR",
 });
 
+/** Diagnostic fields an error may carry; copied to the tool result so the page can be reported. */
+const DETAIL_FIELDS = ["url", "finalUrl", "status", "title", "snippet", "length"];
+
 /** Map any thrown value to the tool's uniform error result. */
 export function toErrorResult(error) {
   if (error && typeof error === "object" && typeof error.code === "string") {
+    const details = {};
+    for (const field of DETAIL_FIELDS) {
+      if (error[field] !== undefined && error[field] !== "") details[field] = error[field];
+    }
     return {
       ok: false,
       error: {
         code: error.code,
         message: error instanceof Error ? error.message : String(error),
-        ...(error.url ? { url: error.url } : {}),
-        ...(error.status !== undefined ? { status: error.status } : {}),
+        ...details,
       },
     };
   }

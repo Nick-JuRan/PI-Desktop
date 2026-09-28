@@ -9,9 +9,10 @@ import { CnkiError, ERROR_CODES } from "./errors.mjs";
  *    networks outside the CNKI IP whitelist. Never declared in
  *    `contributes.settings`, so it is never shown in the Settings UI.
  * 2. IP login: `POST https://login.cnki.net/TopLoginCore/api/loginapi/IpLoginFlushPo`
- *    with an empty JSON body. CNKI answers with `IsSuccess` (the body may be
- *    wrapped in parentheses) and several `Set-Cookie` headers; the cookie
- *    header is the sorted `name=value` join of all of them.
+ *    with an empty JSON body, as CNKICrawlerMCP does it. CNKI answers with
+ *    `IsSuccess` (the body may be wrapped in parentheses) and several
+ *    `Set-Cookie` headers; the cookie header is the sorted `name=value` join
+ *    of all of them and is sent verbatim on every later request.
  *
  * The manager logs in once, keeps the cookie in memory, dedupes concurrent
  * logins, and re-logs in when a tool reports `COOKIE_EXPIRED`. The plugin
@@ -59,7 +60,7 @@ export async function ipLogin({ request, throttle, signal } = {}) {
       {
         url: IP_LOGIN_URL,
         method: "POST",
-        headers: cnkiHeaders("", { "Content-Type": "application/json", Accept: "application/json, text/plain, */*" }),
+        headers: cnkiHeaders("", { "Content-Type": "application/json" }),
         body: "{}",
         signal,
       },

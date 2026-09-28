@@ -92,16 +92,73 @@ export function absoluteUrl(href, base = KNS_ORIGIN) {
   }
 }
 
-const LOGIN_MARKERS = ["用户登录", "登录知网", "账号登录", "个人登录", "IP登录", "login.cnki.net"];
-const VERIFY_MARKERS = ["滑动验证", "人机验证", "安全验证", "请完成验证", "拖动滑块", "captcha", "verifycode"];
+/**
+ * Login / human-verification detection.
+ *
+ * CNKICrawlerMCP matches these markers against the raw HTML of a search
+ * response that carries no result table; that response is a fragment without
+ * site navigation, so the raw match is safe there. Full pages (abstract page,
+ * reader page) always link to `login.cnki.net` and ship captcha scripts, so
+ * matching their raw HTML reports a healthy page as a login or verification
+ * page. The markers are therefore matched against what a person would see —
+ * the final URL, the `<title>` and the visible text — plus the script and form
+ * targets that a redirect-to-login or redirect-to-verify page uses.
+ */
+const LOGIN_TEXT_MARKERS = ["用户登录", "登录知网", "账号登录", "个人登录", "IP登录"];
+const VERIFY_TEXT_MARKERS = ["滑动验证", "人机验证", "安全验证", "请完成验证", "拖动滑块", "captcha", "verifycode"];
+const LOGIN_URL_RE = /^https?:\/\/login\.cnki\.net\b/i;
+const VERIFY_URL_RE = /\/(?:[^/?#]*(?:verify|captcha)[^/?#]*)(?:[/?#]|$)/i;
+// Script/meta/form targets that move the visitor to a login or verify page.
+const LOGIN_TARGET_RE =
+  /(?:location(?:\.href)?\s*=\s*["']https?:\/\/login\.cnki\.net|http-equiv\s*=\s*["']refresh["'][^>]*login\.cnki\.net|<form\b[^>]*action\s*=\s*["'][^"']*login\.cnki\.net)/i;
+const VERIFY_TARGET_RE =
+  /(?:location(?:\.href)?\s*=\s*["'][^"']*(?:verify|captcha)[^"']*["']|<form\b[^>]*action\s*=\s*["'][^"']*(?:verify|captcha)[^"']*["']|<(?:iframe|img)\b[^>]*src\s*=\s*["'][^"']*(?:captcha|verifycode)[^"']*["'])/i;
 
-export function looksLikeLogin(body) {
-  return LOGIN_MARKERS.some((marker) => body.includes(marker));
+export function pageTitle(html) {
+  const match = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(String(html ?? ""));
+  return match ? stripHtml(match[1]).replace(/\s+/g, " ").trim() : "";
 }
 
-export function looksLikeVerify(body) {
-  const lower = body.toLowerCase();
-  return VERIFY_MARKERS.some((marker) => lower.includes(marker.toLowerCase()));
+/** The text a visitor would see: no scripts, styles, tags or entities; one space between elements. */
+export function visibleText(html) {
+  const text = String(html ?? "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ");
+  return unescapeHtml(text).replace(/\s+/g, " ").trim();
+}
+
+/** Short, non-sensitive description of a page for error details and warnings. */
+export function describePage(html, { finalUrl = "", status } = {}) {
+  const body = String(html ?? "");
+  return {
+    ...(finalUrl ? { finalUrl } : {}),
+    ...(status !== undefined ? { status } : {}),
+    length: body.length,
+    title: pageTitle(body).slice(0, 120),
+    snippet: visibleText(body).slice(0, 240),
+  };
+}
+
+function textLooksLike(body, markers) {
+  const text = `${pageTitle(body)} ${visibleText(body)}`.toLowerCase();
+  return markers.some((marker) => text.includes(marker.toLowerCase()));
+}
+
+export function looksLikeLogin(body, { finalUrl = "" } = {}) {
+  const html = String(body ?? "");
+  return LOGIN_URL_RE.test(finalUrl) || textLooksLike(html, LOGIN_TEXT_MARKERS) || LOGIN_TARGET_RE.test(html);
+}
+
+export function looksLikeVerify(body, { finalUrl = "" } = {}) {
+  const html = String(body ?? "");
+  let path = "";
+  try {
+    path = finalUrl ? new URL(finalUrl).pathname : "";
+  } catch {
+    path = "";
+  }
+  return VERIFY_URL_RE.test(path) || textLooksLike(html, VERIFY_TEXT_MARKERS) || VERIFY_TARGET_RE.test(html);
 }
 
 /**

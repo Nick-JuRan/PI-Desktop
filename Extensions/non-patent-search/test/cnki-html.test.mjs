@@ -5,8 +5,10 @@ import test from "node:test";
 import {
   absoluteUrl,
   attr,
+  describePage,
   looksLikeLogin,
   looksLikeVerify,
+  pageTitle,
   parseAbstractPage,
   parseReaderParams,
   parseSearchPage,
@@ -47,11 +49,45 @@ test("parseSearchPage reports an empty grid without toolbar or table", () => {
   assert.equal(page.total, -1);
 });
 
-test("login and verification pages are recognised, login first", () => {
+test("login and verification pages are recognised by what the visitor sees, login first", () => {
   assert.equal(looksLikeLogin(fixture("login-page.html")), true);
   assert.equal(looksLikeVerify(fixture("verify-page.html")), true);
   assert.equal(looksLikeLogin(fixture("verify-page.html")), false);
   assert.equal(looksLikeVerify(fixture("search-page.html")), false);
+  assert.equal(looksLikeLogin(fixture("abstract-page.html")), false);
+  assert.equal(looksLikeVerify(fixture("abstract-page.html")), false);
+});
+
+test("navigation links and captcha scripts on a normal page are not login or verification markers", () => {
+  const noisy = `<html><head><title>论文 - 中国知网</title><script src="/dist/captcha/verifycode.min.js"></script>
+    <script>var loginUrl = "https://login.cnki.net/TopLogin/api/loginapi/Login";</script></head>
+    <body><a href="https://login.cnki.net/">登录</a><div class="content">正文</div></body></html>`;
+  assert.equal(looksLikeLogin(noisy), false);
+  assert.equal(looksLikeVerify(noisy), false);
+});
+
+test("script redirects, form targets and the final URL do mark login and verification pages", () => {
+  assert.equal(looksLikeLogin(`<html><script>window.location.href = "https://login.cnki.net/TopLogin?returnUrl=x";</script></html>`), true);
+  assert.equal(looksLikeLogin(`<html><form action="https://login.cnki.net/TopLogin/api/loginapi/Login"></form></html>`), true);
+  assert.equal(looksLikeLogin("<html>fragment</html>", { finalUrl: "https://login.cnki.net/TopLogin/api/loginapi/Login?returnUrl=x" }), true);
+  assert.equal(looksLikeVerify(`<html><script>location.href="/kns8s/security/verify?u=1";</script></html>`), true);
+  assert.equal(looksLikeVerify(`<html><body><img src="/kns8s/verifycode.aspx?t=1"><form action="/kns8s/security/verify"></form></body></html>`), true);
+  assert.equal(looksLikeVerify("<html>fragment</html>", { finalUrl: "https://kns.cnki.net/kns8s/security/verify?returnUrl=x" }), true);
+  assert.equal(looksLikeVerify("<html>fragment</html>", { finalUrl: "https://kns.cnki.net/kcms2/article/abstract?v=1" }), false);
+  assert.equal(looksLikeLogin("<html>fragment</html>", { finalUrl: "https://kns.cnki.net/kns8s/brief/grid" }), false);
+});
+
+test("describePage summarises a page without leaking its markup", () => {
+  assert.equal(pageTitle(fixture("verify-page.html")), "安全验证");
+  const summary = describePage(fixture("verify-page.html"), { finalUrl: "https://kns.cnki.net/kns8s/security/verify", status: 200 });
+  assert.deepEqual(summary, {
+    finalUrl: "https://kns.cnki.net/kns8s/security/verify",
+    status: 200,
+    length: fixture("verify-page.html").length,
+    title: "安全验证",
+    snippet: "安全验证 请完成验证：拖动滑块完成拼图",
+  });
+  assert.deepEqual(describePage("", {}), { length: 0, title: "", snippet: "" });
 });
 
 test("parseAbstractPage returns the decoded abstract and absolute links", () => {

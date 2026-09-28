@@ -1,5 +1,5 @@
-import { hostFetch, cnkiHeaders, formEncode } from "./http.mjs";
-import { looksLikeLogin, looksLikeVerify, parseSearchPage } from "./cnki-html.mjs";
+import { cnkiRequest, formEncode } from "./http.mjs";
+import { describePage, looksLikeLogin, looksLikeVerify, parseSearchPage } from "./cnki-html.mjs";
 import { CnkiError, ERROR_CODES } from "./errors.mjs";
 
 /**
@@ -60,36 +60,48 @@ export function buildSearchForm(value, pageNum, pageSize) {
   };
 }
 
-/** Classify a response that carries neither the toolbar nor the result table. */
-export function classifyUnexpectedPage(bodyText) {
-  if (looksLikeLogin(bodyText)) {
-    return new CnkiError(ERROR_CODES.COOKIE_EXPIRED, "CNKI answered with its login page; the session cookie is missing or expired", {
-      url: SEARCH_ENDPOINT,
-    });
+/**
+ * Classify a response that carries neither the toolbar nor the result table.
+ * Login is checked before verification, as in the Go crawler: login pages also
+ * mention verification. Error details carry the final URL, status, title and a
+ * text snippet so the page can be reported without guessing.
+ */
+export function classifyUnexpectedPage(response) {
+  const bodyText = typeof response === "string" ? response : response.bodyText ?? "";
+  const finalUrl = typeof response === "string" ? SEARCH_ENDPOINT : response.finalUrl ?? SEARCH_ENDPOINT;
+  const status = typeof response === "string" ? undefined : response.status;
+  const details = { url: SEARCH_ENDPOINT, ...describePage(bodyText, { finalUrl, status }) };
+  if (looksLikeLogin(bodyText, { finalUrl })) {
+    return new CnkiError(ERROR_CODES.COOKIE_EXPIRED, "CNKI answered with its login page; the session cookie is missing or expired", details);
   }
-  if (looksLikeVerify(bodyText)) {
-    return new CnkiError(ERROR_CODES.BLOCKED, "CNKI asked for human verification; slow down and retry later", {
-      url: SEARCH_ENDPOINT,
-    });
+  if (looksLikeVerify(bodyText, { finalUrl })) {
+    return new CnkiError(ERROR_CODES.BLOCKED, "CNKI asked for human verification; slow down and retry later", details);
+  }
+  if (status !== undefined && status >= 400) {
+    return new CnkiError(ERROR_CODES.HTTP_ERROR, `CNKI search returned HTTP ${status}`, details);
   }
   return new CnkiError(
     ERROR_CODES.UNEXPECTED_PAGE,
     `CNKI returned an unexpected page (${bodyText.length} characters); the endpoint may have changed or the request was throttled`,
-    { url: SEARCH_ENDPOINT },
+    details,
   );
 }
 
-export async function fetchSearchPage({ value, pageNum, pageSize, cookie, fetchImpl, throttle, signal }) {
+export async function fetchSearchPage({ value, pageNum, pageSize, cookie, request, throttle, signal }) {
   await throttle?.waitTurn(signal);
-  const response = await hostFetch(fetchImpl, {
-    url: SEARCH_ENDPOINT,
-    method: "POST",
-    headers: cnkiHeaders(cookie, { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }),
-    body: formEncode(buildSearchForm(value, pageNum, pageSize)),
-  });
+  const response = await cnkiRequest(
+    {
+      url: SEARCH_ENDPOINT,
+      method: "POST",
+      cookie,
+      body: formEncode(buildSearchForm(value, pageNum, pageSize)),
+      signal,
+    },
+    request ? { request } : undefined,
+  );
   const page = parseSearchPage(response.bodyText);
   if (!page.hasToolbar && !page.hasResultsTable) {
-    throw classifyUnexpectedPage(response.bodyText);
+    throw classifyUnexpectedPage(response);
   }
   return page;
 }
@@ -98,7 +110,7 @@ export async function fetchSearchPage({ value, pageNum, pageSize, cookie, fetchI
  * Collect up to `want` papers starting at `pageNum`. Always resolves with an
  * array; partial results win over a later page error.
  */
-export async function searchPapers({ value, pageNum = 1, want = DEFAULT_PAGE_SIZE, cookie, fetchImpl, throttle, signal }) {
+export async function searchPapers({ value, pageNum = 1, want = DEFAULT_PAGE_SIZE, cookie, request, throttle, signal }) {
   const keyword = String(value ?? "").trim();
   if (!keyword) throw new CnkiError(ERROR_CODES.INVALID_ARGUMENT, "value (the search keyword) must not be empty");
   let page = Number.isFinite(pageNum) && pageNum >= 1 ? Math.floor(pageNum) : 1;
@@ -111,7 +123,7 @@ export async function searchPapers({ value, pageNum = 1, want = DEFAULT_PAGE_SIZ
   while (papers.length < target) {
     let result;
     try {
-      result = await fetchSearchPage({ value: keyword, pageNum: page, pageSize: perPage, cookie, fetchImpl, throttle, signal });
+      result = await fetchSearchPage({ value: keyword, pageNum: page, pageSize: perPage, cookie, request, throttle, signal });
     } catch (error) {
       if (papers.length > 0) break;
       throw error;

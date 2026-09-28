@@ -2,9 +2,12 @@ const manifest = require("./manifest.json");
 
 /**
  * Plugin entry. Registers the CNKI agent tools declared in manifest.json and
- * wires the shared services: one throttle for every CNKI request, a cookie
+ * wires the shared services: one throttle for every CNKI request and a cookie
  * manager that logs in by IP (or uses the private `cookie` setting) before the
- * first tool call, and the host fetch for audited page requests.
+ * first tool call. CNKI requests are made by the plugin's own HTTPS client
+ * (src/http.mjs), which sends the crawler's exact headers and cookie; the
+ * host's `pi.net.fetch` would replace the Cookie header with Chromium's
+ * session jar and cannot expose redirects.
  */
 let registered = false;
 let registeredToolNames = [];
@@ -46,18 +49,13 @@ function createServices() {
     throttle,
     log,
   });
-  return {
-    throttle,
-    cookies,
-    fetchImpl: (input) => pi.net.fetch(input),
-  };
+  return { throttle, cookies };
 }
 
 async function onToolExecute(name, args, context) {
   const common = {
     args,
     cookies: services.cookies,
-    fetchImpl: services.fetchImpl,
     throttle: services.throttle,
     signal: context?.signal,
     log: (message) => context?.log?.(message) ?? log(message),
