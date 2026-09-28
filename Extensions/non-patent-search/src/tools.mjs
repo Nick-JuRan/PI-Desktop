@@ -1,4 +1,4 @@
-import { searchPapers, DEFAULT_PAGE_SIZE, MAX_TOTAL_RESULTS } from "./search.mjs";
+import { searchPapers } from "./search.mjs";
 import { fetchPaperInfo, fetchPaperMainBody } from "./paper.mjs";
 import { CnkiError, ERROR_CODES } from "./errors.mjs";
 
@@ -8,6 +8,27 @@ import { CnkiError, ERROR_CODES } from "./errors.mjs";
  * without a plugin host.
  */
 
+/**
+ * The plugin host cancels a tool call after 110 s. Abstract-page reads stop
+ * once this much of the call has elapsed so the search itself is never lost.
+ */
+export const DETAIL_TIME_BUDGET_MS = 80_000;
+
+/** Remembered first pages (query → hrefs) to notice CNKI answering a later page with page 1 again. */
+const FIRST_PAGE_MEMORY = 50;
+const firstPages = new Map();
+
+function rememberFirstPage(query, papers) {
+  firstPages.delete(query);
+  firstPages.set(query, new Set(papers.map((paper) => paper.href)));
+  while (firstPages.size > FIRST_PAGE_MEMORY) firstPages.delete(firstPages.keys().next().value);
+}
+
+function repeatsFirstPage(query, papers) {
+  const first = firstPages.get(query);
+  return Boolean(first && papers.length > 0 && papers.every((paper) => first.has(paper.href)));
+}
+
 function integerArg(value, name, { min, max, fallback }) {
   if (value === undefined || value === null) return fallback;
   if (typeof value !== "number" || !Number.isInteger(value)) {
@@ -16,12 +37,6 @@ function integerArg(value, name, { min, max, fallback }) {
   if (value < min || (max !== undefined && value > max)) {
     throw new CnkiError(ERROR_CODES.INVALID_ARGUMENT, `${name} must be between ${min} and ${max ?? "∞"}`);
   }
-  return value;
-}
-
-function booleanArg(value, name, fallback) {
-  if (value === undefined || value === null) return fallback;
-  if (typeof value !== "boolean") throw new CnkiError(ERROR_CODES.INVALID_ARGUMENT, `${name} must be a boolean`);
   return value;
 }
 
@@ -45,39 +60,42 @@ function createSession(cookies, signal) {
         return fn(fresh);
       }
     },
-    get reloggedIn() {
-      return reloggedIn;
-    },
   };
 }
 
 /**
- * CNKI_ScanPaper: one search request (as the original MCP's ScanPaper), then,
- * unless `withDetails` is false, one throttled abstract-page request per hit
- * for Abstract and HTML_READING_URL. Detail requests never fail the search:
- * a paper whose page is unavailable keeps empty fields and a warning names it,
- * and the first verification or second login page stops the remaining detail
- * requests so a rate-limited session is not hammered further.
+ * CNKI_ScanPaper: one result page of 20 papers (one search request, as the
+ * original MCP's ScanPaper), then one throttled abstract-page request per hit
+ * for Abstract and HTML_READING_URL. Detail requests never fail the search: a
+ * paper whose page is unavailable keeps empty fields and a warning names it;
+ * the first verification page, a second login page, or the time budget stops
+ * the remaining detail requests with a closing warning.
  */
-export async function executeScanPaper({ args, cookies, request, throttle, signal, log = () => {} }) {
+export async function executeScanPaper({ args, cookies, request, throttle, signal, log = () => {}, now = Date.now }) {
+  const started = now();
   const value = typeof args?.value === "string" ? args.value.trim() : "";
   if (!value) throw new CnkiError(ERROR_CODES.INVALID_ARGUMENT, "value (the search keyword) is required");
-  const pageSize = integerArg(args?.pageSize, "pageSize", { min: 1, max: MAX_TOTAL_RESULTS, fallback: DEFAULT_PAGE_SIZE });
   const pageNum = integerArg(args?.pageNum, "pageNum", { min: 1, fallback: 1 });
-  const withDetails = booleanArg(args?.withDetails, "withDetails", true);
   const session = createSession(cookies, signal);
 
-  const { papers, total } = await session.run((cookie) =>
-    searchPapers({ value, pageNum, want: pageSize, cookie, request, throttle, signal }),
-  );
+  const { papers, total, totalPage } = await session.run((cookie) => searchPapers({ value, pageNum, cookie, request, throttle, signal }));
+
+  const warnings = [];
+  if (pageNum === 1) rememberFirstPage(value, papers);
+  else if (repeatsFirstPage(value, papers)) {
+    warnings.push(`CNKI answered page ${pageNum} with the same papers as page 1; deeper pages are not available for this query in the current session.`);
+  }
+  if (papers.length === 0 && totalPage > 0 && pageNum > totalPage) {
+    warnings.push(`page ${pageNum} is past the last page (${totalPage}).`);
+  }
 
   const results = [];
-  const warnings = [];
   let detailsStopped = "";
   for (const paper of papers) {
     if (signal?.aborted) throw new CnkiError(ERROR_CODES.CANCELLED, "search cancelled");
     let info = { abstract: "", htmlReadingUrl: "" };
-    if (withDetails && !detailsStopped) {
+    if (!detailsStopped && now() - started > DETAIL_TIME_BUDGET_MS) detailsStopped = "TIME_BUDGET";
+    if (!detailsStopped) {
       try {
         info = await session.run((cookie) => fetchPaperInfo({ href: paper.href, cookie, request, throttle, signal }));
         if (info.note) warnings.push(`${paper.title}: ${info.note}`);
@@ -100,21 +118,21 @@ export async function executeScanPaper({ args, cookies, request, throttle, signa
   }
   if (detailsStopped) {
     const fetched = results.filter((paper) => paper.Abstract || paper.HTML_READING_URL).length;
+    const tail = "the remaining papers carry empty Abstract and HTML_READING_URL";
     warnings.push(
       detailsStopped === ERROR_CODES.BLOCKED
-        ? `CNKI asked for human verification after ${fetched} abstract page(s); the remaining papers carry empty Abstract and HTML_READING_URL. Wait a few minutes before the next call, or call again with withDetails=false for a single-request search.`
-        : `CNKI kept answering with its login page after a fresh IP login; the remaining papers carry empty Abstract and HTML_READING_URL. Check that this network is on the CNKI IP whitelist.`,
+        ? `CNKI asked for human verification after ${fetched} abstract page(s); ${tail}. Wait a few minutes before the next call.`
+        : detailsStopped === ERROR_CODES.COOKIE_EXPIRED
+          ? `CNKI kept answering with its login page after a fresh IP login; ${tail}. Check that this network is on the CNKI IP whitelist.`
+          : `stopped reading abstract pages after ${fetched} to stay within the tool time limit; ${tail}. Call the same page again later for them.`,
     );
   }
 
   return {
     ok: true,
-    query: value,
     pageNum,
-    requested: pageSize,
-    returned: results.length,
+    totalPage,
     ...(total >= 0 ? { totalHits: total } : {}),
-    withDetails,
     papers: results,
     ...(warnings.length ? { warnings } : {}),
   };

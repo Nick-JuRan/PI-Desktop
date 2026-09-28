@@ -81,15 +81,14 @@ test("the extension loads in the real plugin runtime and both CNKI tools work th
   assert.deepEqual(names, ["CNKI_GetPaperMainBody", "CNKI_ScanPaper"]);
 
   const scan = tools.find((tool) => tool.name === "CNKI_ScanPaper");
-  const result = await scan.execute({ value: "格罗皮乌斯", pageSize: 2 }, { sessionId: "harness", log: () => {} });
+  const result = await scan.execute({ value: "格罗皮乌斯" }, { sessionId: "harness", log: () => {} });
   assert.equal(result.ok, true, JSON.stringify(result));
-  assert.equal(result.returned, 2);
+  assert.deepEqual(Object.keys(result), ["ok", "pageNum", "totalPage", "totalHits", "papers"]);
+  assert.equal(result.pageNum, 1);
+  assert.equal(result.totalPage, 62);
+  assert.equal(result.papers.length, 2);
   assert.deepEqual(Object.keys(result.papers[0]), ["Title", "Href", "Abstract", "HTML_READING_URL"]);
   assert.equal(result.papers[0].HTML_READING_URL, "https://kns.cnki.net/kcms2/article/htmlreading?v=READ123&uniplatform=NZKPT");
-
-  const titlesOnly = await scan.execute({ value: "格罗皮乌斯", pageSize: 2, withDetails: false }, { sessionId: "harness", log: () => {} });
-  assert.equal(titlesOnly.ok, true);
-  assert.equal(titlesOnly.papers[0].Abstract, "");
 
   const body = tools.find((tool) => tool.name === "CNKI_GetPaperMainBody");
   const text = await body.execute(
@@ -100,7 +99,8 @@ test("the extension loads in the real plugin runtime and both CNKI tools work th
   assert.match(text, /^基于格罗皮乌斯的现代建筑教育研究\n\n1 引言\n格罗皮乌斯/);
 
   const requests = readFileSync(requestLog, "utf8").trim().split("\n").map((line) => JSON.parse(line));
-  assert.equal(requests.length, 5, `search + 2 abstract pages, titles-only search, reader JSON (${requests.length})`);
+  assert.equal(requests.length, 4, `search + 2 abstract pages + reader JSON (${requests.length})`);
+  assert.equal(new URLSearchParams(requests[0].body).get("pageSize"), "20");
   assert.ok(requests.every((call) => new URL(call.url).hostname.endsWith(".cnki.net")), "only cnki.net hosts");
   assert.ok(requests.every((call) => call.headers.Cookie === "harness=cookie"), "the settings cookie is sent verbatim on every request, no login happened");
   assert.ok(requests.every((call) => call.headers.Referer === "https://kns.cnki.net/" && /Chrome\/114/.test(call.headers["User-Agent"])), "crawler headers on every request");

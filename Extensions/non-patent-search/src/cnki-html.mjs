@@ -163,13 +163,18 @@ export function looksLikeVerify(body, { finalUrl = "" } = {}) {
 
 /**
  * Parse one search-grid response.
- * Returns `{ hasResultsTable, hasToolbar, total, totalPage, papers: [{ title, href }] }`.
+ * Returns `{ hasResultsTable, hasToolbar, total, totalPage, papers: [{ title, href }], counts }`
+ * where `counts` (`rows`, `nameCells`, `abstractLinks`) says how far the row
+ * parser got, for the diagnostics of a page that carries a hit count but no
+ * usable list. The parser tolerates omitted `</tr>` / `</td>` end tags and a
+ * nested table inside a cell; the title link is `td.name a.fz14` with an
+ * `/kcms2/article/abstract` href, falling back to any abstract link in the row.
  */
 export function parseSearchPage(html) {
   const body = String(html ?? "");
   const hasToolbar = /id\s*=\s*["']countPageDiv["']/i.test(body);
-  const tableMatch = /<table\b[^>]*class\s*=\s*["'][^"']*\bresult-table-list\b[^"']*["'][^>]*>([\s\S]*?)<\/table>/i.exec(body);
-  const hasResultsTable = Boolean(tableMatch);
+  const tableHtml = resultTableHtml(body);
+  const hasResultsTable = tableHtml !== null;
 
   let total = -1;
   const totalMatch = /id\s*=\s*["']countPageDiv["'][^>]*>[\s\S]*?<em[^>]*>\s*([\d,]+)\s*<\/em>/i.exec(body);
@@ -194,37 +199,79 @@ export function parseSearchPage(html) {
   }
 
   const papers = [];
-  if (tableMatch) {
-    const tableHtml = tableMatch[1];
-    const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
-    let row;
-    while ((row = rowRe.exec(tableHtml)) !== null) {
-      const cells = splitCells(row[1]);
-      const nameCell = cells.find((cell) => hasClass(cell.openTag, "name"));
-      if (!nameCell) continue;
-      const anchor = findAnchor(nameCell.inner, (tag) => hasClass(tag, "fz14")) ?? findAnchor(nameCell.inner, () => true);
-      if (!anchor) continue;
-      const hrefRaw = (attr(anchor.openTag, "href") ?? "").trim();
-      if (!hrefRaw || hrefRaw.toLowerCase().startsWith("javascript:")) continue;
-      if (!hrefRaw.includes("/kcms2/article/abstract")) continue;
-      const href = absoluteUrl(hrefRaw);
-      const title = stripHtml(anchor.inner);
-      if (!title) continue;
-      papers.push({ title, href });
-    }
+  const counts = { rows: 0, nameCells: 0, abstractLinks: 0 };
+  for (const rowHtml of splitRows(tableHtml ?? "")) {
+    counts.rows += 1;
+    const cells = splitCells(rowHtml);
+    const nameCell = cells.find((cell) => hasClass(cell.openTag, "name"));
+    if (nameCell) counts.nameCells += 1;
+    const isAbstractLink = (tag) => (attr(tag, "href") ?? "").includes("/kcms2/article/abstract");
+    const anchor =
+      (nameCell && (findAnchor(nameCell.inner, (tag) => hasClass(tag, "fz14") && isAbstractLink(tag)) ?? findAnchor(nameCell.inner, isAbstractLink))) ??
+      findAnchor(rowHtml, isAbstractLink);
+    if (!anchor) continue;
+    counts.abstractLinks += 1;
+    const hrefRaw = (attr(anchor.openTag, "href") ?? "").trim();
+    if (!hrefRaw || hrefRaw.toLowerCase().startsWith("javascript:")) continue;
+    const href = absoluteUrl(hrefRaw);
+    const title = stripHtml(anchor.inner);
+    if (!title) continue;
+    papers.push({ title, href });
   }
 
-  return { hasToolbar, hasResultsTable, total, totalPage, papers };
+  return { hasToolbar, hasResultsTable, total, totalPage, papers, counts };
 }
 
+/** Inner HTML of `table.result-table-list`, respecting nested tables; null when absent. */
+function resultTableHtml(body) {
+  const open = /<table\b[^>]*class\s*=\s*["'][^"']*\bresult-table-list\b[^"']*["'][^>]*>/i.exec(body);
+  if (!open) return null;
+  const start = open.index + open[0].length;
+  const tagRe = /<\/?table\b[^>]*>/gi;
+  tagRe.lastIndex = start;
+  let depth = 1;
+  let tag;
+  while ((tag = tagRe.exec(body)) !== null) {
+    depth += tag[0].startsWith("</") ? -1 : 1;
+    if (depth === 0) return body.slice(start, tag.index);
+  }
+  return body.slice(start);
+}
+
+/** Row bodies of a table; each runs from a `<tr>` to the next `<tr>` (end tags may be omitted). */
+function splitRows(tableHtml) {
+  const rows = [];
+  const openRe = /<tr\b[^>]*>/gi;
+  const opens = [];
+  let match;
+  while ((match = openRe.exec(tableHtml)) !== null) opens.push({ index: match.index, end: match.index + match[0].length });
+  for (let i = 0; i < opens.length; i += 1) {
+    const stop = i + 1 < opens.length ? opens[i + 1].index : tableHtml.length;
+    rows.push(tableHtml.slice(opens[i].end, stop).replace(/<\/tr\s*>[\s\S]*$/i, ""));
+  }
+  return rows;
+}
+
+/** Cells of a row; each runs from a `<td>` to the next `<td>` (end tags may be omitted). */
 function splitCells(rowHtml) {
   const cells = [];
-  const cellRe = /<td\b([^>]*)>([\s\S]*?)<\/td>/gi;
+  const openRe = /<td\b([^>]*)>/gi;
+  const opens = [];
   let match;
-  while ((match = cellRe.exec(rowHtml)) !== null) {
-    cells.push({ openTag: `<td${match[1]}>`, inner: match[2] });
+  while ((match = openRe.exec(rowHtml)) !== null) opens.push({ index: match.index, end: match.index + match[0].length, attrs: match[1] });
+  for (let i = 0; i < opens.length; i += 1) {
+    const stop = i + 1 < opens.length ? opens[i + 1].index : rowHtml.length;
+    cells.push({ openTag: `<td${opens[i].attrs}>`, inner: rowHtml.slice(opens[i].end, stop).replace(/<\/td\s*>[\s\S]*$/i, "") });
   }
   return cells;
+}
+
+/** A short markup sample for parser diagnostics: the result table when present, else the body start. */
+export function markupSample(html, limit = 1500) {
+  const body = String(html ?? "");
+  const anchor = /<table\b[^>]*result-table-list[^>]*>|<tbody\b[^>]*>|<tr\b[^>]*>/i.exec(body);
+  const start = anchor ? anchor.index : 0;
+  return body.slice(start, start + limit).replace(/\s+/g, " ").trim();
 }
 
 function findAnchor(html, predicate) {

@@ -1,6 +1,6 @@
 # 非专利检索 (`local.non-patent-search`)
 
-A PI-Desktop agent-tool plugin for non-patent literature. Version 0.2.0 ships
+A PI-Desktop agent-tool plugin for non-patent literature. Version 0.3.0 ships
 the CNKI (中国知网) family; further academic databases are meant to join as
 additional tool families in this same plugin. It is a fork island: it hooks no
 upstream file (see `Extensions/AGENTS.md` and `FORK-STANDARD.md`).
@@ -11,8 +11,8 @@ follows:
 
 | CNKICrawlerMCP | This plugin |
 | --- | --- |
-| `ScanPaper` (title, authors, source, impact factors, `withFactors`) | `CNKI_ScanPaper` — no `withFactors`; returns `Title`, `Href`, `Abstract`, `HTML_READING_URL` |
-| `GetPaperInfo` (abstract, CAJ/PDF/HTML links from an abstract page) | merged into `CNKI_ScanPaper`, which reads each hit's abstract page unless `withDetails` is false |
+| `ScanPaper` (title, authors, source, impact factors, `withFactors`, `pageSize`) | `CNKI_ScanPaper` — no `withFactors`, fixed 20 papers per page; returns `Title`, `Href`, `Abstract`, `HTML_READING_URL` per paper plus `totalPage` |
+| `GetPaperInfo` (abstract, CAJ/PDF/HTML links from an abstract page) | merged into `CNKI_ScanPaper`, which reads every hit's abstract page |
 | `GetPaperMainBody` (JSON-encoded text) | `CNKI_GetPaperMainBody` — plain text, no escape sequences |
 | `SetGlobalCookie` / `GetGlobalCookie` | removed; the cookie is prepared automatically before the first call |
 
@@ -22,33 +22,35 @@ follows:
 
 Subject-field (主题) search on `https://kns.cnki.net/kns8s/brief/grid`.
 
-- Arguments: `value` (required keyword), `pageSize` (1–50, default 10),
-  `pageNum` (≥1, default 1), `withDetails` (default `true`). CNKI serves
-  pages of 10/20/50, so the request is rounded up to the nearest tier and
-  paginated until `pageSize` unique papers are collected (capped at 50,
-  because deeper pages depend on a session-bound `turnpage` token).
+- Arguments: `value` (required keyword) and `pageNum` (≥1, default 1).
+  One call is one CNKI result page of a fixed 20 papers (`pageSize=20`, the
+  size the original crawler defaults to); `totalPage` in the result is
+  `ceil(totalHits / 20)`, so the caller starts at page 1 and increases
+  `pageNum` to read on.
 - The search itself is one request, exactly the original MCP's `ScanPaper`.
-  With `withDetails` the plugin then reads every hit's abstract page, which
-  is where the abstract and the HTML reading link live. Each of those reads
-  is throttled (see below), so a page of 10 costs roughly 15–30 s and 50
-  costs 1–2 min. Keep `pageSize` small and paginate.
+  The plugin then reads every hit's abstract page, which is where the
+  abstract and the HTML reading link live. Each of those reads is throttled
+  (see below), so a call takes roughly 30–60 s.
 - Detail reads never fail the search. A page that cannot be read leaves
   `Abstract` / `HTML_READING_URL` empty and adds a `warnings` line; the first
   human-verification page (or a second login page after the automatic
   re-login) stops the remaining detail reads so a rate-limited session is not
-  hammered further, and the closing warning says so. `withDetails: false`
-  is the single-request fallback for that situation (titles and links only).
+  hammered further, and the closing warning says so. Detail reads also stop
+  once 80 s of the call have elapsed, because the plugin host cancels a tool
+  call at 110 s; the warning then asks for the same page again later.
+- Paging caveats: the crawler's search form carries a fixed `turnpage`
+  token, and the original author saw deeper pages come back with page 1's
+  data. The plugin remembers each query's first page for the session and
+  warns when a later page repeats it; a `pageNum` past `totalPage` returns
+  an empty `papers` list with a warning.
 - Result:
 
 ```json
 {
   "ok": true,
-  "query": "格罗皮乌斯",
   "pageNum": 1,
-  "requested": 10,
-  "returned": 10,
+  "totalPage": 62,
   "totalHits": 1234,
-  "withDetails": true,
   "papers": [
     {
       "Title": "…",
@@ -61,8 +63,15 @@ Subject-field (主题) search on `https://kns.cnki.net/kns8s/brief/grid`.
 }
 ```
 
-  `warnings` appears only when an abstract page could not be read; the paper
-  is still listed with empty `Abstract` / `HTML_READING_URL`.
+  `warnings` appears only when something was skipped or repeated (an
+  unreadable abstract page, stopped detail reads, a repeated or out-of-range
+  page); a skipped paper is still listed with empty `Abstract` /
+  `HTML_READING_URL`.
+- A page that reports hits but whose result list cannot be read (the table
+  markup changed, or CNKI withheld the list) is an `UNEXPECTED_PAGE` error
+  rather than an empty success; its details include the parser counters and
+  a `markup` sample of the response so the parser can be fixed from the
+  report.
 
 ### `CNKI_GetPaperMainBody`
 

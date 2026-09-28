@@ -56,12 +56,13 @@ test("CNKI_ScanPaper returns Title, Href, Abstract and HTML_READING_URL per hit 
     [ABSTRACT_2, html("<html><body><input type=hidden id=abstract_text value='第二篇摘要'><li class='btn-html'><a href='/kcms2/article/htmlreading?v=READ456'>HTML阅读</a></li></body></html>")],
   ]);
   const cookies = cookieStub(["session=1"]);
-  const result = await executeScanPaper({ args: { value: "格罗皮乌斯", pageSize: 2 }, cookies, request, throttle: noWait() });
+  const result = await executeScanPaper({ args: { value: "格罗皮乌斯" }, cookies, request, throttle: noWait() });
+  assert.deepEqual(Object.keys(result), ["ok", "pageNum", "totalPage", "totalHits", "papers"]);
   assert.equal(result.ok, true);
-  assert.equal(result.query, "格罗皮乌斯");
-  assert.equal(result.returned, 2);
+  assert.equal(result.pageNum, 1);
+  assert.equal(result.totalPage, 62, "ceil(1234 / 20)");
   assert.equal(result.totalHits, 1234);
-  assert.equal(result.withDetails, true);
+  assert.equal(result.papers.length, 2);
   assert.deepEqual(Object.keys(result.papers[0]), ["Title", "Href", "Abstract", "HTML_READING_URL"]);
   assert.deepEqual(result.papers[0], {
     Title: "基于格罗皮乌斯的现代建筑教育研究",
@@ -77,6 +78,7 @@ test("CNKI_ScanPaper returns Title, Href, Abstract and HTML_READING_URL per hit 
   });
   assert.equal(result.warnings, undefined);
   assert.equal(calls.length, 3, "one search page + one abstract page per hit");
+  assert.equal(new URLSearchParams(calls[0].body).get("pageSize"), "20");
   for (const call of calls) {
     assert.equal(call.headers.Cookie, "session=1", "every request carries the login cookie verbatim");
     assert.match(call.headers["User-Agent"], /Chrome\/114/);
@@ -84,17 +86,69 @@ test("CNKI_ScanPaper returns Title, Href, Abstract and HTML_READING_URL per hit 
     assert.match(call.headers["Content-Type"], /x-www-form-urlencoded/);
   }
   assert.equal(JSON.stringify(result).includes("withFactors"), false);
+  assert.equal(JSON.stringify(result).includes("withDetails"), false);
   assert.equal(JSON.stringify(result).includes("Authors"), false);
 });
 
-test("CNKI_ScanPaper with withDetails=false makes exactly one request, like the original MCP", async () => {
-  const { request, calls } = routes([[GRID, html(fixture("search-page.html"))]]);
-  const result = await executeScanPaper({ args: { value: "x", pageSize: 2, withDetails: false }, cookies: cookieStub(), request, throttle: noWait() });
-  assert.equal(calls.length, 1);
-  assert.equal(result.withDetails, false);
-  assert.equal(result.returned, 2);
-  assert.deepEqual(result.papers[0], { Title: "基于格罗皮乌斯的现代建筑教育研究", Href: ABSTRACT_1, Abstract: "", HTML_READING_URL: "" });
-  assert.equal(result.warnings, undefined);
+test("CNKI_ScanPaper requests the asked page, and warns when CNKI hands back page 1 again or the page is past the end", async () => {
+  const gridFor = (rows) =>
+    `<html><body><div id="countPageDiv"><em>45</em></div><table class="result-table-list"><tbody>${rows
+      .map(([title, href]) => `<tr><td class="name"><a class="fz14" href="${href}">${title}</a></td></tr>`)
+      .join("")}</tbody></table></body></html>`;
+  const firstRows = [["一", "/kcms2/article/abstract?v=p1a"], ["二", "/kcms2/article/abstract?v=p1b"]];
+  const secondRows = [["三", "/kcms2/article/abstract?v=p2a"]];
+  const detail = html("<html><body><input id=abstract_text value=ok></body></html>");
+  const { request, calls } = routes([
+    [GRID, (call) => html(gridFor(new URLSearchParams(call.body).get("pageNum") === "2" ? secondRows : firstRows))],
+    ["https://kns.cnki.net/kcms2/article/abstract", detail],
+  ]);
+  const cookies = cookieStub();
+  const first = await executeScanPaper({ args: { value: "翻页查询", pageNum: 1 }, cookies, request, throttle: noWait() });
+  assert.equal(first.totalPage, 3, "ceil(45 / 20)");
+  assert.equal(first.warnings, undefined);
+  const second = await executeScanPaper({ args: { value: "翻页查询", pageNum: 2 }, cookies, request, throttle: noWait() });
+  assert.equal(new URLSearchParams(calls.find((call, i) => i > 0 && call.url === GRID).body).get("pageNum"), "2");
+  assert.equal(second.pageNum, 2);
+  assert.equal(second.papers.length, 1);
+  assert.equal(second.warnings, undefined);
+  const third = await executeScanPaper({ args: { value: "翻页查询", pageNum: 3 }, cookies, request, throttle: noWait() });
+  assert.equal(third.papers.length, 2, "CNKI answered page 3 with page 1's papers");
+  assert.match(third.warnings[0], /page 3 with the same papers as page 1/);
+
+  const past = routes([[GRID, html(gridFor([]))]]);
+  const beyond = await executeScanPaper({ args: { value: "翻页查询", pageNum: 4 }, cookies, request: past.request, throttle: noWait() });
+  assert.deepEqual(beyond.papers, []);
+  assert.match(beyond.warnings[0], /page 4 is past the last page \(3\)/);
+});
+
+test("CNKI_ScanPaper reports a page that carries a hit count but no readable list as UNEXPECTED_PAGE with a markup sample", async () => {
+  const { request, calls } = routes([[GRID, html('<html><body><div id="countPageDiv"><em>864,896</em></div><div class="grid" data-rows="20"></div></body></html>')]]);
+  await assert.rejects(
+    executeScanPaper({ args: { value: "人工智能" }, cookies: cookieStub(), request, throttle: noWait() }),
+    (error) => error.code === "UNEXPECTED_PAGE" && /reported 864896 hits for page 1 but the result list could not be read/.test(error.message) && /data-rows="20"/.test(error.markup),
+  );
+  assert.equal(calls.length, 1, "no abstract page is requested for a list that could not be read");
+});
+
+test("CNKI_ScanPaper stops reading abstract pages when the time budget is spent and says so", async () => {
+  let clock = 0;
+  const { request, calls } = routes([
+    [GRID, html(fixture("search-page.html"))],
+    [
+      "https://kns.cnki.net/kcms2/article/abstract",
+      () => {
+        clock += 90_000;
+        return html("<html><body><input id=abstract_text value=ok></body></html>");
+      },
+    ],
+  ]);
+  const result = await executeScanPaper({ args: { value: "x" }, cookies: cookieStub(), request, throttle: noWait(), now: () => clock });
+  assert.equal(result.ok, true);
+  assert.equal(result.papers.length, 2);
+  assert.equal(result.papers[0].Abstract, "ok");
+  assert.equal(result.papers[1].Abstract, "", "the second abstract page is skipped: 90 s had elapsed, over the 80 s budget");
+  assert.equal(calls.length, 2, "search + first abstract only");
+  assert.match(result.warnings.at(-1), /stopped reading abstract pages after 1 to stay within the tool time limit/);
 });
 
 test("CNKI_ScanPaper re-logs in once when the search is redirected to login.cnki.net", async () => {
@@ -114,10 +168,10 @@ test("CNKI_ScanPaper re-logs in once when the search is redirected to login.cnki
     [ABSTRACT_2, html("<html></html>")],
   ]);
   const cookies = cookieStub(["stale", "fresh"]);
-  const result = await executeScanPaper({ args: { value: "x", pageSize: 2 }, cookies, request, throttle: noWait() });
+  const result = await executeScanPaper({ args: { value: "x" }, cookies, request, throttle: noWait() });
   assert.equal(searches, 2);
   assert.equal(cookies.calls.refresh, 1);
-  assert.equal(result.returned, 2);
+  assert.equal(result.papers.length, 2);
   assert.ok(calls.slice(-3).every((call) => call.headers.Cookie === "fresh"), "the retry and the detail pages use the fresh cookie");
   assert.equal(result.warnings.length, 1, "the empty second abstract page is reported, not treated as a login page");
   assert.match(result.warnings[0], /no abstract or HTML reading link found/);
@@ -129,8 +183,8 @@ test("CNKI_ScanPaper keeps a hit whose abstract page fails and reports it in war
     [ABSTRACT_1, html("boom", 500)],
     [ABSTRACT_2, html("<html><body><input id=abstract_text value=ok></body></html>")],
   ]);
-  const result = await executeScanPaper({ args: { value: "x", pageSize: 2 }, cookies: cookieStub(), request, throttle: noWait() });
-  assert.equal(result.returned, 2);
+  const result = await executeScanPaper({ args: { value: "x" }, cookies: cookieStub(), request, throttle: noWait() });
+  assert.equal(result.papers.length, 2);
   assert.equal(result.papers[0].Abstract, "");
   assert.equal(result.papers[0].HTML_READING_URL, "");
   assert.equal(result.papers[1].Abstract, "ok");
@@ -149,7 +203,7 @@ test("a healthy abstract page that links to login.cnki.net and loads captcha scr
     [ABSTRACT_2, html(noisy.replace(/<input[^>]*abstract_text[^>]*>/, "").replace(/<li class="btn-html">[\s\S]*?<\/li>/, ""))],
   ]);
   const cookies = cookieStub(["c"]);
-  const result = await executeScanPaper({ args: { value: "x", pageSize: 2 }, cookies, request, throttle: noWait() });
+  const result = await executeScanPaper({ args: { value: "x" }, cookies, request, throttle: noWait() });
   assert.equal(result.papers[0].Abstract.startsWith("本文以格罗皮乌斯"), true);
   assert.equal(result.papers[1].Abstract, "");
   assert.equal(cookies.calls.refresh, 0, "no re-login was triggered by the navigation link");
@@ -168,16 +222,16 @@ test("CNKI_ScanPaper stops reading abstract pages at the first human-verificatio
     [ABSTRACT_2, { status: 302, headers: { location: VERIFY_URL } }],
     [VERIFY_URL, html(fixture("verify-page.html"))],
   ]);
-  const result = await executeScanPaper({ args: { value: "x", pageSize: 3 }, cookies: cookieStub(), request, throttle: noWait() });
+  const result = await executeScanPaper({ args: { value: "x" }, cookies: cookieStub(), request, throttle: noWait() });
   assert.equal(result.ok, true);
-  assert.equal(result.returned, 3);
+  assert.equal(result.papers.length, 3);
   assert.equal(result.papers[0].Abstract.startsWith("本文以格罗皮乌斯"), true);
   assert.equal(result.papers[1].Abstract, "");
   assert.equal(result.papers[2].Abstract, "");
   assert.equal(calls.length, 4, "the third abstract page is never requested");
   assert.equal(result.warnings.length, 2);
   assert.match(result.warnings[0], /包豪斯设计理念的当代价值 & 反思: abstract page unavailable \(CNKI asked for human verification/);
-  assert.match(result.warnings[1], /human verification after 1 abstract page\(s\).*withDetails=false/);
+  assert.match(result.warnings[1], /human verification after 1 abstract page\(s\).*Wait a few minutes/);
 });
 
 test("CNKI_ScanPaper re-logs in at most once per call when abstract pages report a stale session", async () => {
@@ -189,7 +243,7 @@ test("CNKI_ScanPaper re-logs in at most once per call when abstract pages report
     [ABSTRACT_2, loginPage],
   ]);
   const cookies = cookieStub(["stale", "fresh"]);
-  const result = await executeScanPaper({ args: { value: "x", pageSize: 2 }, cookies, request, throttle: noWait() });
+  const result = await executeScanPaper({ args: { value: "x" }, cookies, request, throttle: noWait() });
   assert.equal(result.ok, true);
   assert.equal(cookies.calls.refresh, 1, "one IP login for the whole call");
   const abstractCalls = calls.filter((call) => call.url.startsWith("https://kns.cnki.net/kcms2/article/abstract"));
@@ -203,10 +257,10 @@ test("CNKI_ScanPaper validates its arguments before any request", async () => {
   const cookies = cookieStub();
   const run = (args) => executeScanPaper({ args, cookies, request, throttle: noWait() });
   await assert.rejects(run({}), (e) => e.code === "INVALID_ARGUMENT");
-  await assert.rejects(run({ value: "x", pageSize: 0 }), (e) => e.code === "INVALID_ARGUMENT");
-  await assert.rejects(run({ value: "x", pageSize: 51 }), (e) => e.code === "INVALID_ARGUMENT");
+  await assert.rejects(run({ value: "   " }), (e) => e.code === "INVALID_ARGUMENT");
+  await assert.rejects(run({ value: "x", pageNum: 0 }), (e) => e.code === "INVALID_ARGUMENT");
   await assert.rejects(run({ value: "x", pageNum: 1.5 }), (e) => e.code === "INVALID_ARGUMENT");
-  await assert.rejects(run({ value: "x", withDetails: "no" }), (e) => e.code === "INVALID_ARGUMENT");
+  await assert.rejects(run({ value: "x", pageNum: "2" }), (e) => e.code === "INVALID_ARGUMENT");
   assert.equal(calls.length, 0);
 });
 

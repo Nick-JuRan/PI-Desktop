@@ -28,7 +28,7 @@ export const ERROR_CODES = Object.freeze({
 });
 
 /** Diagnostic fields an error may carry; copied to the tool result so the page can be reported. */
-const DETAIL_FIELDS = ["url", "finalUrl", "status", "title", "snippet", "length"];
+const DETAIL_FIELDS = ["url", "finalUrl", "status", "title", "snippet", "length", "markup"];
 
 /** Map any thrown value to the tool's uniform error result. */
 export function toErrorResult(error) {

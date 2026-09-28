@@ -54,8 +54,8 @@ test("onLoad registers both CNKI tools from the manifest with their schemas and 
   const scan = registeredTools.get("CNKI_ScanPaper");
   assert.equal(scan.risk, "medium");
   assert.deepEqual(scan.schema.required, ["value"]);
-  assert.deepEqual(Object.keys(scan.schema.properties), ["value", "pageSize", "pageNum", "withDetails"]);
-  assert.equal(scan.schema.properties.withDetails.default, true);
+  assert.deepEqual(Object.keys(scan.schema.properties), ["value", "pageNum"]);
+  assert.equal(scan.schema.properties.pageNum.default, 1);
   assert.equal("withFactors" in scan.schema.properties, false);
   const body = registeredTools.get("CNKI_GetPaperMainBody");
   assert.deepEqual(body.schema.required, ["href"]);
@@ -71,9 +71,11 @@ test("the registered tools execute end to end against a fake CNKI behind https.r
   const entry = loadEntry();
   await entry.onLoad();
   const scan = registeredTools.get("CNKI_ScanPaper");
-  const result = await scan.execute({ value: "格罗皮乌斯", pageSize: 2 }, { signal: undefined, log: () => {} });
+  const result = await scan.execute({ value: "格罗皮乌斯" }, { signal: undefined, log: () => {} });
   assert.equal(result.ok, true);
-  assert.equal(result.returned, 2);
+  assert.deepEqual(Object.keys(result), ["ok", "pageNum", "totalPage", "totalHits", "papers"]);
+  assert.equal(result.totalPage, 62);
+  assert.equal(result.papers.length, 2);
   assert.equal(result.papers[0].HTML_READING_URL, "https://kns.cnki.net/kcms2/article/htmlreading?v=READ123&uniplatform=NZKPT");
   assert.equal(netCalls.length, 3, "one search + two abstract pages");
   assert.ok(netCalls.every((call) => call.headers.Cookie === "manual=1"), "the settings cookie is used without any login");
