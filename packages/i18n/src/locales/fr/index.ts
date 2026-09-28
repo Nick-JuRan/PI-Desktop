@@ -166,6 +166,7 @@ export const fr = {
     "checkForUpdates": "Vérifier les mises à jour",
     "buildUnknown": "Version inconnue",
     "search": "Recherche",
+    "actionWithShortcut": "{{action}} ({{shortcut}})",
     "temporarySessions": "Chats temporaires",
     "newTemporarySession": "Nouveau chat temporaire",
     "noProjectSessions": "Aucun chat dans ce domaine projet pour l'instant",
@@ -1689,18 +1690,6 @@ sklm: {
     "notFound": "Projet introuvable",
     "noProjects": "Aucun projet pour l'instant"
   },
-  "pulls": {
-    "title": "Demandes d'extraction",
-    "refresh": "Actualiser",
-    "emptyTitle": "Aucune demande d'extraction",
-    "review": "Révision avec l'agent",
-    "filters": "Filtres de demande d'extraction",
-    "filterOpen": "Ouvrir",
-    "filterDraft": "Brouillon",
-    "filterAll": "Tous",
-    "open": "Ouvrir",
-    "draft": "Brouillon"
-  },
   "scheduled": {
     "description": "Exécutez des tâches récurrentes tant que PI-Desktop est ouvert.",
     "edit": "Modifier la tâche",
@@ -2450,7 +2439,7 @@ sklm: {
     "failedTitle": "{{sessionTitle}} a besoin d'attention",
     "failedBody": "La conversation n'a pas abouti.",
     "failedBodyWithCode": "Le chat s'est arrêté avec l'erreur {{code}}.",
-    "askTitle": "{{sessionTitle}} a besoin de votre réponse",
+    "askTitle": "Une question attend votre réponse",
     "askBody": "{{question}}",
     "askBodyFallback": "La tâche nécessite votre réponse pour continuer.",
     "permissionTitle": "{{sessionTitle}} nécessite une autorisation d'outil",
