@@ -15,15 +15,15 @@ into in-process plugin tools. Its authoring documentation is
     and `pageNum` (≥1, default 1). One call is one result page of a fixed 20
     papers; the result is `{ ok, pageNum, totalPage, totalHits, papers,
     warnings? }` with `totalPage = ceil(totalHits / 20)`, and each paper
-    carries exactly `Title`, `Href`, `Abstract`, `HTML_READING_URL`. The
+    carries exactly `Title`, `Abstract`, `HTML_READING_URL` in that order. The
     search is one request like the original `ScanPaper`; the abstract and
     the reading link are then read from each hit's abstract page, which
     merges the original `GetPaperInfo` tool into the search. There is no
     `pageSize`, no `withDetails`, no `withFactors` and no impact-factor
     lookup.
-  - `CNKI_GetPaperMainBody` — full text for one `HTML_READING_URL`, returned
-    as a plain string (title, chapter headings, paragraphs; real newlines, no
-    HTML, no JSON escaping).
+  - `CNKI_GetPaperMainBody` — full text for one `HTML_READING_URL` or a CNKI
+    `bar.cnki.net/bar/download/order` link, returned as a plain string (title,
+    chapter headings, paragraphs; real newlines, no HTML, no JSON escaping).
 - No cookie tools. The plugin obtains its CNKI session before the first call
   by IP login (`login.cnki.net/TopLoginCore/api/loginapi/IpLoginFlushPo`),
   keeps it in memory, sends it verbatim on every request, and re-logs in at
@@ -68,11 +68,11 @@ into in-process plugin tools. Its authoring documentation is
   `status`, `title` and a visible-text `snippet` for reporting.
 - The result grid is read from `table.result-table-list` rows (`td.name
   a.fz14` with an `/kcms2/article/abstract` href, falling back to any
-  abstract link in the row); omitted `</tr>` / `</td>` end tags and nested
-  tables are tolerated. A page that reports hits but yields no rows while the
-  requested page is inside `totalPage` is `UNEXPECTED_PAGE` with the parser
-  counters and a `markup` sample in the error details, never an empty
-  success.
+  abstract link in the row); compact CNKI tags whose quoted attributes run
+  together are tolerated, as are omitted `</tr>` / `</td>` end tags and nested
+  tables. A page that reports hits but yields no rows while the requested page
+  is inside `totalPage` is `UNEXPECTED_PAGE` with the parser counters and a
+  `markup` sample in the error details, never an empty success.
 - Abstract pages are parsed for `input#abstract_text[value]` and the
   `.btn-html` reading link. Detail reads never fail the search: a failed or
   unrecognised abstract page keeps the hit with empty fields and adds a
@@ -82,7 +82,9 @@ into in-process plugin tools. Its authoring documentation is
   the cause.
 - The reading link is resolved to `fileName`/`tableName`/`dbCode`/`invoice`
   by following redirects by hand (or by reading the parameters embedded in a
-  final page), then `nzkhtml/knsread/litNotes/getPaperInfo` is called and its
+  final page). The `/reader/read` aliases `filename`/`tablename`/`product`
+  are accepted, so a `bar.cnki.net/bar/download/order` link can be used too.
+  Then `nzkhtml/knsread/litNotes/getPaperInfo` is called and its
   `content.title` + `catalogInfos[]` (sorted by `orderNum`) are flattened to
   text.
 
@@ -97,24 +99,29 @@ into in-process plugin tools. Its authoring documentation is
 - **Steps**: 1) Start a new turn and ask the agent to search CNKI for a
   subject keyword with `CNKI_ScanPaper` (page 1). 2) Inspect the result.
   3) Ask the agent to read the full text of one hit with
-  `CNKI_GetPaperMainBody`, passing its `HTML_READING_URL` unchanged. 4) Ask for
-  the full text of a hit whose `HTML_READING_URL` is empty or whose reading is
-  not covered by the subscription. 5) Repeat step 1 quickly several times.
-  6) Ask for page 2 of the same search.
+  `CNKI_GetPaperMainBody`, passing its `HTML_READING_URL` unchanged. 4) Ask
+  for the full text of a detail-page `bar.cnki.net/bar/download/order` link.
+  5) Ask for the full text of a hit whose `HTML_READING_URL` is empty or whose
+  reading is not covered by the subscription. 6) Repeat step 1 quickly
+  several times. 7) Ask for page 2 of the same search.
 - **Expected**: Step 1 needs no cookie interaction; the plugin log shows one
   IP login (or the settings cookie). The result is `{ ok, pageNum: 1,
-  totalPage, totalHits, papers }` with 20 papers carrying `Title`, `Href`,
-  `Abstract`, `HTML_READING_URL` and nothing else, `totalPage` equal to
+  totalPage, totalHits, papers }` with 20 papers carrying `Title`, `Abstract`,
+  `HTML_READING_URL` in that order and nothing else, `totalPage` equal to
   `ceil(totalHits / 20)`; any unreadable abstract page appears in `warnings`
   rather than failing the search, and a hit count without a readable list is
   an `UNEXPECTED_PAGE` error carrying a `markup` sample. Step 3 returns the article as plain text with the
   title first and chapter headings in order, without HTML tags or `\n`
-  sequences. Step 4 returns a structured `MAIN_BODY_UNAVAILABLE` or
-  `INVALID_ARGUMENT` error. Step 5 shows requests spaced by at least 1.2 s; if
+  sequences. For a live/readable order link, Step 4 returns the same plain
+  text after the bar download redirect, including its lowercase reader
+  parameters; an expired order or unavailable subscription returns the
+  structured error. Step 5 returns a
+  structured `MAIN_BODY_UNAVAILABLE` or `INVALID_ARGUMENT` error. Step 6 shows
+  requests spaced by at least 1.2 s; if
   CNKI answers the search with a verification page the tool returns `BLOCKED`
   (with `finalUrl`, `title`, `snippet`) instead of retrying, and if it answers
   an abstract page that way the search still succeeds with the remaining
-  detail reads skipped and a closing warning. Step 6 returns `pageNum: 2`
+  detail reads skipped and a closing warning. Step 7 returns `pageNum: 2`
   with 20 different papers, or the same list plus a warning that CNKI
   repeated page 1.
 - **Specs linked**: this page; `07-plugins/03-plugin-api.md`;

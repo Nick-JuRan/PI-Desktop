@@ -69,12 +69,58 @@ export function stripHtml(html) {
     .trim();
 }
 
-/** Attribute value from a tag string, order-agnostic, quoted or bare. */
+/**
+ * Attribute value from a tag string, order-agnostic, quoted or bare.
+ *
+ * CNKI occasionally emits compact tags such as `target="_blank"href="…"`
+ * without whitespace between quoted attributes. A token scanner handles that
+ * markup while still respecting quoted values; a whitespace-only regex does
+ * not find the following `href`.
+ */
 export function attr(tag, name) {
-  const re = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i");
-  const match = re.exec(tag);
-  if (!match) return null;
-  return unescapeHtml(match[1] ?? match[2] ?? match[3] ?? "");
+  const source = String(tag ?? "");
+  const wanted = String(name ?? "").toLowerCase();
+  const start = source.indexOf("<");
+  let index = start >= 0 ? start + 1 : 0;
+
+  while (index < source.length && !/[\s/>]/.test(source[index])) index += 1;
+  while (index < source.length) {
+    while (index < source.length && /\s/.test(source[index])) index += 1;
+    if (index >= source.length || source[index] === ">") break;
+    if (source[index] === "/") {
+      index += 1;
+      continue;
+    }
+
+    const nameStart = index;
+    while (index < source.length && !/[\s=/>]/.test(source[index])) index += 1;
+    const attributeName = source.slice(nameStart, index).toLowerCase();
+    if (!attributeName) {
+      index += 1;
+      continue;
+    }
+
+    while (index < source.length && /\s/.test(source[index])) index += 1;
+    if (source[index] !== "=") continue;
+    index += 1;
+    while (index < source.length && /\s/.test(source[index])) index += 1;
+
+    let value = "";
+    const quote = source[index];
+    if (quote === '"' || quote === "'") {
+      index += 1;
+      const valueStart = index;
+      while (index < source.length && source[index] !== quote) index += 1;
+      value = source.slice(valueStart, index);
+      if (index < source.length) index += 1;
+    } else {
+      const valueStart = index;
+      while (index < source.length && !/[\s>]/.test(source[index])) index += 1;
+      value = source.slice(valueStart, index);
+    }
+    if (attributeName === wanted) return unescapeHtml(value);
+  }
+  return null;
 }
 
 function hasClass(tag, className) {
@@ -345,10 +391,18 @@ export function parseReaderParams(url) {
     return null;
   }
   const params = parsed.searchParams;
-  const fileName = params.get("fileName") ?? "";
-  const tableName = params.get("tableName") ?? "";
-  const dbCode = params.get("dbCode") ?? "";
-  const invoice = params.get("invoice") ?? "";
+  const byName = (...names) => {
+    const wanted = new Set(names.map((name) => name.toLowerCase()));
+    for (const [key, value] of params.entries()) {
+      if (wanted.has(key.toLowerCase()) && value) return value;
+    }
+    return "";
+  };
+  const fileName = byName("fileName", "filename");
+  const tableName = byName("tableName", "tablename");
+  // `/reader/read` redirects use `product` where the reader API expects `dbCode`.
+  const dbCode = byName("dbCode", "dbcode", "product");
+  const invoice = byName("invoice");
   if (!fileName || !tableName || !dbCode || !invoice) return null;
   return { fileName, tableName, dbCode, invoice };
 }

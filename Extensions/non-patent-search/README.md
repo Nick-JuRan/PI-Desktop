@@ -11,9 +11,9 @@ follows:
 
 | CNKICrawlerMCP | This plugin |
 | --- | --- |
-| `ScanPaper` (title, authors, source, impact factors, `withFactors`, `pageSize`) | `CNKI_ScanPaper` — no `withFactors`, fixed 20 papers per page; returns `Title`, `Href`, `Abstract`, `HTML_READING_URL` per paper plus `totalPage` |
+| `ScanPaper` (title, authors, source, impact factors, `withFactors`, `pageSize`) | `CNKI_ScanPaper` — no `withFactors`, fixed 20 papers per page; returns `Title`, `Abstract`, `HTML_READING_URL` per paper in that order plus `totalPage` |
 | `GetPaperInfo` (abstract, CAJ/PDF/HTML links from an abstract page) | merged into `CNKI_ScanPaper`, which reads every hit's abstract page |
-| `GetPaperMainBody` (JSON-encoded text) | `CNKI_GetPaperMainBody` — plain text, no escape sequences |
+| `GetPaperMainBody` (JSON-encoded text) | `CNKI_GetPaperMainBody` — plain text, no escape sequences; accepts the HTML reading link or a CNKI `bar.cnki.net/bar/download/order` link that redirects to it |
 | `SetGlobalCookie` / `GetGlobalCookie` | removed; the cookie is prepared automatically before the first call |
 
 ## Tools
@@ -54,7 +54,6 @@ Subject-field (主题) search on `https://kns.cnki.net/kns8s/brief/grid`.
   "papers": [
     {
       "Title": "…",
-      "Href": "https://kns.cnki.net/kcms2/article/abstract?v=…",
       "Abstract": "…",
       "HTML_READING_URL": "https://kns.cnki.net/kcms2/article/htmlreading?v=…"
     }
@@ -75,10 +74,13 @@ Subject-field (主题) search on `https://kns.cnki.net/kns8s/brief/grid`.
 
 ### `CNKI_GetPaperMainBody`
 
-- Argument: `href` — one `HTML_READING_URL` from `CNKI_ScanPaper`.
-- The reading link redirects (usually twice) to a reader URL carrying
-  `fileName`, `tableName`, `dbCode`, `invoice`; the plugin follows those hops
-  by hand, then calls
+- Argument: `HTML_READING_URL` — one `HTML_READING_URL` from `CNKI_ScanPaper`, or a CNKI
+  `bar.cnki.net/bar/download/order` link from the paper detail page.
+- The link redirects (usually twice) to a reader URL carrying `fileName`,
+  `tableName`, `dbCode`, `invoice`. CNKI's `/reader/read` redirect may spell
+  these as lowercase `filename`, `tablename` and `product`; the plugin maps
+  those aliases before following the reader API. It follows those hops by
+  hand, then calls
   `https://kns.cnki.net/nzkhtml/knsread/litNotes/getPaperInfo` and turns the
   JSON answer into plain text: title, then each chapter heading followed by
   its paragraphs, chapters in `orderNum` order, tags and entities removed.

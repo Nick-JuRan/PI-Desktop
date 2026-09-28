@@ -111,7 +111,6 @@ export async function executeScanPaper({ args, cookies, request, throttle, signa
     }
     results.push({
       Title: paper.title,
-      Href: paper.href,
       Abstract: info.abstract ?? "",
       HTML_READING_URL: info.htmlReadingUrl ?? "",
     });
@@ -143,12 +142,12 @@ export async function executeScanPaper({ args, cookies, request, throttle, signa
  * to the model verbatim, so no JSON escaping reaches the transcript).
  */
 export async function executeGetPaperMainBody({ args, cookies, request, throttle, signal }) {
-  const href = typeof args?.href === "string" ? args.href.trim() : "";
-  if (!href) throw new CnkiError(ERROR_CODES.INVALID_ARGUMENT, "href (the HTML_READING_URL) is required");
+  const htmlReadingUrl = typeof args?.HTML_READING_URL === "string" ? args.HTML_READING_URL.trim() : "";
+  if (!htmlReadingUrl) throw new CnkiError(ERROR_CODES.INVALID_ARGUMENT, "HTML_READING_URL is required");
   const session = createSession(cookies, signal);
-  const text = await session.run((cookie) => fetchPaperMainBody({ href, cookie, request, throttle, signal }));
+  const text = await session.run((cookie) => fetchPaperMainBody({ href: htmlReadingUrl, cookie, request, throttle, signal }));
   if (!text.trim()) {
-    throw new CnkiError(ERROR_CODES.MAIN_BODY_UNAVAILABLE, "CNKI returned an empty article body", { url: href });
+    throw new CnkiError(ERROR_CODES.MAIN_BODY_UNAVAILABLE, "CNKI returned an empty article body", { url: htmlReadingUrl });
   }
   return text;
 }

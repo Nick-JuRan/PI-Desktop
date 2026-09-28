@@ -58,7 +58,8 @@ test("onLoad registers both CNKI tools from the manifest with their schemas and 
   assert.equal(scan.schema.properties.pageNum.default, 1);
   assert.equal("withFactors" in scan.schema.properties, false);
   const body = registeredTools.get("CNKI_GetPaperMainBody");
-  assert.deepEqual(body.schema.required, ["href"]);
+  assert.deepEqual(body.schema.required, ["HTML_READING_URL"]);
+  assert.deepEqual(Object.keys(body.schema.properties), ["HTML_READING_URL"]);
   await entry.onUnload();
   assert.equal(registeredTools.size, 0);
   delete globalThis.pi;
@@ -76,13 +77,15 @@ test("the registered tools execute end to end against a fake CNKI behind https.r
   assert.deepEqual(Object.keys(result), ["ok", "pageNum", "totalPage", "totalHits", "papers"]);
   assert.equal(result.totalPage, 62);
   assert.equal(result.papers.length, 2);
+  assert.deepEqual(Object.keys(result.papers[0]), ["Title", "Abstract", "HTML_READING_URL"]);
+  assert.equal("Href" in result.papers[0], false);
   assert.equal(result.papers[0].HTML_READING_URL, "https://kns.cnki.net/kcms2/article/htmlreading?v=READ123&uniplatform=NZKPT");
   assert.equal(netCalls.length, 3, "one search + two abstract pages");
   assert.ok(netCalls.every((call) => call.headers.Cookie === "manual=1"), "the settings cookie is used without any login");
   assert.ok(netCalls.every((call) => new URL(call.url).hostname.endsWith(".cnki.net")), "only cnki.net hosts");
 
   const body = registeredTools.get("CNKI_GetPaperMainBody");
-  const text = await body.execute({ href: "https://kns.cnki.net/nzkhtml/knsread/index?fileName=F&tableName=T&dbCode=D&invoice=I" }, { log: () => {} });
+  const text = await body.execute({ HTML_READING_URL: "https://kns.cnki.net/nzkhtml/knsread/index?fileName=F&tableName=T&dbCode=D&invoice=I" }, { log: () => {} });
   assert.equal(typeof text, "string");
   assert.match(text, /^基于格罗皮乌斯的现代建筑教育研究\n\n1 引言/);
 

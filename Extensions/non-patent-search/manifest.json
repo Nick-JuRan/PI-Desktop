@@ -9,7 +9,7 @@
     "agentTools": [
       {
         "name": "CNKI_ScanPaper",
-        "description": "Search CNKI (中国知网) academic literature by subject keyword (主题字段). One call returns one result page of 20 papers, each with Title, Href (the abstract page), Abstract, and HTML_READING_URL (the online HTML reading link, the input for CNKI_GetPaperMainBody), plus totalHits and totalPage (= ceil(totalHits / 20)); start at pageNum 1 and increase pageNum to read further pages. Login is automatic (IP-based, the CNKI whitelist of the current network); no cookie handling is needed or exposed. The search is one request and each paper adds one throttled abstract-page request, so a call takes about 30-60 s. Unavailable abstract pages leave Abstract/HTML_READING_URL empty and are listed in warnings; if warnings report human verification, wait a few minutes before the next call. Impact factors are not included.",
+        "description": "Search CNKI (中国知网) academic literature by subject keyword (主题字段). One call returns one result page of 20 papers, each with Title, Abstract, and HTML_READING_URL (the online HTML reading link, the input for CNKI_GetPaperMainBody) in that order, plus totalHits and totalPage (= ceil(totalHits / 20)); start at pageNum 1 and increase pageNum to read further pages. Login is automatic (IP-based, the CNKI whitelist of the current network); no cookie handling is needed or exposed. The search is one request and each paper adds one throttled abstract-page request, so a call takes about 30-60 s. Unavailable abstract pages leave Abstract/HTML_READING_URL empty and are listed in warnings; if warnings report human verification, wait a few minutes before the next call. Impact factors are not included.",
         "risk": "medium",
         "schema": {
           "type": "object",
@@ -35,20 +35,20 @@
       },
       {
         "name": "CNKI_GetPaperMainBody",
-        "description": "Fetch the full text of one CNKI paper from its HTML_READING_URL (as returned by CNKI_ScanPaper) and return it as plain text: the title, then each chapter heading followed by its paragraphs. No HTML, no JSON, no escape sequences. Only papers whose full text the current CNKI subscription may read are available; otherwise a structured error explains why.",
+        "description": "Fetch the full text of one CNKI paper from its HTML_READING_URL (as returned by CNKI_ScanPaper), or from a CNKI bar.cnki.net/bar/download/order link that redirects to the reader, and return it as plain text: the title, then each chapter heading followed by its paragraphs. No HTML, no JSON, no escape sequences. Only papers whose full text the current CNKI subscription may read are available; otherwise a structured error explains why.",
         "risk": "medium",
         "schema": {
           "type": "object",
           "additionalProperties": false,
           "required": [
-            "href"
+            "HTML_READING_URL"
           ],
           "properties": {
-            "href": {
+            "HTML_READING_URL": {
               "type": "string",
               "minLength": 1,
               "maxLength": 4000,
-              "description": "The HTML_READING_URL of one paper, exactly as returned by CNKI_ScanPaper."
+              "description": "The HTML_READING_URL of one paper, exactly as returned by CNKI_ScanPaper, or a CNKI bar.cnki.net/bar/download/order link from its detail page."
             }
           }
         }

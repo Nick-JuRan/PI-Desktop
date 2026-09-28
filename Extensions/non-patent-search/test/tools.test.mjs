@@ -49,7 +49,7 @@ const ABSTRACT_1 = "https://kns.cnki.net/kcms2/article/abstract?v=ABC123&uniplat
 const ABSTRACT_2 = "https://kns.cnki.net/kcms2/article/abstract?v=DEF456";
 const VERIFY_URL = "https://kns.cnki.net/kns8s/security/verify?returnUrl=%2Fkcms2%2Farticle%2Fabstract";
 
-test("CNKI_ScanPaper returns Title, Href, Abstract and HTML_READING_URL per hit and nothing else", async () => {
+test("CNKI_ScanPaper returns Title, Abstract and HTML_READING_URL per hit and nothing else", async () => {
   const { request, calls } = routes([
     [GRID, html(fixture("search-page.html"))],
     [ABSTRACT_1, html(fixture("abstract-page.html"))],
@@ -63,16 +63,15 @@ test("CNKI_ScanPaper returns Title, Href, Abstract and HTML_READING_URL per hit 
   assert.equal(result.totalPage, 62, "ceil(1234 / 20)");
   assert.equal(result.totalHits, 1234);
   assert.equal(result.papers.length, 2);
-  assert.deepEqual(Object.keys(result.papers[0]), ["Title", "Href", "Abstract", "HTML_READING_URL"]);
+  assert.deepEqual(Object.keys(result.papers[0]), ["Title", "Abstract", "HTML_READING_URL"]);
+  assert.equal("Href" in result.papers[0], false);
   assert.deepEqual(result.papers[0], {
     Title: "基于格罗皮乌斯的现代建筑教育研究",
-    Href: ABSTRACT_1,
     Abstract: "本文以格罗皮乌斯的教育思想为线索，\n分析包豪斯 & 现代建筑教育之间的关系。…结论：理念仍具当代价值。",
     HTML_READING_URL: "https://kns.cnki.net/kcms2/article/htmlreading?v=READ123&uniplatform=NZKPT",
   });
   assert.deepEqual(result.papers[1], {
     Title: "包豪斯设计理念的当代价值 & 反思",
-    Href: ABSTRACT_2,
     Abstract: "第二篇摘要",
     HTML_READING_URL: "https://kns.cnki.net/kcms2/article/htmlreading?v=READ456",
   });
@@ -284,6 +283,29 @@ test("resolveReaderParams follows redirects by hand until the reader URL carries
   assert.ok(calls.every((call) => call.headers.Cookie === "c"));
 });
 
+test("CNKI_GetPaperMainBody accepts a bar download redirect to the lowercase reader URL", async () => {
+  const barHref = "https://bar.cnki.net/bar/download/order?id=opaque-order-id";
+  const readerRedirect =
+    "https://kns.cnki.net/reader/read?invoice=INV%2F1&platform=NZKPT&product=CJFQ&filename=ZHHU202602006&tablename=cjfdlast2026&type=JOURNAL";
+  const { request, calls } = routes([
+    [barHref, { status: 302, headers: { location: readerRedirect } }],
+    [READER_ENDPOINT, html(fixture("reader-response.json"))],
+  ]);
+  const text = await executeGetPaperMainBody({
+    args: { HTML_READING_URL: barHref },
+    cookies: cookieStub(["session=10"]),
+    request,
+    throttle: noWait(),
+  });
+  assert.match(text, /^基于格罗皮乌斯的现代建筑教育研究\n\n1 引言\n/);
+  assert.equal(calls.length, 2, "one download-order redirect plus one reader API request");
+  const readerRequest = new URL(calls[1].url);
+  assert.equal(readerRequest.searchParams.get("fileName"), "ZHHU202602006");
+  assert.equal(readerRequest.searchParams.get("tableName"), "cjfdlast2026");
+  assert.equal(readerRequest.searchParams.get("dbCode"), "CJFQ");
+  assert.equal(readerRequest.searchParams.get("invoice"), "INV/1");
+});
+
 test("resolveReaderParams falls back to parameters embedded in a final page and classifies login pages", async () => {
   const embedded = routes([
     [() => true, html(`<html><script>var url="/nzkhtml/knsread/litNotes/getPaperInfo?fileName=F9&amp;tableName=T9&amp;dbCode=D9&amp;invoice=I9";</script></html>`)],
@@ -311,7 +333,7 @@ test("resolveReaderParams falls back to parameters embedded in a final page and 
 test("CNKI_GetPaperMainBody returns the article as a plain string with real newlines", async () => {
   const { request, calls } = routes([[READER_ENDPOINT, html(fixture("reader-response.json"))]]);
   const text = await executeGetPaperMainBody({
-    args: { href: "https://kns.cnki.net/nzkhtml/knsread/index?fileName=F1&tableName=T1&dbCode=CJFD&invoice=INV" },
+    args: { HTML_READING_URL: "https://kns.cnki.net/nzkhtml/knsread/index?fileName=F1&tableName=T1&dbCode=CJFD&invoice=INV" },
     cookies: cookieStub(["session=9"]),
     request,
     throttle: noWait(),
@@ -320,7 +342,7 @@ test("CNKI_GetPaperMainBody returns the article as a plain string with real newl
   assert.match(text, /^基于格罗皮乌斯的现代建筑教育研究\n\n1 引言\n/);
   assert.equal(text.includes("\\n"), false);
   assert.equal(text.includes("<p>"), false);
-  assert.equal(calls.length, 1, "parameters in the href skip the redirect resolution");
+  assert.equal(calls.length, 1, "parameters in the HTML_READING_URL skip the redirect resolution");
   const url = new URL(calls[0].url);
   assert.equal(url.origin + url.pathname, READER_ENDPOINT);
   assert.equal(url.searchParams.get("fileName"), "F1");
@@ -329,15 +351,15 @@ test("CNKI_GetPaperMainBody returns the article as a plain string with real newl
 });
 
 test("CNKI_GetPaperMainBody surfaces subscription refusals, empty bodies and verification pages", async () => {
-  const href = "https://kns.cnki.net/x?fileName=F&tableName=T&dbCode=D&invoice=I";
+  const htmlReadingUrl = "https://kns.cnki.net/x?fileName=F&tableName=T&dbCode=D&invoice=I";
   const refused = routes([[READER_ENDPOINT, html(JSON.stringify({ success: false, message: "暂无阅读权限" }))]]);
   await assert.rejects(
-    executeGetPaperMainBody({ args: { href }, cookies: cookieStub(), request: refused.request, throttle: noWait() }),
+    executeGetPaperMainBody({ args: { HTML_READING_URL: htmlReadingUrl }, cookies: cookieStub(), request: refused.request, throttle: noWait() }),
     (error) => error.code === "MAIN_BODY_UNAVAILABLE" && /暂无阅读权限/.test(error.message),
   );
   const empty = routes([[READER_ENDPOINT, html(JSON.stringify({ success: true, content: { title: "", catalogInfos: [] } }))]]);
   await assert.rejects(
-    executeGetPaperMainBody({ args: { href }, cookies: cookieStub(), request: empty.request, throttle: noWait() }),
+    executeGetPaperMainBody({ args: { HTML_READING_URL: htmlReadingUrl }, cookies: cookieStub(), request: empty.request, throttle: noWait() }),
     (error) => error.code === "MAIN_BODY_UNAVAILABLE",
   );
   const verify = routes([
@@ -345,11 +367,11 @@ test("CNKI_GetPaperMainBody surfaces subscription refusals, empty bodies and ver
     [VERIFY_URL, html(fixture("verify-page.html"), 200)],
   ]);
   await assert.rejects(
-    executeGetPaperMainBody({ args: { href }, cookies: cookieStub(), request: verify.request, throttle: noWait() }),
+    executeGetPaperMainBody({ args: { HTML_READING_URL: htmlReadingUrl }, cookies: cookieStub(), request: verify.request, throttle: noWait() }),
     (error) => error.code === "BLOCKED" && error.finalUrl === VERIFY_URL && error.title === "安全验证",
   );
   await assert.rejects(
-    executeGetPaperMainBody({ args: {}, cookies: cookieStub(), request: empty.request, throttle: noWait() }),
-    (error) => error.code === "INVALID_ARGUMENT",
+    executeGetPaperMainBody({ args: { href: htmlReadingUrl }, cookies: cookieStub(), request: empty.request, throttle: noWait() }),
+    (error) => error.code === "INVALID_ARGUMENT" && /HTML_READING_URL is required/.test(error.message),
   );
 });

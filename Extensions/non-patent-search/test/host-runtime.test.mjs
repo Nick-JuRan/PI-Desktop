@@ -87,12 +87,13 @@ test("the extension loads in the real plugin runtime and both CNKI tools work th
   assert.equal(result.pageNum, 1);
   assert.equal(result.totalPage, 62);
   assert.equal(result.papers.length, 2);
-  assert.deepEqual(Object.keys(result.papers[0]), ["Title", "Href", "Abstract", "HTML_READING_URL"]);
+  assert.deepEqual(Object.keys(result.papers[0]), ["Title", "Abstract", "HTML_READING_URL"]);
+  assert.equal("Href" in result.papers[0], false);
   assert.equal(result.papers[0].HTML_READING_URL, "https://kns.cnki.net/kcms2/article/htmlreading?v=READ123&uniplatform=NZKPT");
 
   const body = tools.find((tool) => tool.name === "CNKI_GetPaperMainBody");
   const text = await body.execute(
-    { href: "https://kns.cnki.net/nzkhtml/knsread/index?fileName=F&tableName=T&dbCode=D&invoice=I" },
+    { HTML_READING_URL: "https://kns.cnki.net/nzkhtml/knsread/index?fileName=F&tableName=T&dbCode=D&invoice=I" },
     { sessionId: "harness", log: () => {} },
   );
   assert.equal(typeof text, "string");

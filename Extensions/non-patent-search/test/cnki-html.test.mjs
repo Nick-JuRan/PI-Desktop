@@ -49,6 +49,19 @@ test("parseSearchPage reports an empty grid without toolbar or table", () => {
   assert.equal(page.total, -1);
 });
 
+test("parseSearchPage accepts CNKI compact attributes without whitespace between quoted attributes", () => {
+  const page = parseSearchPage(
+    '<div id="countPageDiv"><em>864,907</em></div>' +
+      '<table class="result-table-list"><tbody>' +
+      '<tr><td class="name"><a target="_blank"href="/kcms2/article/abstract?v=AI1">人工智能</a></td></tr>' +
+      '</tbody></table>',
+  );
+  assert.deepEqual(page.papers, [
+    { title: "人工智能", href: "https://kns.cnki.net/kcms2/article/abstract?v=AI1" },
+  ]);
+  assert.deepEqual(page.counts, { rows: 1, nameCells: 1, abstractLinks: 1 });
+});
+
 test("login and verification pages are recognised by what the visitor sees, login first", () => {
   assert.equal(looksLikeLogin(fixture("login-page.html")), true);
   assert.equal(looksLikeVerify(fixture("verify-page.html")), true);
@@ -132,6 +145,12 @@ test("parseReaderParams needs all four parameters", () => {
   assert.deepEqual(
     parseReaderParams("https://kns.cnki.net/nzkhtml/knsread/index?fileName=F1&tableName=T1&dbCode=CJFD&invoice=INV%2B1"),
     { fileName: "F1", tableName: "T1", dbCode: "CJFD", invoice: "INV+1" },
+  );
+  assert.deepEqual(
+    parseReaderParams(
+      "https://kns.cnki.net/reader/read?invoice=INV%2F1&platform=NZKPT&product=CJFQ&filename=ZHHU202602006&tablename=cjfdlast2026",
+    ),
+    { fileName: "ZHHU202602006", tableName: "cjfdlast2026", dbCode: "CJFQ", invoice: "INV/1" },
   );
   assert.equal(parseReaderParams("https://kns.cnki.net/kcms2/article/htmlreading?v=READ123"), null);
   assert.equal(parseReaderParams("not a url"), null);
