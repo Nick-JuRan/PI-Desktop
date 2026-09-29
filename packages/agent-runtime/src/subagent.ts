@@ -110,6 +110,8 @@ export type SubagentRunResult = {
   contextCompactions?: number;
   /** True when the run had to discard working history without a summary. */
   contextDegraded?: boolean;
+  /** True when the delegate response hit the model's output token limit. */
+  outputTruncated?: boolean;
   error?: { code: string; message: string };
 };
 
@@ -233,6 +235,7 @@ export class SubagentRun {
   private readonly opts: SubagentRunOptions;
   private currentAssistant?: UiMessage;
   private lastReportText = "";
+  private lastReportTruncated = false;
   private turns = 0;
   private toolCalls = 0;
   private usage?: MessageUsage;
@@ -389,6 +392,13 @@ export class SubagentRun {
       return this.result("failed", "", {
         code: "SUBAGENT_NO_REPORT",
         message: "The subagent finished without writing a report.",
+      });
+    }
+    if (this.lastReportTruncated) {
+      return this.result("failed", this.lastReportText, {
+        code: "SUBAGENT_OUTPUT_TRUNCATED",
+        message:
+          "The subagent response exceeded the model's output token limit and was truncated.",
       });
     }
     return this.result("completed", this.lastReportText);
@@ -664,6 +674,7 @@ export class SubagentRun {
       ...(this.modelFailures.length ? { modelFailures: [...this.modelFailures] } : {}),
       ...(this.contextCompactions > 0 ? { contextCompactions: this.contextCompactions } : {}),
       ...(this.contextDegraded ? { contextDegraded: true } : {}),
+      ...(this.lastReportTruncated ? { outputTruncated: true } : {}),
       ...(error ? { error } : {}),
     };
   }
@@ -842,6 +853,8 @@ export class SubagentRun {
         // must not clear the text an earlier turn already produced.
         if (content.hasText && content.text.trim() && !failed) {
           this.lastReportText = content.text;
+          this.lastReportTruncated =
+            stopReason === "length" || stopReason === "max_tokens";
         }
         if (retryAttempt !== undefined) {
           this.currentAssistant = {
