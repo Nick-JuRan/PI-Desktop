@@ -545,6 +545,9 @@ function delegationSummary(record: DelegationRecord): Record<string, unknown> {
     ...(record.result?.contextDegraded
       ? { contextDegraded: record.result.contextDegraded }
       : {}),
+    ...(record.result?.scratchReportPath
+      ? { scratchReportPath: record.result.scratchReportPath }
+      : {}),
     ...(record.resumedFrom ? { resumedFrom: record.resumedFrom } : {}),
     ...(record.modelChangedFrom
       ? { modelChangedFrom: record.modelChangedFrom }
@@ -4542,6 +4545,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             sessionId: this.sessionId,
             turnId: this.turnId,
             parentToolCallId: toolCallId,
+            delegationId: record.delegationId,
+            scratchDir: this.scratchDir,
             task,
             provider,
             infiniteProviderRetry: this.infiniteProviderRetry,
@@ -5211,6 +5216,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           startedAt: record.startedAt,
           ...(record.completedAt ? { completedAt: record.completedAt } : {}),
           ...(record.result?.error ? { error: record.result.error } : {}),
+          ...(record.result?.scratchReportPath
+            ? { scratchReportPath: record.result.scratchReportPath }
+            : {}),
           report:
             record.status === "running"
               ? formatDelegationHeartbeat(record)
@@ -8326,19 +8334,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
     if (!runner.hasHandlers("before_agent_start")) return;
     const base = this.composeSystemPrompt();
-    const result = await runner.emit<{ systemPrompt?: string }>(
-      "before_agent_start",
-      {
-        type: "before_agent_start",
-        prompt: typeof input === "string" ? input : input.text,
-        systemPrompt: base,
-        systemPromptOptions: {},
-      },
-      (acc, next) => ({ ...(acc ?? {}), ...next }),
+    const prompt = await runner.emitBeforeAgentStart(
+      typeof input === "string" ? input : input.text,
+      base,
     );
-    this.setAgentSystemPrompt(
-      typeof result?.systemPrompt === "string" ? result.systemPrompt : base,
-    );
+    this.setAgentSystemPrompt(prompt ?? base);
   }
   /**
    * `before_provider_request` rides pi-ai's `onPayload`, `after_provider_response`

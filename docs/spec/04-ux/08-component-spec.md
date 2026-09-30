@@ -1639,10 +1639,20 @@ storage but compose into one assistant turn until the next user message.
   to the first contentful fragment. Tool-only rows do not create markers or
   split an AI response, and a one-page transcript never shows the rail.
 - Marker previews are capped at 280 source characters and are display-only
-- Derived visible rows, minimap rows, and activity grouping are memoized by the
-  `messages` snapshot. Completed message rows, composed assistant turns, and
-  activity groups keep stable render boundaries while only the current stream
-  fragment changes.
+- Derived visible rows, minimap rows, and activity grouping share the immutable
+  `messages` projection with the Composer context inspector. After warm-up, an
+  ordinary same-shape delta updates indexed changed rows without rereading
+  unchanged message bodies or rebuilding completed groups. This applies to the
+  normal 100-row page and deliberately loaded full histories, and to foreground
+  and background session caches. Shallow array copies
+  remain permitted; cold loads and structural changes may rebuild the projection.
+- Completed rows and unchanged parts within a large active turn/activity group
+  retain their render boundaries. Deferred presentation consumes one immutable
+  projection snapshot. Older-row and child updates, terminal re-keying, Copy,
+  disclosure state, minimap previews, session switching, and reader-owned scroll
+  positions must remain fresh; performance reuse must not hide these changes.
+  Event-to-DOM latency, long tasks, and heap samples are diagnostics, not a
+  hardware-independent timing guarantee.
 
 ---
 
@@ -1716,10 +1726,11 @@ Single message render — either user (plaintext) or assistant (markdown streami
   Confirmation is scoped to the message text, workspace path, and session; changing
   any of these discards old results and cancels queued work. Newly created
   files are reconsidered when the message remounts or its scope changes, not
-  by polling. Non-ASCII filenames remain supported. Absolute and `~/` tokens are matched whole,
-  and one outside the workspace (or any home path) stays plain text rather
-  than rendering a chip that could never open — containment is unchanged
-  (D322). Clicking a chip
+  by polling. Non-ASCII filenames, spaces, and Windows drive/backslash paths
+  remain whole candidates. User-message paths outside the allowed roots stay
+  plain after verification, while assistant references and tool paths remain
+  clickable so the opener can explain the access limit. Home paths stay plain.
+  Clicking a chip
    completes the reference through `pi-desktop/fs/resolveRef` — the whole open
    project is searched, its group's folders primary first (ADR 0263) — and opens
    where it resolved: a project file in the bundled `pi.file-manager` work-panel
@@ -1729,7 +1740,8 @@ Single message render — either user (plaintext) or assistant (markdown streami
    view as a project-relative path and a sibling-folder file as an absolute one,
    which is also how scratch and attachment files are addressed. A resolved
    image thumbnail resolves and opens the same way. A chip whose reference
-   matches nothing opens nothing and reports itself; the OS default application
+   matches nothing opens nothing and reports itself; an absolute path outside
+   every allowed root reports the access limit separately. The OS default application
    is no longer what this click does.
   HTTP(S) URLs remain inline text links. Bare URLs preserve balanced parentheses
   in paths, queries, and fragments; an unmatched closing parenthesis wrapping
@@ -2578,7 +2590,6 @@ Inline transcript card requesting user approval for a high-risk tool call. See
 | Workspace: /Users/dev/project                |
 | ───────────────────────────                  |
 | [Allow once] [Allow for session] [Deny]      |
-| Timeout: 120s countdown                       |
 +----------------------------------------------+
 ```
 
@@ -2592,27 +2603,27 @@ fields. It is never a JSON dump.
 - Only the active session's pending request is mounted. Background requests
   stay in session-keyed renderer state without inserting content into the
   visible transcript or covering another destination.
-- Different sessions may each hold one pending request. Resolution, timeout,
+- Different sessions may each hold one pending request. Resolution, cancellation,
   abort, tool completion, and session deletion clear only the matching
   request.
-- Countdown uses the request's absolute receipt time and does not restart when
-  the user switches away and back.
+- A pending request remains visible when the user switches away and back; it
+  has no countdown or expiry timestamp.
 
 ### 10.4 States
 
 | State | Appearance | Actions |
 |---|---|---|
-| Pending | warning accent, countdown visible | Allow once / Allow session / Deny buttons active |
+| Pending | warning accent | Allow once / Allow session / Deny buttons active |
 | Resolving | pending appearance retained | All three buttons disabled until the request settles |
 | Allowed once | success border, "Allowed (once)" label | No actions |
 | Allowed session | success border, "Allowed (session)" label | No actions |
 | Denied | error border, "Denied" label | No actions |
-| Timeout denied | warning border, "Denied (timeout)" label | No actions |
 
 ### 10.5 Interactions
 
 - Buttons: primary (Allow once), secondary (Allow session), danger (Deny)
-- Countdown: visible timer decrementing from 120s
+- No countdown is shown; the card remains pending until an explicit decision or
+  cancellation.
 - The first action locks all buttons. Resolution errors use an error toast;
   successful or failed completion returns focus to the current composer.
 - The originating session's composer cannot send during pending permission,
@@ -2622,7 +2633,7 @@ fields. It is never a JSON dump.
 ### 10.6 Accessibility
 
 - `role="region"` with a localized accessible name; the static title supplies
-  the polite live announcement so the per-second timer is not re-announced
+  the polite live announcement without a per-second timer
 - Buttons clearly labeled and reachable in normal transcript tab order; the
   card never traps or forcibly moves focus
 - Countdown announced periodically (every 30s) or on request
@@ -3966,7 +3977,7 @@ Sidebar footer                                        Popover (360px max)
    compact composer with 1–7-line draft growth) match spec
 4. Chat content band defaults to 760px and is user-resizable; user plates stay compact
 5. ToolCallCard shows status, args preview, result preview, duration per [01-ui-ia.md](01-ui-ia.md) §5
-6. PermissionCard shows tool name, risk, args, countdown, and three action buttons per [03-permission-ux.md](03-permission-ux.md)
+6. PermissionCard shows tool name, risk, args, and three action buttons per [03-permission-ux.md](03-permission-ux.md)
 7. Composer: Enter sends when Enter-to-send is on; when it is off, Cmd/Ctrl+Enter
    sends and Enter inserts a newline; Shift+Enter always inserts a newline;
    draft grows from one through seven visible lines then scrolls, and the single
