@@ -1,6 +1,7 @@
 mod config_sync_rpc;
 mod scheduled_rpc;
 mod scheduled_tools;
+mod todos;
 
 use std::io::{self, BufRead, BufReader as StdBufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -1023,6 +1024,27 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
                 "lastNotifiedUpdateVersion must contain 1 to 128 characters",
                 "INVALID_PARAMS",
             ));
+        }
+    }
+    if let Some(version) = object.get("updateDismissedVersion") {
+        match version {
+            serde_json::Value::Null => {}
+            serde_json::Value::String(version) => {
+                if version.trim().is_empty() || version.len() > 128 {
+                    return Err(rpc_err(
+                        1002,
+                        "updateDismissedVersion must contain 1 to 128 characters",
+                        "INVALID_PARAMS",
+                    ));
+                }
+            }
+            _ => {
+                return Err(rpc_err(
+                    1002,
+                    "updateDismissedVersion must be a string or null",
+                    "INVALID_PARAMS",
+                ));
+            }
         }
     }
     if let Some(infinite_retry) = object.get("infiniteProviderRetry") {
@@ -2547,6 +2569,15 @@ async fn handle_request(
             .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "session": session }))
         }
+        "todos.get" => {
+            let session_id = params
+                .get("sessionId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_ARGUMENT"))?;
+            let st = state.lock().await;
+            todos::get_from(&st, session_id)
+        }
+
         "session.configure" => {
             let id = params
                 .get("id")
@@ -2958,6 +2989,23 @@ async fn handle_request(
             }
             .map_err(session_collaboration_rpc_err)?;
             Ok(json!({ "turnId": turn_id }))
+        }
+        "session.recordUsage" => {
+            let session_id = params
+                .get("sessionId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
+            let turn_id = params
+                .get("turnId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "turnId required", "INVALID_PARAMS"))?;
+            let usage = params
+                .get("usage")
+                .ok_or_else(|| rpc_err(1002, "usage required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let recorded = sessions::record_usage(&st.db, session_id, turn_id, usage)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            Ok(json!({ "ok": recorded }))
         }
         "session.endTurn" => {
             let turn_id = params
@@ -4008,7 +4056,11 @@ async fn handle_request(
                     });
                 }
 
-                let mut result = if tools::is_desktop_dispatched(&p.tool_name) {
+                let mut result = if p.tool_name == "TodoWrite" {
+                    // The checklist body owns its own trusted-transport checks,
+                    // the atomic write, and the after-commit notification.
+                    todos::execute_write(&state, &tx, &p, call_started).await?
+                } else if tools::is_desktop_dispatched(&p.tool_name) {
                     // Plugin and MCP dispatch has its own bounded default, sized
                     // to outlast Electron's budgets; command-shell timeout
                     // semantics apply only to Bash.
@@ -5131,7 +5183,7 @@ mod tests {
 
         // First: a wedged holder starves one budgeted request.
         {
-            let guard = holder.lock().await;
+            let _guard = holder.lock().await;
             let waiter_state = state.clone();
             let error = with_request_budget(Some(40), async move {
                 let _st = waiter_state.lock().await;
@@ -5342,6 +5394,118 @@ mod tests {
         .unwrap();
         assert_eq!(updated["group"]["name"], "Adjusted");
         assert_eq!(updated["group"]["roots"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn grouped_folder_with_chats_can_be_detached_and_deleted_separately() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let primary = data_dir.path().join("primary");
+        let member = data_dir.path().join("member");
+        fs::create_dir_all(&primary).unwrap();
+        fs::create_dir_all(&member).unwrap();
+        let primary_input = primary.to_string_lossy().to_string();
+        let member_input = member.to_string_lossy().to_string();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+
+        let group_response = handle_request(
+            state.clone(),
+            "project.group.create",
+            json!({ "name": "Grouped", "folders": [primary_input, member_input] }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        let group_id = group_response["group"]["id"].as_str().unwrap().to_string();
+        let primary_path = group_response["group"]["primaryPath"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let member_path = group_response["group"]["roots"][1]["path"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // This chat predates removing the member from the group.
+        let session_id = {
+            let st = state.lock().await;
+            sessions::create_session_with_options(
+                &st.db,
+                sessions::SessionCreateOptions {
+                    project_path: Some(member_path.clone()),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+            .id
+        };
+
+        let updated = handle_request(
+            state.clone(),
+            "project.group.update",
+            json!({ "groupId": group_id, "name": "Grouped", "folders": [primary_path] }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .expect("a member with chats can be detached from the group");
+        assert_eq!(updated["group"]["roots"].as_array().unwrap().len(), 1);
+
+        let detached_groups = handle_request(
+            state.clone(),
+            "project.groups.list",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert!(detached_groups["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|group| {
+                group["legacy"] == json!(true) && group["roots"][0]["path"] == json!(member_path)
+            }));
+
+        let removed = handle_request(
+            state.clone(),
+            "projects.remove",
+            json!({ "path": member_path }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .expect("the detached project can then be deleted through the project action");
+        assert_eq!(removed["removed"], json!(true));
+        assert_eq!(removed["sessionsRemoved"], json!(1));
+        assert!(member.exists());
+
+        let groups_after_delete = handle_request(
+            state.clone(),
+            "project.groups.list",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(groups_after_delete["groups"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            groups_after_delete["groups"][0]["roots"][0]["path"],
+            json!(primary_path)
+        );
+
+        let sessions_after_delete = handle_request(
+            state,
+            "session.list",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert!(sessions_after_delete["sessions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|session| session["id"] != json!(session_id)));
     }
 
     #[tokio::test]
@@ -9506,6 +9670,8 @@ mod update_settings_tests {
             json!({"updatePreference": "automatic"}),
             json!({"updatePreference": "manual"}),
             json!({"lastNotifiedUpdateVersion": "0.15.9"}),
+            json!({"updateDismissedVersion": "0.15.9"}),
+            json!({"updateDismissedVersion": null}),
         ] {
             assert!(validate_settings_value(&value).is_ok(), "{value}");
         }
@@ -9515,6 +9681,9 @@ mod update_settings_tests {
             json!({"lastNotifiedUpdateVersion": "  "}),
             json!({"lastNotifiedUpdateVersion": 12}),
             json!({"lastNotifiedUpdateVersion": "x".repeat(129)}),
+            json!({"updateDismissedVersion": "  "}),
+            json!({"updateDismissedVersion": 12}),
+            json!({"updateDismissedVersion": "x".repeat(129)}),
         ] {
             assert!(validate_settings_value(&value).is_err(), "{value}");
         }

@@ -28,6 +28,7 @@ import {
   sessionArchived,
   sessionPinned,
 } from "../lib/sidebar-session-groups";
+import { listableSessions } from "../lib/session-origin";
 import {
   composerDropItems,
   hasComposerFileDrag,
@@ -42,7 +43,7 @@ import {
   sidebarSessionStatus,
   type SidebarSessionStatus,
 } from "../lib/sidebar-session-status";
-import { ErrorCodes } from "@pi-desktop/shared";
+import { ErrorCodes, formatSessionLink } from "@pi-desktop/shared";
 import type { SessionSummary } from "@pi-desktop/shared";
 import type {
   ProjectMeta,
@@ -631,11 +632,13 @@ export function Sidebar({
   }, [t]);
 
   const filtered = useMemo(() => {
-    const candidates = showArchived
-      ? sessions
-      : sessions.filter(
-          (session) => !sessionArchived(session, sessionMeta[session.id]),
-        );
+    // A scheduled run's transcript belongs to the Scheduled page, not to the
+    // project groups: that page's task column and run history are its entry
+    // point (issue #1291). The session stays in the store so the chat surface
+    // can still resolve its title, source, and capabilities when it is opened
+    // from there.
+    const candidates = listableSessions(sessions)
+      .filter((session) => showArchived || !sessionArchived(session, sessionMeta[session.id]));
     // Empty sessions are durable sidebar rows now. Their message count, not
     // their title, controls New Task reuse, so a manual rename never changes
     // the empty-slot behavior.
@@ -1436,6 +1439,20 @@ export function Sidebar({
     closeMenus();
   };
 
+  /**
+   * The link another conversation references: pasting it into a Composer draft
+   * carries a bounded excerpt of this conversation into that turn (issue #1324).
+   */
+  const copySessionLink = async (session: SessionSummary) => {
+    try {
+      await navigator.clipboard.writeText(formatSessionLink(session.id));
+      showToast(t("chat.copied"));
+    } catch (error) {
+      reportError(error);
+    }
+    closeMenus();
+  };
+
   const openSessionPath = async (session: SessionSummary) => {
     closeMenus(false);
     try {
@@ -2175,6 +2192,15 @@ export function Sidebar({
                 {t("nav.createBranch")}
               </button>
             ) : null}
+            <button
+              type="button"
+              role="menuitem"
+              data-action="copy-session-link"
+              onClick={() => void copySessionLink(session)}
+            >
+              <IconCopy size={14} />
+              {t("nav.copySessionLink")}
+            </button>
             {settings?.developerMode === true ? (
               <>
                 <button

@@ -107,7 +107,7 @@ No host RPC or storage schema change is required.
 1. load the durable session and reject a missing session
 2. resolve that session's mode/provider/model and project binding (app/current
    workspace defaults are legacy fallback only)
-3. resolve the complete models.dev metadata record for the exact provider/API
+3. resolve the complete Pi catalog metadata record for the exact provider/API
    URL and model and clamp the durable session thinking level to its nearest
    supported value; an ID absent from the snapshot uses the explicit generic
    fallback
@@ -119,6 +119,11 @@ No host RPC or storage schema change is required.
    the durable user message. Only an image that is within the 10 MB inline
    bound for a vision model is read into memory; larger images use streamed
    hashing/copying and the existing safe path fallback
+   A `pi-desktop://session/<id>` link in the draft is resolved in the same step
+   into a bounded excerpt attachment: the same project only, the current
+   conversation dropped before any read, and the runtime quotes it to the model
+   as one `<session_reference name="…" session="…">` block ahead of the user's
+   own words
 7. snapshot the effective shell ID and dialect for the turn
 8. start pi turn with the resolved session configuration and effective
    thinking level; HTTP 429 setup and stream failures use the runtime-owned
@@ -372,16 +377,14 @@ The complete visible transcript and the model context are separate views of
 the same session. A durable checkpoint summarizes older model context while
 the renderer continues to show every original user, assistant, and tool row.
 
-PI-Desktop reuses pi-agent-core's `convertToLlm`, `estimateContextTokens`,
-`prepareCompaction`, and `compact` primitives, and applies the same session
-context projection pi used to export as `buildSessionContext` (slice from the
-newest compaction, then `compactionSummary` before the retained tail). pi 0.85
-moved that helper off the public package export and made the remaining
-internal builder async for custom-entry projectors; the desktop runtime keeps
-a synchronous local copy because it synthesizes only message and compaction
-entries. The desktop runtime owns when they run and how the result crosses the
-Rust storage boundary; OpenCode DCP is an AGPL-3.0 behavioral reference only,
-not a linked or copied dependency.
+PI-Desktop uses pi-agent-core for the agent loop and stable agent/event/tool
+types, and pi-ai for provider-facing requests and message estimation. The
+runtime owns its context projection, LLM-message conversion, token-estimation
+adapter, compaction cut-point selection, and summary generation because the
+older experimental pi-agent-core harness APIs have been removed. These helpers
+preserve the existing session/checkpoint behavior while keeping the Rust host
+as the only durable session owner; OpenCode DCP remains an AGPL-3.0 behavioral
+reference only, not a linked or copied dependency.
 
 Compaction follows Codex's mechanism (ADR 0064, amended by D623): it remains
 inline at turn boundaries, and the model can request it through `new_context`.
@@ -425,11 +428,10 @@ emits `compaction_end`. The blocking path composes the two back to back.
 
 **What survives a checkpoint.** A successful checkpoint leaves the model context
 as the summary plus, at most, one **user** message; assistant and tool messages
-are dropped from model context and remain in the visible transcript. pi's
-`prepareCompaction` still chooses the cut point, so its turn-boundary and
-split-turn handling are preserved, but the runtime then folds the split-turn
-prefix and the recent tail back into the summary input, so the summary covers
-the whole compacted range and nothing crosses the boundary uncovered.
+are dropped from model context and remain in the visible transcript. The
+runtime-owned preparation chooses the cut point and preserves turn-boundary
+and split-turn handling, then folds the split-turn prefix and recent tail back
+into the summary input so the summary covers the whole compacted range.
 
 A **retained-tail fallback** is the exception, because no summary covers its
 range: it keeps the real recent window — the newest contiguous messages of the
@@ -503,8 +505,8 @@ The hard boundary is the model context window minus request headroom. Automatic
 compaction starts at 90% of `hardLimit`; this deterministic margin is not
 configurable. Headroom is the maximum of a 16,384-token reserve floor, model
 maximum output capped at 25% of the context window, and a 5% safety margin. The
-reserve floor is itself capped at half the window. The cut-point target passed
-to pi is derived from the model window as 20% of the hard budget clamped to
+reserve floor is itself capped at half the window. The cut-point target used by
+the runtime-owned preparation is derived from the model window as 20% of the hard budget clamped to
 8,000–64,000 tokens, then capped at half the hard budget; it decides where the
 boundary falls, not what survives it. The active-user retention limit is
 20,000 tokens, capped at half the hard budget so retention alone cannot fill a
@@ -514,13 +516,13 @@ recovery notice leave, so recovery cannot install a checkpoint the guard
 rejects. None of these values are configurable.
 
 **Estimate calibration (D606).** Every threshold above is compared against one
-number, corrected against observed request usage. pi's `estimateContextTokens`
-anchors on the last assistant usage and estimates everything after it as
-`chars / 4`: that constant under-counts CJK text, and with no anchor left it
-omits system/tool overhead. The budget also computes the output-cap estimator
+number, corrected against observed request usage. The runtime estimator anchors
+on the last assistant usage and delegates provider-message estimation to
+pi-ai; desktop-only rows use the existing character heuristic. With no usage
+anchor, the budget also computes the output-cap estimator
 over non-system conversation messages plus the current system prompt and active
-tool schemas. System-transcript rows are metadata snapshots of that same prompt
-and are excluded from this component, so the request estimate counts the prompt
+tool schemas. System-transcript rows are chronological updates, already covered by that
+folded prompt/tool floor, and are excluded from this component, so the request estimate counts the prompt
 and schemas exactly once. The budget uses the larger of this full-request
 estimate and the calibrated message estimate. This is a hard floor before the
 first calibration sample and prevents counting overhead twice after an
@@ -660,6 +662,15 @@ no editing, delegation, fake user message or transcript deletion occurs.
 Other deferred/plugin tools keep their existing visibility rules. See
 [the declaration/permission decision](../../adr/plan-tool-declarations-and-execution-denials.md).
 
+Plan/Goal entry remains available without a project workspace. A submission
+requires a persisted session workspace for its approval artifact.
+`PLAN_WORKSPACE_REQUIRED` from submission is a recoverable tool error: it
+explains how to bind a workspace and directs the agent to present the proposal
+in chat without retrying until a workspace is bound. It does not terminate the
+model loop, create an approval, or authorize execution. Successful submission
+still terminates for approval; other submission failures retain their existing
+termination behavior.
+
 Approval has only `approve` and `reject`. Approval commits `mode = agent`, the
 explicit permission mode, an execution ID, and `execution_state = queued` on
 the same `plan_approvals` row in one host transaction. The
@@ -706,7 +717,7 @@ criterion-by-criterion report of what was met and the evidence observed.
   not a catalog/binding capability: the runtime keeps agent bookkeeping at
   `off` and uses the low-level provider stream so no thinking override is
   synthesized (ADR 0194 / ADR 0295).
-- The bundled models.dev release snapshot is authoritative for published
+- The bundled Pi catalog release snapshot is authoritative for published
   reasoning support, thinking-level mapping, limits, input/output modalities,
   pricing, and other model metadata. pi-ai remains responsible for request
   serialization and adapter compatibility.
@@ -714,7 +725,7 @@ criterion-by-criterion report of what was met and the evidence observed.
   limits, or other model metadata. The explicit attachment capability fields
   are the exception: `supportsImages` and `supportsDocuments` are effective
   binding overrides for the endpoint.
-- Unsupported requested levels use the selected models.dev model's
+- Unsupported requested levels use the selected Pi catalog model's
   nearest-supported-level rule: scan upward first, then downward. A
   non-reasoning provider always resolves to `off`.
 - Vision support starts from the same published model record. An absent or
@@ -911,7 +922,7 @@ No new event type or storage schema is required.
 process with the definition's system prompt, its (possibly pinned)
 provider/model, its declared tools, and the same host connection. A pinned or
 explicitly selected delegation model uses the exact provider/model binding
-saved in Settings for its effective thinking capability; models.dev supplies
+saved in Settings for its effective thinking capability; Pi catalog supplies
 the baseline only. It runs under
 the same bounded provider retry policy as the parent. A delegate has no turn
 limit: it ends when it finishes, when the parent calls `TaskStop`, when the user
@@ -1032,7 +1043,7 @@ multi-turn conversation under its latest `Task` card, with no separate
 "resumed" marker.
 
 **Model pins.** `model: <provider>/<model>` in the frontmatter is resolved once
-per launch in Electron main, where credentials and the models.dev snapshot live, against
+per launch in Electron main, where credentials and the Pi catalog snapshot live, against
 provider id, vendor key or display name, and capped at
 `MAX_SUBAGENT_PROVIDERS` (8) distinct providers. An unresolvable pin is omitted
 from the binding map on purpose; the runtime turns the missing entry into a tool
@@ -1204,10 +1215,10 @@ MVP UI always includes at least:
 
 Runtime responsibilities:
 - resolve `(providerId, modelId)`
-- resolve and serialize the complete models.dev record, or label an absent ID
+- resolve and serialize the complete Pi catalog record, or label an absent ID
   with the unknown generic fallback
 - resolve model reasoning capability and effective thinking level from the
-  models.dev record
+  Pi catalog record
 - fetch secrets via host (never cache raw secrets in logs)
 - translate vendor failures into provider AppError codes
 - stream tokens/events to orchestrator
@@ -1280,6 +1291,56 @@ payload hook keeps its own object and its return value still wins.
 + [optional user custom instructions]
 ```
 
+### 7.0.0 Chronological system state (issue #1285)
+
+The Pi agent loop owns `toolsAdded` / `toolsRemoved` declarations, including
+same-name schema replacement. Desktop never moves an update ahead of the user
+or ToolSearch result that preceded it. Instruction composition uses independent
+`runtime`, `skills` (loading instructions), `skill:<exact-id>` (one catalog
+entry each), and `context` sections. Refreshing an idle skill catalog appends only
+changed entries, uses null to revoke removed entries, and updates the executable
+catalog. Unchanged entries and loading instructions are not repeated. Restoring
+an older aggregate `skills` section upgrades it once at the continuation
+boundary; checkpoints retain the effective per-entry state. Bodies remain
+on-demand and permission-checked. Different plugin tool schemas/permissions
+invalidate idle reuse even when their names are unchanged.
+
+Before model dispatch, Desktop acknowledges new system records through Host's
+existing transcript writer. Restart replays these provider-neutral records in
+order. An old history without records receives the current declaration at its
+continuation boundary; Desktop does not invent historical instructions. Explicit
+compaction saves the effective system state once before summary and retained
+tail; it does not replay old tool deltas or preserve removed tools.
+
+Mid-conversation instructions, tool additions and full tool changes are separate
+capabilities. Desktop accepts catalog opt-ins only for the same published model,
+wire API and effective endpoint (including path and port). Unknown models,
+changed bindings and unverified relays use Pi's conservative request projection.
+Partial support keeps instruction updates but folds tools as required; removals
+and redefinitions use the adapter's supported fallback. Model switching never
+rewrites the canonical journal. Cache savings depend on the actual provider;
+unsupported routes may still rebuild the request prefix.
+
+Published model limits, prices and modalities remain owned by models.dev. Its
+runtime projection separately carries Pi's exact published transcript capability
+flags and original binding. An enriched metadata source does not grant native
+support by itself, and account overrides never replace that original binding.
+
+The pinned Pi patch declares mid-conversation system support for
+`deepseek-flash` on its published `openai-completions` binding at
+`https://api.deepseek.com`. Skill changes on this binding append system updates
+without rewriting the previous request prefix. This does not enable native tool
+additions or changes, and does not apply to unverified gateways, aliases or APIs.
+The declaration comes from the patched Pi catalog, not provider settings or a
+second Desktop model catalog.
+
+When restoring assistant history, map the current local account ID to the Pi
+model's provider identity and retain recorded model IDs. A different recorded
+account or model remains distinct. Legacy rows without identity retain the
+current-model fallback. Same-model Completions reasoning stays in its native
+reasoning field, never appended to visible answer text because of an account
+UUID/vendor-name mismatch.
+
 ### 7.0.1 User custom system prompt files (issue #542)
 
 The `[optional user custom instructions]` layer is the pi-compatible file pair
@@ -1348,10 +1409,10 @@ grammar and validated against another fails every call.
 
 ### 7.1 Active tool context and on-demand loading (D185, ADR 0048)
 
-The sidecar builds one complete tool registry, but it does not serialize every
-registered schema into every provider request. Each new user prompt starts with
-the mode's core set plus any deferred tools that can be restored from successful
-activation evidence still present in the effective session context:
+The sidecar builds one complete tool registry. By default, each provider request
+declares the mode's core set plus activated deferred tools. The verified Flash
+binding uses the fixed-declaration policy below, while preserving the same
+execution activation rules:
 
 - Agent: `Read`, `Bash`, `Edit`, and `Write` (matching pi's coding-agent core)
 - Agent: `Skill` whenever the skill catalog is non-empty (D404, ADR 0230) — the
@@ -1379,20 +1440,42 @@ The sidecar activates up to four matches, records their names in the canonical
 schemas. Providers with native deferred-tool search receive the definitions at
 that load point; other providers receive the active definitions normally.
 
-At the start of each new user prompt, the sidecar clears the in-memory deferred
-activation set and rebuilds it from the effective context. Successful
-`ToolSearch` results contribute their canonical `details.addedToolNames`.
-For compatibility, historical `details.activated` and top-level
-`addedToolNames` markers are also accepted. Successful results from deferred
-tools contribute that tool's name. Only names still present in the current
-mode's deferred catalog are restored. Failed rows, interrupted or
-missing-result placeholders, and assistant/user prose never activate a tool.
-The tool registry, host permission path, tool timeout, and workspace containment
-rules remain unchanged. `ToolSearch` is local to the sidecar and does not cross
-the host RPC boundary. Its activation marker is retained in the persisted tool
-result, so a runtime restart or a new prompt can reuse an eligible capability
-while that evidence remains in the effective context; a fresh search is still
-required after the evidence is compacted away or otherwise absent.
+Deferred activation is sticky for the live runtime. At restoration, recorded
+system messages (including a compaction checkpoint) define the active baseline
+for ordinary on-demand histories. Only successful results after the latest
+system record can add activation; older results must not resurrect removed
+tools. Legacy histories without system records use successful results throughout
+their effective context. ToolSearch accepts canonical `details.addedToolNames`
+and historical `details.activated` / top-level `addedToolNames`; successful
+results from deferred tools also restore their names. Failed results,
+missing-result placeholders and assistant/user prose never activate tools.
+Only names in the current mode's deferred catalog are eligible.
+
+For the exact official `deepseek-flash` Chat Completions binding with verified
+mid-conversation system support, the runtime instead declares the complete
+catalog in deterministic name order on the first request. ToolSearch changes
+activation without changing the declared schemas. A visible schema does not
+permit execution: inactive deferred calls are rejected before extension hooks
+and the Host; activated calls still require the existing mode and Host checks.
+ToolSearch remains local and never grants approval or bypasses permissions.
+
+Fixed declarations persist separately from activation. A version-1
+`tool_activation` section records active names and a fingerprint of the account,
+model, API, endpoint, schema catalog and deferred set. Activation changes append
+at the continuation boundary, and the existing system journal/checkpoint saves
+both declarations and activation. Restore only validated activation for a
+matching fingerprint, plus successful ToolSearch results newer than that state;
+never activate tools merely because the full snapshot declared them. Malformed,
+unknown-version and mismatched activation state fail closed. A catalog/schema,
+mode, account, model or route change creates a new epoch and requires new
+activation. Removal immediately removes the tool from executable registration.
+
+If the full catalog exceeds 128 functions or its prompt/schema estimate cannot
+leave the normal retained-tail budget below the compaction threshold, retain
+on-demand declarations and emit a diagnostic explaining that ToolSearch cache
+stability is not guaranteed. Do not truncate tools. Other models and unverified
+routes retain the existing Pi projection. First-request schema overhead increases;
+cache stability does not imply that short conversations become cheaper.
 
 For user-visible HTML deliverables, the default system prompt asks the agent to
 activate `BrowserPreview` once after creating the page or making its first
@@ -1569,7 +1652,7 @@ with the original v3 `SessionManager`, Pi `ModelRuntime`, `SettingsManager`, and
 leaf, compaction, model/thinking changes, and context-bearing custom messages;
 it is never reconstructed from renderer `UiMessage` rows.
 
-The 0.87.1 SDK also applies append-only `context_edit` entries to this model
+The Pi 1.0.0 SDK also applies append-only `context_edit` entries to this model
 projection. An edit can omit or replace an earlier message for later provider
 requests without rewriting its raw JSONL entry or the visible native history.
 Native Pi extensions use the SDK's boundary hooks; all entries they append,
@@ -1621,11 +1704,16 @@ browseable.
 
 ### Provider certificate trust (issue #714)
 
-The desktop sidecar starts with Node's `--use-system-ca`, retaining bundled
-roots and inherited `NODE_EXTRA_CA_CERTS`. It uses the OS trust store without
-turning off chain or hostname validation. Restart after updating local trust
-or the extra-CA startup environment. Headless pi-host launch behavior and
-System/Direct/Custom proxy routing are unchanged.
+The desktop sidecar's effective trust set is the union of Node's bundled
+roots, the inherited `NODE_EXTRA_CA_CERTS` set, and the OS trust store, with
+chain and hostname validation on. On Windows and Linux the launcher passes
+Node's `--use-system-ca` to obtain the system roots. On macOS the Electron
+build applies that flag by replacing the bundled roots instead of adding them
+and its system enumeration misses public anchors (issue #1187), so the
+launcher omits the flag and the sidecar merges the three sets into the default
+CA set itself at startup (`agent-runtime system-ca`). Restart after updating
+local trust or the extra-CA startup environment. Headless pi-host launch
+behavior and System/Direct/Custom proxy routing are unchanged.
 
 Explicit certificate verification errors are terminal for both setup and
 stream recovery in main sessions and built-in delegates. Their structured
@@ -1633,3 +1721,18 @@ cause survives adapter message flattening, remains on the final error row,
 and never triggers a provider transport rebuild. Protocol errors such as
 `EPROTO` keep their existing retry behavior. See
 [certificate trust ADR](../../adr/provider-system-certificates.md).
+
+## Pi 1.0.0 execution boundary
+
+Published model metadata and account entitlement come from one account-scoped
+Pi Models collection. Effective binding projection is shared by launch, delegates
+and compaction. Dispatch thinking normalization uses the resolved physical Pi
+model; native null/unsupported mappings remain unavailable without mutating
+saved preferences. Agent bookkeeping and omitted request reasoning are distinct.
+
+Every physical stream attempt has an operation identity before dispatch. Usage
+survives stream/result projection and events through Host/remote/renderer paths;
+retries and images retain physical account/model attribution. Nested immediate
+parent and owning Task remain distinct. The migration does not add coding-agent
+AgentSession, Codemode or virtual routing. See the coding-agent design review for
+future adoption conditions.

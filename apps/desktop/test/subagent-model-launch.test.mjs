@@ -41,7 +41,7 @@ test("launch resolves definition-only pins without granting Task.model selection
     plugins: { listLoaded: () => [], getSkills: () => [], getTools: () => [], getAgentExtensions: () => [] },
     agentExtensions: { toolNamesForExtension: () => [] },
     sessionProjects: new Map(), dataDir: root, vendorOAuth: {},
-    modelsDevCatalog: { ensureLoaded: async () => {}, findModel: () => undefined },
+    modelsDevCatalog: { configureAccount: () => {}, ensureLoaded: async () => {}, findModel: () => undefined },
     getWorkspacePath: () => root, pluginActiveInProject: () => true,
     bindingForModel: (row, id) => row.models.find((m) => m.id === id),
     effectiveSubagentModelConfig: (row, id, catalog) => {

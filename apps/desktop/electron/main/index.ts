@@ -11,9 +11,8 @@ import {
   currentNetworkProxy,
   testNetworkProxy,
 } from "./network-proxy";
+import { installInsecureEndpointNotice } from "./network-notice";
 import {
-  APP_ID,
-  APP_NAME,
   APP_VERSION,
   IPC,
   IPC_WHITELIST,
@@ -31,7 +30,7 @@ import {
   refreshProjectGroups,
 } from "./workspace-roots";
 import { PersistenceOutbox } from "./persistence-outbox";
-import { Logger, ignoreBrokenStdio } from "./logger";
+import { Logger } from "./logger";
 import { describeError, installMainProcessErrorHandlers } from "./main-process-errors";
 import {
   ModelsDevCatalog,
@@ -46,12 +45,15 @@ import {
 } from "./work-panel-window";
 import { InflightCheckpointer } from "@pi-desktop/host-runtime";
 import { withGitBranch } from "./workspace-git";
-import { applyDevelopmentUserData, desktopDataDir } from "./data-paths";
+import { hasSingleInstanceLock, isDevelopmentBuild } from "./installation";
+import { getStorageBootstrap } from "./storage/bootstrap";
 import { createPlanUiProbe } from "./plan-ui-probe";
 import { registerIpcHandlers } from "./ipc/register";
 import { createVoiceService } from "./voice-service";
 import { MicrophoneLeaseRegistry } from "./live-voice/microphone-lease";
 import { createLiveCallService } from "./live-voice/runtime";
+import { createLiveVoiceWidget } from "./live-voice/widget-window";
+import { getActiveRemoteHostsBoot } from "./bootstrap/remote-hosts";
 import { installLiveMicrophonePermissionHandlers } from "./live-voice/microphone-permissions";
 import { MainProcessState } from "./bootstrap/main-state";
 import { registerApplicationActivation } from "./bootstrap/app-activation";
@@ -79,40 +81,6 @@ import { createWorkPanelRuntime } from "./bootstrap/work-panel";
 import { createCloseBehaviorRuntime } from "./bootstrap/close-behavior";
 import { registerShutdownHandlers } from "./bootstrap/shutdown";
 import { stripWinLongPrefix } from "./path-utils";
-
-// A closed stdout/stderr (Linux AppImage, GUI launch without a TTY) must not
-// surface as Electron's "Uncaught Exception: write EPIPE" dialog. The same
-// default dialog must not appear for a stray uncaughtException (non-ASCII
-// HTTP headers from a system proxy, destroyed webContents, etc.).
-ignoreBrokenStdio();
-installMainProcessErrorHandlers();
-
-const isDevelopmentBuild =
-  process.env.PI_DESKTOP_DEV === "1" || !app.isPackaged;
-
-app.setName(APP_NAME);
-applyDevelopmentUserData(app, isDevelopmentBuild);
-if (process.platform === "win32") {
-  app.setAppUserModelId(APP_ID);
-}
-
-// Avoid Chromium renderer crashes while serializing the accessibility tree (#552018997).
-app.commandLine.appendSwitch("disable-renderer-accessibility");
-
-// One installation, one process. The lock lives in `userData` (set just
-// above), so it is taken after `setName` and before anything else here
-// touches the data directory. A development build is its own installation;
-// `PI_DESKTOP_DATA_DIR` still opts a run out of the lock (E2E, capture rig).
-const singleInstanceRequired = !process.env.PI_DESKTOP_DATA_DIR;
-const hasSingleInstanceLock = singleInstanceRequired
-  ? app.requestSingleInstanceLock()
-  : true;
-if (!hasSingleInstanceLock) {
-  // Nothing has booted yet: no window, no tray, no child process, no log line.
-  // Quit here and let the instance that holds the lock surface itself from
-  // `second-instance`.
-  app.quit();
-}
 
 // Native resize streams can pause briefly while the pointer crosses a display
 // scale boundary. Keep recovery out of that gesture and only run it after the
@@ -198,7 +166,8 @@ const {
   safeOpenExternal,
 } = desktopServices;
 
-const dataDir = desktopDataDir(isDevelopmentBuild);
+const storage = getStorageBootstrap();
+const dataDir = storage.preferences.roots.data;
 // The plugin runtime resolves this root from the environment rather than taking
 // it as a parameter, and a profile split across two directories is the
 // divergence D236 closes.
@@ -285,6 +254,11 @@ const updater = new AppUpdaterController({
     if (!host?.isAvailable()) throw new Error("host unavailable");
     await host.call("settings.set", { lastNotifiedUpdateVersion: version });
   },
+  persistDismissedVersion: async (version) => {
+    const host = getHost();
+    if (!host?.isAvailable()) throw new Error("host unavailable");
+    await host.call("settings.set", { updateDismissedVersion: version });
+  },
 });
 
 /**
@@ -309,9 +283,12 @@ const vendorOAuth = new VendorOAuth({
     await safeOpenExternal(url);
   },
   log: (level, message, data) => logger.app("provider", level, message, { data }),
-  modelConfigFor: async ({ vendorKey, option }) => {
+  onAccountModels: (id, models) => modelsDevCatalog.setAccountModels(id, models),
+  onAccountRemoved: (id) => modelsDevCatalog.deleteAccount(id),
+  modelConfigFor: async ({ providerId, vendorKey, option }) => {
     await modelsDevCatalog.ensureLoaded();
     return catalogModelConfigFor(modelsDevCatalog, {
+      providerId,
       vendorKey,
       baseUrl: option.baseUrl,
       apiStyle: option.apiStyle,
@@ -389,7 +366,6 @@ const createdSessionLaunchRuntime = createSessionLaunchRuntime({
   logger,
   userMcp,
   plugins,
-  agentExtensions,
   sessionProjects,
   dataDir,
   vendorOAuth,
@@ -404,7 +380,6 @@ sessionLaunchRuntime = createdSessionLaunchRuntime;
 const {
   refreshUserMcp,
   activeUserSkills,
-  subagentToolCatalog,
   activeUserSubagentDocuments,
   disabledBuiltinSubagents,
   loadUserSkillBody,
@@ -504,8 +479,10 @@ function sendToRenderer(channel: string, payload: unknown) {
     // it. Notifying a gone frame is routine teardown, never an error:
     // supervision must keep running with no window attached.
   }
+
 }
 
+installInsecureEndpointNotice(sendToRenderer);
 
 applicationLifecycle = createApplicationLifecycle({
   getRunningSessionIds: () => activeTurns.keys(),
@@ -828,10 +805,23 @@ const voiceService = createVoiceService(
   (token) => microphoneLeases.acquire("dictation", token),
 );
 voiceServiceReference = voiceService;
+// The docked call widget: a desktop-level window that shows the call chrome
+// wherever the user put it and sends every action back to this window, which
+// stays the Live Voice owner (media, microphone lease, work scope).
+const liveVoiceWidget = createLiveVoiceWidget({
+  getMainWindow,
+  dataDir,
+  safeOpenExternal,
+  log: (message, data) => logger.app("diagnostics", "warn", message, data ? { data } : undefined),
+});
+
 const liveCallService = createLiveCallService({
   getHost,
   getMainWindow,
   getAgentHostBridge: () => mainState.agentHostBridge,
+  getSidecar,
+  getBackendRouter: () => startupState.backendRouter,
+  getRemoteHosts: () => getActiveRemoteHostsBoot(),
   vendorOAuth,
   microphoneLeases,
   resolveAgentRuntimeLaunch: (sessionId, session, settings, overrides) => {
@@ -841,10 +831,17 @@ const liveCallService = createLiveCallService({
       mode: "agent",
     });
   },
+  log: (level, message, data) => logger.app("provider", level, message, { data }),
+  onCallView: (view) => liveVoiceWidget.publish(view),
 });
 
 function registerIpc() {
   return registerIpcHandlers({
+    restartForStorage: () => {
+      shutdownState.quitConfirmed = true;
+      app.relaunch({ args: [...process.argv.slice(1).filter((arg) => arg !== "--pi-managed-storage"), "--pi-managed-storage"] });
+      app.quit();
+    },
     traySessions: applicationLifecycle!.traySessions,
     taskbarUnreadBadge: applicationLifecycle!.taskbarUnreadBadge,
     ipcMain,
@@ -891,7 +888,6 @@ function registerIpc() {
     bindingForModel,
     agentExtensions,
     activeUserSkills,
-    subagentToolCatalog,
     pluginActiveInProject,
     getWorkPanelReservationWidth: () => mainState.requestedWorkPanelReservation,
     setWorkPanelReservationWidth: (width: number) => {
@@ -940,6 +936,7 @@ function registerIpc() {
     sendToRenderer,
     voiceService,
     liveCallService,
+    liveVoiceWidget,
   });
 }
 
@@ -974,7 +971,7 @@ app.on("browser-window-created", (_event, window) => {
     });
   });
 });
-app.once("ready", () => {
+void app.whenReady().then(() => {
   installLiveMicrophonePermissionHandlers({
     targetSession: session.defaultSession,
     getMainWindow,
@@ -983,6 +980,9 @@ app.once("ready", () => {
   powerMonitor.on("suspend", () => void liveCallService.endForLifecycle("app-suspended"));
   powerMonitor.on("lock-screen", () => void liveCallService.endForLifecycle("app-suspended"));
 });
+
+// The widget is chrome for a call this window owns; it must never outlive the app.
+app.once("will-quit", () => liveVoiceWidget.close());
 
 registerApplicationStartup({
   hasSingleInstanceLock,

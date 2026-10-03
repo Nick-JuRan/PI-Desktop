@@ -81,7 +81,9 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 - Work panel resize: its inner left-edge handle changes the committed panel
   width in the renderer, so dragging left gives the panel more internal space
   and dragging right returns space to MainChat (§5.4)
-- Window resize: native edges and corners resize the fixed application window;
+- Window resize: native edges and corners on all platforms resize the fixed
+  application window; Windows keeps Electron's frameless hit test without its
+  painted thick-frame rim;
   they never resize or reserve the work panel. Responsive layout follows
   [07-ui-design-system.md](07-ui-design-system.md) §10.1
 
@@ -523,7 +525,12 @@ visually distinct from list content.
   one logical project group: the primary folder is activated and names the
   group, while every other selected folder is retained as a group root and is
   shown in Project archive details, not as an open project tab. Group chats,
-  instructions, and memory use the same group identity. A source selector
+  instructions, and memory use the same group identity. If a local selection
+  contains exactly one root already owned by a durable group, Create reopens
+  that group at its primary root instead of creating a duplicate group; this
+  applies when the group was closed from the sidebar. A multi-folder selection
+  that overlaps an existing group remains subject to host duplicate-root
+  validation. A source selector
   offers This computer and Git repository: the git source swaps the folder
   list for a repository URL field plus a clone destination row and creates
   the project by cloning into the chosen folder first. The dialog follows
@@ -569,9 +576,10 @@ visually distinct from list content.
   in its overflow menu. Rename edits the local display name only; open folder
   reveals the project directory in the system file manager for the selected
   project row.
-- Conversation overflow: pin/unpin, archive/restore, Create branch, delete.
-  Create branch is disabled while that conversation is running; success
-  activates the independent child session and focuses the composer. When
+- Conversation overflow: pin/unpin, archive/restore, Create branch, Copy
+  conversation link, delete. Create branch is disabled while that conversation
+  is running; success activates the independent child session and focuses the
+  composer. Copy conversation link is offered to every reader (§20B). When
   developer mode is on, the menu also offers Copy conversation ID (clipboard)
   and Open session path (the session scratch directory in the system file
   manager).
@@ -719,7 +727,7 @@ controls.
 | Project reorder | press-and-move on the title (8px), or ArrowUp/ArrowDown on that title, writes contiguous normalized-path order to sidebar preferences; accent insertion line; no visible grip |
 | Project archive | omitted from default view; restorable from archived view |
 | Project close | removes retained tab only; durable project/sessions remain |
-| Project delete | row-menu danger action behind a second confirmation that names the project and the number of its sessions; refused with a message while any of those sessions is running; removes the durable project row, those sessions, their transcripts, and its project memory; never deletes the folder on disk; a path owned by a multi-folder project group is refused with a message, and a path the host no longer knows is still removed from the list |
+| Project delete | row-menu danger action behind a second confirmation that names the project and the number of its sessions; refused with a message while any of those sessions is running; removes the durable project row, those sessions, their transcripts, and its project memory; never deletes the folder on disk; a path still owned by a multi-folder project group is refused with a message until detached in Edit project, and a path the host no longer knows is still removed from the list. Detaching a root with chats preserves them under a standalone project |
 | Project memory | row-menu editor reads and saves a compact list of titled or untitled memory cards for the exact project path; cards can be added, edited, and removed, the context is available in later chats, and it is never a higher-priority instruction |
 | Session list | exact-path matches only; no basename grouping |
 | Active group | exactly one group reflects the selected host workspace |
@@ -1107,12 +1115,12 @@ entirely inside the plugin's isolated page:
 | Preview (maximize) | MainChat is unmounted and the panel fills the client area beside the sidebar. The mode is transient and restores the prior panel width and sidebar state when left. |
 | Multiple artifacts | The header keeps a horizontally scrollable tab strip. The fixed `+` action creates a new launcher tab; its buttons open Review and all in-scope plugin views without duplicating open resource tabs. |
 | Session switch | The destination session's retained open state, tabs, active tab, and Browser resource replace the previous session's panel context atomically; neither context is deleted |
-| Resizing | The inner left divider follows anchored pointer delta or keyboard input for the panel target; pointer changes are frame-coalesced and committed in the renderer. Escape, pointer cancellation, or lost capture restores the prior panel width. Native window edges resize only the fixed application window. |
+| Resizing | The inner left divider follows anchored pointer delta or keyboard input for the panel target; pointer changes are frame-coalesced and committed in the renderer. Escape, pointer cancellation, or lost capture restores the prior panel width. Native window edges resize only the fixed application window on every platform. |
 | No workspace | Each tab renders its own "open a project" empty state |
 | Open with no resource | `Cmd/Ctrl + J` reveals the panel without creating a tab, so the body renders the New launcher. Clicking `+` creates an explicit, closable New tab with the same launcher rows. Activating a row from that tab replaces it with or selects the singleton view. Closing the final tab leaves the panel open in the no-resource state. |
 | Constrained work area | The panel is capped by the shared three-column budget inside the existing client area; MainChat never drops below its 450px floor and the expanded sidebar yields at the threshold |
 | New launcher active | The body hosts concise Review and plugin-view buttons. Each row replaces the launcher tab with its destination or activates the existing singleton; the page is independently closeable. |
-| Plugin view active | The body hosts the plugin's own isolated page as a native `WebContentsView`, positioned from the measured surface rect. It remains visible at its full rect while the divider is being resized or a New launcher tab is created; creating a page never pushes the plugin body down or changes its bounds. It is hidden whenever the tab is inactive, the panel is animating, or a panel-wide blocking overlay is open — the same rule the Browser preview follows, since both composite above renderer content. A view whose plugin is disabled, uninstalled, reloaded, or crashed is destroyed; the tab stays and re-opens the page on the next lifecycle event (ADR 0104) |
+| Plugin view active | The body hosts the plugin's own isolated page as a native `WebContentsView`, positioned from the measured surface rect. It remains visible at its full rect while the divider is being resized or a New launcher tab is created; creating a page never pushes the plugin body down or changes its bounds. Embedded plugin documents start with zero root/body margin and border and a transparent background, so the host panel and plugin theme own the visible surface edge. It is hidden whenever the tab is inactive, the panel is animating, or a panel-wide blocking overlay is open — the same rule the Browser preview follows, since both composite above renderer content. A view whose plugin is disabled, uninstalled, reloaded, or crashed is destroyed; the tab stays and re-opens the page on the next lifecycle event (ADR 0104) |
 | Plugin out of scope | A view contributed by a plugin that is not active in the current project disappears from the New launcher when the project changes. Unlike contributed themes, which are one global setting and stay unfiltered, a view is scoped work |
 
 ### 5.4 Interactions
@@ -1310,6 +1318,12 @@ unpinned history for retained project tabs and path-less sessions.
 Pin/archive/collapse state is a presentation over durable host
 sessions, not a replacement persistence model.
 
+A scheduled-task run's transcript is never part of this list: the run owns its
+session (`task_runs.session_id`), the host reports that ownership as
+`scheduledRun` on every session summary, and the Scheduled route is its entry
+point. Global session search hides the same rows. Deleting the task releases the
+transcript back into the ordinary lists (issue #1291).
+
 ### 6.2 Anatomy
 
 Groups and session items:
@@ -1411,6 +1425,10 @@ near-zero duration. A folded group keeps its rows mounted, `aria-hidden`, and
   session path opens `<data_dir>/scratch/<sessionId>/` in the system file
   manager, creating the directory if it does not exist yet. Both actions
   appear only while developer mode is on.
+- Copy conversation link writes the `pi-desktop://session/<id>` reference to
+  the clipboard without developer mode. Pasting it into another conversation's
+  Composer draft sends a bounded excerpt of that conversation with the turn,
+  and the user message then shows it as a chip (§20B).
 - Selecting a conversation with a different project first activates that
   project's workspace. A running turn in the previously selected session is
   not aborted.
@@ -1519,6 +1537,10 @@ storage but compose into one assistant turn until the next user message.
   content's left rule is itself a pointer and keyboard-focusable collapse
   control.
 - Hover code block: copy button appears
+- Click a transcript file reference with `:line[:column]`: resolve the file
+  first, then open it in the host `file:` tab and scroll the requested line into
+  view. Plain project-file references still prefer the bundled file view, whose
+  open contract does not carry a line position.
 - Hover or focus a minimap marker: show the localized sender and a bounded
   plaintext preview; multiple assistant fragments produced within one user
   turn are combined into one AI-response marker and preview; nearby markers
@@ -1715,8 +1737,12 @@ Single message render — either user (plaintext) or assistant (markdown streami
   chips matching the composer node (icon + ellipsized name; canonical path in
   the tooltip and accessible name). Image attachments that are not already
   inlined as `@path` chips render as bounded thumbnails (data URL from
-  `fs/readImageDataUrl`); unresolved loads keep the chip. Bare path tokens in
-  message text recognize Unicode letters and digits. In user-message prose,
+  `fs/readImageDataUrl`); unresolved loads keep the chip. A referenced
+  conversation (`kind: "session"`) renders as a chat-icon chip labeled with the
+  shared reference label and the referenced title; the tooltip and accessible
+  name come from the catalog, and activating it opens that conversation
+  (§20B). Bare path tokens in message text recognize Unicode letters and
+  digits. In user-message prose,
   these are candidates only: show a chip after the existing `fs/resolveRef`
   lookup confirms a real file. Pending, missing, or failed lookups preserve
   the exact original text, including `使用llama.cpp`. Explicit `@path` refs
@@ -1755,7 +1781,10 @@ Single message render — either user (plaintext) or assistant (markdown streami
   link address. Modifier clicks (Ctrl/Cmd/Shift/Alt) continue to open
   externally. Long URL links wrap
   within the plate and keep logical-start alignment instead of inheriting the
-  browser's centered button text.
+  browser's centered button text. They stay part of the selectable message
+  text: a drag across the plate selects the URL with its surrounding prose,
+  and copying that selection keeps the URL, even though the link is a button
+  and chrome buttons are otherwise unselectable.
 - Assistant: transparent surface, left-aligned, markdown rendered at full
   content width. Workspace file paths in that markdown are previewable:
   inline code, markdown links, and bare path tokens (with a known
@@ -2828,6 +2857,30 @@ reasoning-level control.
   file-reference names), expose independent Remove and Send now actions, and
   increase the dock height measured by `--composer-dock-height`.
 
+### 11.3a Session TodoDock
+
+- The Composer stack places TodoDock above Plan/Goal approval surfaces when the
+  active session has a non-empty host-owned checklist. An empty checklist does
+  not reserve layout space.
+- The collapsed header shows completed/active progress and the current
+  `in_progress` content. A checklist whose items are all cancelled has a clear
+  cancelled label instead of a misleading `0/0 completed` count.
+- The disclosure is keyboard accessible, does not take focus on updates, resets
+  closed when the active session changes, and shows at most eight ordered rows.
+  The list stays mounted while collapsed so opening and closing can animate with
+  a bounded height/opacity transition; collapsed content is `aria-hidden` and
+  reduced-motion users receive an immediate state change. Completed rows use a
+  success-tinted tile with a check icon, in-progress rows use the accent tint,
+  and cancelled rows are muted; each status symbol has a localized accessible
+  name and each row renders plain text.
+- Renderer snapshots are keyed by session id. A `todos.changed` event with an
+  older or equal revision is ignored. Session activation and host recovery
+  re-read the authoritative snapshot, including already cached checklists; a
+  failed initial read cannot permanently hide the dock after host recovery.
+  Recovery is skipped for `remote:` and `native-pi:` sessions, which do not own
+  a local Desktop checklist. Remote Todo parity requires an additive RACP
+  contract.
+
 ### 11.4 States
 
 | State | Appearance | Actions |
@@ -2871,9 +2924,10 @@ reasoning-level control.
   their source paths until the echo brings the session-scoped refs; a slash
   prompt shows its typed form until the echo brings the expanded body and
   command chip. A send that never reaches the host withdraws the row again.
-  Revalidation and older-page prepends are idempotent by message id, so leaving
-  and re-entering a session cannot display a second copy of an existing user
-  row.
+  Revalidation and older-page prepends are idempotent by message id. If the
+  renderer missed the persistence acknowledgement, re-entry may collapse only
+  an exact, attachment-free optimistic prompt with a nearby durable echo; an
+  older identical prompt cannot hide a newly sent row.
 - Shift+Enter: newline in textarea. Cmd/Ctrl+Enter sends when Enter-to-send is off. IME composition and an open autocomplete menu still take precedence over send.
 - Placeholder guidance: the initially rendered context starts on its welcome copy and remains
   unchanged while the page/session context, draft, focus, and IME state change.
@@ -3129,7 +3183,86 @@ reasoning-level control.
   unknown/custom models without an explicit override, disabled image input, and
   oversized images use the existing canonical `@<path>` file-tool fallback.
   There are no visual previews in MVP.
-- No voice input
+- No voice-to-draft input. The opt-in Live Voice path below is separate from
+  the Composer draft and does not restore the hidden Dictation entry.
+
+### 11.7.1 Live Voice preparation, compact call bar, and details
+
+Subject to the existing developer-mode and development-build gate, Live Voice
+has four presentation states:
+
+| State | Surface and allowed interaction |
+|---|---|
+| Disabled | No Live Voice or Live Work Composer icons. Enable only in Settings → Voice. |
+| Enabled, idle | One Live Voice icon opens preparation, not a call. Show the exact selected provider and its readiness cause, one default-off bounded-context consent checkbox, and an explicit Start action. The panel carries no explanatory prose: only a blocking cause is stated, because a paragraph of text pushes Start out of reach. |
+| Call in progress | One docked desktop widget window: Connecting with Cancel; connected with mute/unmute, End, and Details; Ending until Main and renderer cleanup both settle. |
+| Details open | Deliberately opened transcript/provider/work inspection surface; dismissing it does not end the call. |
+
+- The preparation popup uses shared controls and a localized accessible title.
+  Opening or dismissing it must not prepare a call, request microphone access,
+  initialize media, or contact a voice provider. Start is unavailable when the
+  exact selected binding is not ready, even if another binding is ready; show
+  the actual readiness cause and a Settings action instead of silently falling
+  back to another account. Beyond that it carries no explanatory prose.
+- Start defaults to muted and uses the current Composer session as the work
+  target after Main validates it against the fresh multi-backend catalog. No
+  per-call work-access checkbox or mandatory preselection is required. If there
+  is no current session, start unbound and let the user list/select a target by
+  voice. Voice target changes apply only to subsequent operations.
+- Bounded session-context sharing remains a separate, unchecked call consent.
+  It reads only the current target's bounded plain-text history and resets when
+  the call ends; it does not grant work permissions or approve actions.
+- The compact bar is its own frameless, transparent, always-on-top desktop
+  window, not AppShell chrome. It joins every Space and floats above other
+  applications, so a call stays visible and controllable while the user works
+  elsewhere; in-app navigation cannot hide it, because it is not inside the app
+  window at all. The window is dragged through the bar itself and sized to what
+  the bar draws, and its placement is remembered and clamped to the work area,
+  so a position saved on a wider display can never strand the controls. The
+  status row and its controls stay on one row — a folded status line would read
+  as two rows of chrome — so the bar reports the width it needs and the window
+  grows to it.
+- The widget is a view of the call, never its owner. Every press is forwarded to
+  the main window, which owns the microphone, the media and the call-scoped
+  work, and the resulting state returns through the same authoritative view the
+  owner receives. A failure only the owner frame can observe — a refused mute, a
+  playback retry that failed — is reported so the bar names it in place next to
+  its verbatim `LIVE_*` code; the bar is the only call chrome the user sees. The
+  same report carries whether the bound work session waits on a decision the user
+  has to make in that session's own card, which the widget window cannot see.
+- The main window draws no call bar. It keeps the details surface, which the
+  widget's Details action opens after bringing that window forward, and it stays
+  the frame that runs the actions. Feature disable hides the idle icon; the
+  widget disappears once the call and its renderer cleanup settle. Late Main
+  terminal events and renderer media release cannot briefly expose a second
+  Start. Unconfirmed media release remains visible, cannot be dismissed into a
+  reusable call slot, and suppresses another Start until restart.
+- Details never opens automatically during startup or connection. It owns the
+  bounded transient transcript (including an empty state), provider identity,
+  current work target, per-operation targets, work actions and results. Target
+  changes do not retarget existing operations. Close, outside press and Escape
+  dismiss the surface only and restore focus to an available trigger. The bar
+  remains usable, and dismissing Details never submits or stops work.
+- When the bound work session is waiting on the user, the bar keeps a
+  persistent waiting line and Details shows the pending request (the asktool
+  question as bounded plain text, the tool awaiting permission, or the plan
+  awaiting approval) with an action that opens the exact bound session and
+  closes Details. Another session's request is never attributed to the bound
+  session, and with no backend waiting evidence nothing is shown. These
+  surfaces carry no decision: nothing in the bar or Details can answer or
+  approve a permission, Plan, or AskTool request. The voice path may resolve
+  the bound session's single open AskTool question by selecting among that
+  question's own option labels; a permission or Plan/Goal approval is still
+  only ever made here, in the desktop UI.
+- The configurable toggle shortcut retains deliberate direct start from idle
+  and end during a call. Direct start also defaults to the current Composer
+  session and leaves bounded-context consent off. The startup-cancel shortcut
+  only acts when no popup has consumed the key; Escape never ends a connected
+  call.
+
+See [Live Voice](../03-runtime/live-voice.md) and
+[Live Work](../03-runtime/live-work-session.md) for the unchanged ownership,
+permission, and call-scoped work contracts.
 
 ### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, D362, D397, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222)
 
@@ -3191,6 +3324,12 @@ Anatomy:
   main selects image blocks or path fallbacks from the exact model capability.
   Reference-only drafts are sendable. Builtin/plugin dispatch still bypasses
   the model-ready gate when no prompt text or file reference is sent.
+- A `pi-desktop://session/<id>` link in the draft is the reference itself: no
+  new trigger symbol joins `@` files and `/` commands, and the link stays
+  visible plaintext while the draft is unsent. Immediately before dispatch,
+  main resolves each link to another conversation in the same project into a
+  bounded excerpt attachment (§20B). An unknown id, a self-reference, and a
+  conversation in another project stay plaintext.
 - The Agent/Plan/Goal mode aliases can prefix a prompt in the same draft:
   `/agent-mode <prompt>`, `/plan-mode <prompt>`, and `/goal-mode <prompt>` apply
   the mode first, then send `<prompt>` plus any serialized references through
@@ -3280,6 +3419,8 @@ Anatomy:
   in the bundled `pi.file-manager` view (the host `file:` tab when that view is
   unavailable), a session-scratch or attachment file in the host `file:` tab,
   and a `.html`/`.htm` page of the primary folder in the side browser. A
+  positioned `path:line` reference uses the host read-only `file:` tab and
+  scrolls the requested line into view. A
   primary-folder file is addressed to the view as a project-relative path and a
   sibling-folder file as an absolute one, which is also how scratch and
   attachment files are addressed. A reference that matches no file opens nothing
@@ -3787,6 +3928,13 @@ default nor provider configuration. OAuth accounts remain in their separate sect
   and resize; model selection immediately adds or removes its configuration
   row. Configuration rows stay compact until expanded; expanding one row does
   not expand or collapse any other row.
+- Model rows show the published context and output limits. A generic runtime
+  fallback is not shown as a published limit; Settings displays an em dash
+  until models.dev publishes a value or the user pins one in Advanced.
+- The two model panes remain side by side when the viewport is wide enough,
+  including short wide windows; their lists scroll inside the panes. They stack
+  only when the viewport is too narrow for readable columns, and their lists
+  remain reachable in that layout.
 - The left-pane list header carries a checkbox that selects or clears every
   currently visible row. A search filter narrows which rows "all" means;
   already-chosen bindings keep their advanced overrides. The checkbox is
@@ -3969,6 +4117,153 @@ Sidebar footer                                        Popover (360px max)
 
 ---
 
+## 20A. ScheduledWorkspace
+
+### 20A.1 Purpose
+
+Read and operate scheduled tasks: what each task did last, what it will do next,
+and the transcript of any run — without leaving the route. See
+[desktop automations](../../adr/scheduled-desktop-automations.md) and issue #1291.
+
+### 20A.2 Anatomy
+
+A task column beside the selected task's page:
+
+```text
+TASKS (2)                     │ Nightly dependency check   [Enabled] [Run now][Edit][Pause][Delete]
+● Nightly dependency check    │ LAST RUN   Failed · 2 hours ago · 1m 12s
+  Daily · 09:05               │ NEXT RUN   in 21 hours · Jan 3, 2026, 9:05 AM
+  Failed · 2 hours ago · 1m12s│ CADENCE    Daily · 09:05
+○ PR sweep           [Disabled]│ PROJECT   ~/project  PERMISSION Auto  MODEL custom / fixture
+  Manual                      │ INSTRUCTION  Summarize the dependency state…   [Show full instruction]
+  Not run yet                 │ RUN HISTORY (2)
+                              │  Failed    Jan 2, 2026, 12:00 AM · 1m 12s · PROVIDER_ERROR
+                              │  Completed Jan 1, 2026, 12:00 AM · 42s
+                              │ RUN CONTENT
+                              │  Completed · Jan 1, 2026 · 42s        [Open conversation]
+                              │  USER       Summarize the dependency state…
+                              │  ASSISTANT  Scheduled review complete.
+```
+
+### 20A.3 States
+
+| State | Appearance |
+|---|---|
+| Selected task | Accent-tinted raised tile with the shared raised shadow and a 2px accent bar on the leading edge, and one `aria-current="true"`. The tint matters in both themes: a plain raised fill is white on white in the light theme |
+| Selected run | The same accent tint with the leading bar, one step lighter because the row sits inside a card |
+| Running task | Warning-coloured dot in the row plus a `Running / awaiting input` badge |
+| Paused task | `Disabled` chip; the row still reports its last outcome |
+| Never run | `Not run yet` in the row's outcome line |
+| Completed run | Success glyph, status, moment and duration |
+| Failed run | Error glyph and the stable error code beside the moment |
+| Running run | No duration yet; the status reads as running |
+| Empty history | The history card states the task has no runs |
+| No transcript | The run content card states the run stored no transcript |
+| Read failure | The card reports the failure instead of showing an empty pane |
+
+### 20A.4 Interaction
+
+- Selecting a task moves the page; the previously selected run is released, and
+  the first task is selected when none is.
+- Selecting a run reads it in place through a bounded session read (60 newest
+  messages, 20 000 characters per field) and moves the content card to it.
+- The instruction is disclosed on demand and starts collapsed.
+- Run now dispatches in the background, selects the run it admitted, and keeps
+  the reader on the route.
+- The conversation mode decides who owns a run's transcript: `perRun` opens a
+  conversation for each run, and `reuse` continues the task's previous one while
+  it still exists and still belongs to the same project.
+- The task form owns the page while it is open: the task column and the task
+  page are not rendered, so the draft never competes with the page it came from.
+- An interval task states a count with a minute or hour unit (5 minutes to 24
+  hours, stored as minutes, refused outside that range). The value rides along
+  with every armed cadence, so switching between a calendar and an interval
+  loses neither, and the row reports the span instead of a clock.
+- Ownership is derived, so the two windows are visible: the host keeps the newest
+  100 runs per task and the page reads at most 200, and a run older than either
+  leaves both the task's history and its transcript's `scheduledRun` marker. See
+  [data storage](../03-runtime/04-data-storage.md) §4.11.
+- Open conversation is the only action that leaves for the chat route. A
+  scheduled run's conversation then shows a back row in the chat top bar,
+  labelled with the route and, when the row's own origin is known, the task it
+  belongs to; returning restores that task and that run, and steps back through
+  the navigation history when this route is directly behind the conversation.
+- Above 900px the task column sticks below the titlebar band; below it the
+  column stacks above the page.
+- Motion: colour and chevron transitions only, disabled under
+  `prefers-reduced-motion`, including the running dot's pulse.
+
+
+## 20B. Conversation references
+
+### 20B.1 Purpose
+
+Carry another conversation into a turn without retyping it. The
+`pi-desktop://session/<id>` link is the whole interaction: a reader copies it
+from the conversation overflow menu and pastes it into a Composer draft (issue
+#1324, option B). Copy conversation ID stays the developer-mode identifier.
+
+### 20B.2 Anatomy
+
+```text
+Conversation overflow                    Composer draft (unsent)
+┌─────────────────────────────┐          ┌──────────────────────────────────┐
+│ Pin conversation            │          │ continue from                    │
+│ Create branch               │          │ pi-desktop://session/ab12cd34    │
+│ Copy conversation link      │          └──────────────────────────────────┘
+│ Delete conversation         │
+└─────────────────────────────┘          Sent user message
+                                         ┌──────────────────────────────────┐
+                                         │ continue from                    │
+                                         │ pi-desktop://session/ab12cd34    │
+                                         │ [💬 Conversation · Nightly check]│
+                                         └──────────────────────────────────┘
+```
+
+### 20B.3 States
+
+| State | Appearance |
+|---|---|
+| Reference attached | Chat-icon chip on the user message, named with the catalog's reference label and the referenced conversation's current title |
+| Reference skipped | Nothing is attached; the link stays plaintext in the message |
+| Another project | Skipped the same way: that transcript is not this turn's context |
+| Self-reference | Dropped before any read, so the conversation itself is never a reference |
+| Empty referenced conversation | The resolver attaches nothing and the message keeps the link |
+| Chip activated | The referenced conversation becomes the active session |
+
+### 20B.4 Interaction
+
+- Copy conversation link writes `pi-desktop://session/<sessionId>` from the
+  conversation overflow menu. The durable id is the reference; Copy
+  conversation ID still exposes the bare id in developer mode.
+- Sending a turn whose draft holds the link attaches a bounded excerpt of the
+  referenced conversation: the 40 newest messages, 8 KB per field, 16 KB for
+  the whole excerpt, newest last, and the count of earlier messages the bound
+  cut. At most four links per message are resolved.
+- The excerpt is stored on the message's attachment and quoted to the model as
+  one `<session_reference name="…" session="…">` block, so later turns read the
+  same reference and re-sending a message that still contains the link
+  re-resolves it from that conversation's current content.
+- Activating the chip opens the referenced conversation; the reference is a
+  link, not a copy of that transcript.
+- The chip names the conversation from its current title, so a rename — manual
+  or the first-turn summary — follows through to every message that references
+  it. The name recorded when the reference was made stays the fallback for a
+  conversation this viewer no longer lists, and is the name the quoted block
+  keeps for the model.
+- The visible text is never rewritten: the link a reader typed stays in the
+  message, and only the attached excerpt is additive.
+- Boundary: only conversations of the same project are read, the current
+  conversation is dropped before any read, and a link to another project, an
+  unknown id, or a `remote:` identifier stays plaintext rather than becoming a
+  reference. A paste cannot make the app read a transcript its reader could not
+  open.
+- The chip is a button with a catalog-built accessible name and a tooltip
+  naming the conversation it opens; it is keyboard-activatable and leaves the
+  surrounding selectable message text intact.
+- `pi-desktop://` is not yet an operating-system protocol handler; opening a
+  link from outside the app is a separate change (issue #1324, option A). This
+  section covers the in-app reference.
 ## 21. Acceptance criteria (all components)
 
 1. All components use semantic color tokens from [07-ui-design-system.md](07-ui-design-system.md) — no raw hex

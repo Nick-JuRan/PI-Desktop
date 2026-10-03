@@ -52,6 +52,21 @@ function stripLineRef(path: string): string {
   return path.replace(/:\d+(?::\d+)?$/, "");
 }
 
+/** Trailing `:line[:col]` on a file token, if any. */
+export function parseFileRefPosition(
+  text: string,
+): { line: number; column?: number } | null {
+  const token = text.trim().replace(/[.,!?;:，。！？；：]+$/u, "");
+  const match = token.match(/:(\d+)(?::(\d+))?$/);
+  if (!match) return null;
+  const line = Number(match[1]);
+  if (!Number.isFinite(line) || line < 1) return null;
+  const column = match[2] !== undefined ? Number(match[2]) : undefined;
+  return column !== undefined && Number.isFinite(column) && column >= 1
+    ? { line, column }
+    : { line };
+}
+
 function leafName(path: string): string {
   const normalized = path.replaceAll("\\", "/").replace(/\/+$/, "");
   return normalized.slice(normalized.lastIndexOf("/") + 1) || path;
@@ -188,7 +203,7 @@ export function toWorkspaceRel(
 }
 
 export type ChatPreviewTarget =
-  | { kind: "file"; path: string }
+  | { kind: "file"; path: string; line?: number; column?: number }
   | { kind: "url"; url: string };
 
 /** Resolve one raw chat token into a previewable target, or null. */
@@ -199,17 +214,24 @@ export function resolvePreviewTarget(
 ): ChatPreviewTarget | null {
   const trimmed = text.trim();
   if (isHttpUrl(trimmed)) return { kind: "url", url: trimmed };
-  const at = unwrapAtFileRef(trimmed);
+  const position = parseFileRefPosition(trimmed);
+  const pathText = position
+    ? trimmed.replace(/[.,!?;:，。！？；：]+$/u, "")
+    : trimmed;
+  const at = unwrapAtFileRef(pathText);
   if (at) {
-    if (isAbsoluteFilePath(at)) return { kind: "file", path: at };
-    const rel = toWorkspaceRel(at, root, baseDir);
-    return rel ? { kind: "file", path: rel } : null;
+    const cleaned = stripLineRef(at);
+    if (isAbsoluteFilePath(cleaned)) {
+      return { kind: "file", path: cleaned, ...(position ?? {}) };
+    }
+    const rel = toWorkspaceRel(cleaned, root, baseDir);
+    return rel ? { kind: "file", path: rel, ...(position ?? {}) } : null;
   }
-  const file = parseFileRef(trimmed);
+  const file = parseFileRef(pathText);
   if (!file) return null;
-  if (isAbsoluteFilePath(file)) return { kind: "file", path: file };
+  if (isAbsoluteFilePath(file)) return { kind: "file", path: file, ...(position ?? {}) };
   const rel = toWorkspaceRel(file, root, baseDir);
-  return rel ? { kind: "file", path: rel } : null;
+  return rel ? { kind: "file", path: rel, ...(position ?? {}) } : null;
 }
 
 /** Tool-call args → preview target (Read/Write/Edit paths, fetch URLs). */
@@ -357,7 +379,6 @@ export type MdastNode = {
 
 const SKIP_MDAST = new Set([
   "code",
-  "inlineCode",
   "link",
   "image",
   "definition",
@@ -383,6 +404,34 @@ export function linkifyMdastTree(
     const next: MdastNode[] = [];
     for (const child of node.children) {
       if (!child || typeof child.type !== "string") continue;
+      if (!nextSkip && child.type === "inlineCode" && typeof child.value === "string") {
+        // The reported path in #1169 arrives as inline code; a code run that
+        // resolves to a real file reference becomes a link (styled inline
+        // code stays intact via the renderer's own code handling). A spaced
+        // token must still look path-like the way the text scanner demands —
+        // absolute or drive-letter anchored — so ordinary prose code runs
+        // never turn into chips.
+        const value = child.value.trim();
+        const spacedPathLike = /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("/") || value.startsWith("~/");
+        const target =
+          spacedPathLike || !value.includes(" ")
+            ? resolvePreviewTarget(value, root, baseDir)
+            : null;
+        if (target) {
+          const url =
+            target.kind === "url"
+              ? target.url
+              : /^[A-Za-z]:[\\/]/.test(target.path) || target.path.startsWith("\\\\")
+                ? encodeURIComponent(target.path)
+                : target.path;
+          next.push({
+            type: "link",
+            url,
+            children: [child],
+          });
+          continue;
+        }
+      }
       if (!nextSkip && child.type === "text" && typeof child.value === "string") {
         const segments = splitChatText(child.value, root, baseDir);
         if (segments.length === 1 && segments[0].kind === "text") {

@@ -5,7 +5,10 @@
     "packages/agent-runtime/src/native-pi-session.test.ts": "Native Pi continuation regression coverage is kept with the source boundary while the protocol and fixture contract stabilise; split by lifecycle once the native adapter surface settles.",
     "packages/agent-runtime/src/native-pi-session.ts": "Native Pi discovery, immutable projection, guarded continuation, and fork publication share one sidecar-private source boundary; split by lifecycle once the native adapter contract stabilises without widening path ownership.",
     "packages/i18n/src/locales/pt-BR/index.ts": "Brazilian Portuguese is a declarative locale catalog at full locale parity, exempt from implementation-module size limits under root AGENTS.md section 7.",
-    "packages/shared/src/changelog-pt-BR.ts": "Brazilian Portuguese release notes are declarative copy data, exempt from implementation-module size guidance under root AGENTS.md section 7."
+    "packages/shared/src/changelog-pt-BR.ts": "Brazilian Portuguese release notes are declarative copy data, exempt from implementation-module size guidance under root AGENTS.md section 7.",
+    "packages/shared/src/changelog-en.ts": "Declarative English release-note catalog kept as one independently loaded locale chunk; changelog data is exempt from the ordinary source-module size budget.",
+    "packages/shared/src/changelog-zh-CN.ts": "Declarative Simplified Chinese release-note catalog kept as one independently loaded locale chunk; changelog data is exempt from the ordinary source-module size budget.",
+    "packages/shared/src/changelog-zh-TW.ts": "Declarative Traditional Chinese release-note catalog kept as one independently loaded locale chunk; changelog data is exempt from the ordinary source-module size budget."
   },
   "rust": {
     "crates/host-core/src/rpc/mod.rs": "Legacy RPC dispatch module; its extraction is outside this refactor scope.",
