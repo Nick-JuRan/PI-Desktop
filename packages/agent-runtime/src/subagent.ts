@@ -24,7 +24,6 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   Agent,
-  convertToLlm,
   type AfterToolCallContext,
   type AfterToolCallResult,
   type AgentEvent,
@@ -59,6 +58,7 @@ import type { RuntimeProviderConfig } from "./provider-binding.js";
 import { clampThinkingLevel } from "./thinking-level.js";
 import { subagentModelBinding, type SubagentProviderRetryState } from "./subagent-model-binding.js";
 import { contextBudgetFor } from "./context-budget.js";
+import { convertToLlm } from "./pi-runtime-messages.js";
 import {
   delegateRetentionMode,
   delegateSummaryModels,
@@ -350,6 +350,7 @@ export class SubagentRun {
             this.provider,
             preflightModel,
             this.opts.sessionId,
+            usage => this.recordUsage(usage),
           ),
         systemPrompt: preflightSystemPrompt,
         tools: preflightTools,
@@ -441,6 +442,11 @@ export class SubagentRun {
     return drop.messages;
   }
 
+  private recordUsage(usage: MessageUsage): void {
+    this.usage = addUsage(this.usage, usage);
+    this.emit({ type: "usage", usage });
+  }
+
   private bindingFor(
     provider: RuntimeProviderConfig,
     thinkingLevel: SubagentThinkingLevel,
@@ -450,6 +456,7 @@ export class SubagentRun {
       thinkingLevel,
       sessionId: this.opts.sessionId,
       maxTokens: this.opts.definition.maxTokens,
+      onUsage: usage => this.recordUsage(usage),
     }, this.retryState);
   }
 
@@ -465,8 +472,6 @@ export class SubagentRun {
     ];
     if (outcome.kind === "compacted") {
       this.contextCompactions += 1;
-      const summaryUsage = usageFromPi(outcome.summaryUsage);
-      this.usage = addUsage(this.usage, summaryUsage);
     } else {
       this.contextDegraded = true;
     }
@@ -493,6 +498,7 @@ export class SubagentRun {
           this.provider,
           this.agent.state.model,
           this.opts.sessionId,
+          usage => this.recordUsage(usage),
         ),
       thinkingLevel: this.agent.state.thinkingLevel,
       signal: signal ?? this.runSignal(),

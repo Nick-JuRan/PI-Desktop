@@ -8,6 +8,59 @@
 
 ## 1. Goals
 
+### E2E-STORAGE-custom-location-and-maintenance
+
+- **Preconditions:** Dedicated request worktree, current remote-main base, shared
+  compatible host toolchain, built host-core and desktop, isolated temporary data
+  and Chromium profiles. No user's running desktop, provider, or network is used.
+- **Steps:** Through the production Settings page, choose/cancel a destination,
+  confirm/retry migration, and confirm cache/backup cleanup. Seed a real host with
+  sessions, queued attachments, project metadata, credentials and a local installed
+  plugin. Stop it, copy with the production migration service, invoke the real Rust
+  offline relocation process, and reopen the host. Seed default/persistent Chromium
+  localStorage, execute the production cold bootstrap in real Electron, restart with
+  its pointer, clear caches, and then separately remove old backups.
+- **Expected:** Data and browser source paths are visible, confirmation receives
+  focus, duplicate actions are locked, environment overrides disable changes and
+  failures allow recovery. Copy/verification/path-relocation progress is localized
+  and uses a sandboxed nonpersistent window. Host data, credential decryption,
+  installed plugin locations, main localStorage and plugin persistent storage
+  survive migration/restart. Cache cleanup preserves durable state; backup cleanup
+  retains active data and the stable bootstrap pointer. Filesystem regression tests
+  reject unsafe targets, redirecting links, wrong ownership and active-root overlap.
+- **Coverage:** `pnpm test:e2e:storage` runs `e2e-storage-settings.mjs`,
+  `e2e-storage-migration.mjs`, and `e2e-storage-bootstrap.mjs`. The first uses the
+  production renderer/API with only preload mocked; the latter suites run real
+  host/Electron processes and production maintenance. The bootstrap harness
+  intercepts relaunch to inspect its result, then explicitly starts another isolated
+  child; it does not launch the user's desktop. `storage-maintenance.test.mjs`
+  and Rust `data_relocation` tests cover rollback and path/filesystem boundaries.
+
+
+### E2E-LIVE-VOICE-public-settings-and-reconnect
+
+- **Preconditions:** A built production Renderer and real Electron/Main/Host,
+  isolated data/profile/project, developer mode off, a local TLS Realtime
+  fixture and synthetic microphone. Trust only the fixture CA in the child
+  process; do not disable TLS, sender, sandbox or microphone checks.
+- **Steps:** Open Live from Composer while disabled and follow Open settings.
+  Find Voice through settings search, bind the fixture account, enable Live,
+  connect, unmute, receive audio/captions, mute and hang up. Cancel a delayed
+  startup, disconnect the provider and explicitly reconnect. Restart with the
+  same isolated profile, inspect persisted settings and disable Live.
+- **Expected:** Voice is reachable without developer mode. Enabling settings
+  does not capture audio; the real built Renderer passes the exact main-frame
+  owner check. Only the chosen account is used. Mute stops input, every end
+  closes media/socket resources, and failures never trigger an automatic new
+  call. Settings survive restart without reconnecting. Legacy Dictation
+  settings are unchanged; a voice-only call creates no Agent session.
+- **Coverage:** `pnpm test:e2e:live-voice` drives the built app and its concrete
+  Realtime GA adapter against local WSS; `live-voice-owner.test.mjs` bundles
+  the production owner module and rejects other files/frames. Fixture audio
+  is not physical-device or real-provider acceptance. Commands and results
+  are recorded in `docs/implementation/live-voice-public-readiness.md`.
+- **Specs:** [Live Voice](../03-runtime/live-voice.md).
+
 ### E2E-LIVE-VOICE-provider-call-lifecycle
 
 - **Preconditions:** Isolated desktop profile with Live Voice enabled and one
@@ -15,12 +68,14 @@
   use a real provider account or paid endpoint for automation.
 - **Steps:** Open Voice settings and confirm only Live Voice controls are
   visible; legacy Dictation toggles, microphone selection and transcription
-  model controls are absent. Confirm the Composer shows Live controls without
-  the old Dictation microphone button. Bind/select a fixture account for each
-  supported adapter profile. In Settings → Shortcuts, customize the Live Voice
-  toggle and use it to start then end a fixture call. Cancel a pending startup
-  with the `voiceCancel` binding (default `Escape`); pressing `Escape` during a
-  connected call must not end it. Restore the default, then start, cancel during
+  model controls are absent. Confirm the enabled Composer shows one Live
+  preparation entry without a separate Work or old Dictation microphone button.
+  Bind/select a fixture account for each supported adapter profile. In Settings
+  → Shortcuts, customize the Live Voice toggle and use it to start then end a
+  fixture call. Cancel a pending startup
+  with the `voiceCancel` binding (default `Escape`) when no popup consumes the
+  key; pressing `Escape` during a connected call must not end it. Restore the
+  default, then explicitly Start from preparation, cancel during
   permission/startup, connect, mute/unmute, interrupt playback, inspect the
   in-memory transcript, and end. Repeat with Dictation already holding the
   microphone, a changed active binding, a provider credential removal, renderer
@@ -43,42 +98,123 @@
   The full Electron flow and real-provider/device compatibility remain
   unverified until their respective isolated acceptance environments are run.
 
+### E2E-LIVE-VOICE-four-stage-ui
+
+- **Title:** Disabled, preparation, compact call, and deliberate details.
+- **Preconditions:** Isolated Electron profile with Live Voice initially
+  disabled, deterministic local provider/media fixtures, and local work-session
+  fixtures. No real account, microphone, speaker, paid endpoint, or user's
+  running Desktop instance is used.
+- **Steps:**
+  1. Confirm neither Live nor Work Composer icon exists while disabled. Every
+     account card shows only its provider picker until that account is bound.
+     Enable Live Voice only from Settings → Voice; verify exactly one idle
+     voice icon and that the card keeps its Model configuration link on the
+     heading line beside the help mark.
+  2. Open preparation and expand/collapse work options without starting. Verify
+     no prepare request, microphone acquisition, media initialization, provider
+     connection, or work dispatch occurs. Make the selected binding unavailable
+     while another is ready: show the exact selected identity/reason, disable
+     Start, and do not switch providers implicitly.
+  3. With a ready binding, explicitly Start and observe Connecting plus Cancel
+     in the compact bar, without automatically opening Details. Cancel while
+     prepare or media acquisition is pending and deliver the late completion.
+     Repeat Start to connect muted, then unmute/mute and inspect status.
+  4. Open Details, inspect transcript/provider/work state, and dismiss it with
+     Close, outside press, and Escape. Keep the call connected; use the bar to
+     resume blocked sound, observe a rejected resume, and recover explicitly.
+  5. Navigate between chat, Settings, Plugins, and sessions. The call chrome is
+     a docked desktop widget window, so drag it by its own bar, verify the
+     position survives that navigation and is clamped back inside the work area,
+     and verify the main window draws no call bar. End or disable the
+     feature with delayed Main termination and renderer cleanup, in either
+     completion order. Keep Ending visible and prevent another Start until both
+     settle. Exercise unconfirmed release and verify visible blocked recovery.
+  6. Reopen preparation: work access and context consent are unchecked. Merely
+     expanding the section or selecting a session never starts a call; Start
+     without the work opt-in is voice-only. Opt into work explicitly, select a
+     valid local target, and Start; inspect the fixed binding and work results
+     in Details. End and reopen preparation, then change/create the target,
+     opt out, or cancel and verify context consent resets. Ending Live does not
+     stop already accepted work.
+  7. Use the configured toggle to start a voice-only call directly and end it.
+     During startup, a popup consumes Escape to dismiss itself without
+     cancellation; without a consuming popup, the startup-cancel shortcut works.
+     Escape never ends a connected call. Repeat visible controls in English and
+     Simplified Chinese and check catalog coverage for all shipped locales.
+- **Expected:** Four distinct UI states, deliberate startup and work consent,
+  exact-binding readiness, default mute, global cleanup visibility, accessible
+  controls and focus return, and no changed IPC, persistence or permission
+  boundary. Playback and error recovery do not require opening Details.
+- **Specs:** [Live Voice](../03-runtime/live-voice.md),
+  [Live Work](../03-runtime/live-work-session.md),
+  [Component spec](../04-ux/08-component-spec.md#1171-live-voice-preparation-compact-call-bar-and-details),
+  [Settings IA](../04-ux/06-settings-ia.md#voice).
+- **Acceptance:** C / E / Security / Quality.
+- **Milestone:** Post-MVP experimental interaction maintenance.
+- **Coverage:** Targeted controller/presentation regression tests and
+  `pnpm test:e2e:live-voice-interaction` cover the mounted production controls,
+  controller, store, shortcuts, i18n, cleanup ordering, work consent, and error
+  recovery with simulated shell navigation and fake external edges. This does
+  not mount full AppShell/settings/plugin routes or exercise a real provider,
+  device, permission prompt, or audio output.
+- **Status:** Task-candidate fixture passed 48/48 interaction checks. Full
+  AppShell, real-provider, and device compatibility remain unverified.
+
 ### E2E-LIVE-WORK-session-admission
 
-- **Preconditions:** Isolated Live provider fixture, a local AgentHost session,
-  and a deterministic fake intent resolver. The provider candidate must enter
-  through the existing Live adapter callback; do not use a real account or
-  paid endpoint.
-- **Steps:** Start a voice-only call and verify a work candidate is rejected
-  without a work scope. Start a second call with an explicitly selected local
-  session and context sharing disabled. Submit one declared work request,
-  deliver its receipt, route it through the classifier, and inspect the Host
-  admission and `voiceOrigin`. Exercise a busy independent request through the
-  Host queue, a stale steer, an exact-turn stop, and a terminal event arriving
-  before the submit promise resolves. Query a recorded terminal result and
-  verify the query does not create another Host turn. Request project/session
-  lists, verify they contain labels and opaque call-scoped references only,
-  open a listed session, and create a session from a listed project through
-  the panel action. Confirm both actions leave the active work binding fixed.
-  Queue a result while provider generation, user speech, and local playback are
-  active; verify it is sent only after all three are idle and the quiet window
-  passes. Exercise silent mode, an explicit query while silent, and stale
-  feedback downgrade. End the Live call after Host admission.
-- **Expected:** Work remains bound to the originally selected local session;
-  no prior messages are read when context sharing is disabled; the existing
-  AgentHost performs prompt, steer, queue, and stop operations; duplicate
-  provider IDs do not dispatch twice; terminal state comes from Host events;
-  result queries project only the exact operation summary; ending Live does
-  not cancel accepted work. Project/session choices never expose raw paths or
-  IDs, selection references expire and remain call-scoped, opening is
-  navigation only, and creating requires a listed project plus a panel action.
-  Automatic feedback observes provider speaking state and local playback
-  activity, while task execution and feedback delivery remain separate. A
-  renderer signal is not evidence that a person heard the result.
-- **Coverage:** `apps/desktop/test/live-voice-service.test.mjs` covers voice-only
-  rejection and explicit work-scope forwarding. `packages/host-runtime/src/live-work/coordinator.test.ts`
-  covers receipt ordering, routing, stale steer, replay, call close, and early
-  terminal correlation. `packages/host-runtime/src/live-work/context.test.ts`
+- **Preconditions:** Isolated Live provider fixture, Desktop/Native Pi/Remote
+  session catalog fixtures, and a deterministic fake intent resolver. Provider
+  candidates enter through the existing Live adapter callback; do not use a
+  real account or paid endpoint.
+- **Steps:** Start a call from a Composer with an active Desktop session and
+  verify that session is the default target without a work-access checkbox or
+  pre-call voice selection. Repeat with Native Pi and Remote Composer sessions.
+  Start with no current session and verify the call remains unbound until the
+  user lists sessions and chooses one by voice. Reject missing and duplicate
+  session identities. With context sharing disabled, submit one work request
+  and verify no history read; then test the separate bounded-context consent.
+  Switch targets by voice during a call, submit before and after the switch, and
+  verify the two operations remain associated with their respective sessions.
+  Deliver each receipt, route through the classifier, and inspect backend
+  admission and `voiceOrigin`. Exercise backend-specific queue/steer/stop
+  capabilities, approval denial, stale turn, offline Remote Host, and a
+  terminal event arriving before submit resolves. Query an exact terminal
+  result without creating another Host turn. Request project/session lists,
+  verify labels and opaque call-scoped references, then test opening and
+  creating only through their existing panel actions. With a submission
+  waiting on the user, confirm the compact bar keeps a waiting line and
+  Details shows the pending ask question with an action that opens that exact
+  session; verify another session's pending request stays unattributed. Then
+  answer the open asktool question by voice and confirm the session's card
+  resolves through the Host input path; retry with a label the question never
+  offered, with a partial answer, and with two open questions, and confirm each
+  is refused without a write and without being retried.
+  Exercise feedback while
+  generation, user speech, and playback are active; finish by ending Live after
+  Host admission.
+- **Expected:** The initial target is the current Composer session when present;
+  voice switching affects subsequent requests only. Main validates each target
+  against a fresh multi-backend catalog, and ambiguity/unavailability fails
+  closed. Context reads occur only after independent consent and remain bounded
+  to the current target. Each backend retains its own admission, permission,
+  approval, and capability rules; unsupported operations and offline targets
+  are reported honestly. Duplicate provider IDs do not dispatch twice,
+  terminal state comes from authoritative backend events, result queries project
+  only the exact operation summary, and ending Live does not cancel accepted
+  work. Selection references expose no raw paths or IDs and remain call-scoped.
+  Automatic feedback and task execution remain separate; a renderer signal is
+  not evidence that a person heard the result.
+- **Coverage:** `apps/desktop/test/live-work-scope.test.mjs` covers the fresh
+  Desktop/Native Pi/Remote catalog, source-specific prompt/stop/queue routing,
+  offline Remote failure, initial Native/Remote event subscriptions without a
+  local AgentHost bridge, project/workspace identity, opaque refs, and
+  ambiguous-target rejection. `apps/desktop/test/live-voice-ipc-media.test.mjs`
+  covers separate target/context consent and rejects raw operation/session/turn
+  IDs. `apps/desktop/test/live-voice-service.test.mjs` covers owner-scoped
+  stop/cancel routing by call and operation IDs. `packages/host-runtime/src/live-work/coordinator.test.ts`
+  covers receipt ordering, routing, stale steer, replay, call close, target
+  switching, exact-turn stop and old-session queue cancellation. `packages/host-runtime/src/live-work/context.test.ts`
   covers bounded context projection. `packages/agent-host/src/agent-host.test.ts`
   covers history-free state, queue insertion, and voice provenance.
   `packages/voice-runtime/src/live/protocol.test.ts` covers provider-specific
@@ -89,6 +225,13 @@
   cover provider/user/local playback gating and separate delivery status.
   `apps/desktop/test/live-work-scope.test.mjs` covers selection reference
   scope/expiry, and `live-work-operations.test.mjs` covers the panel actions.
+  `apps/desktop/test/live-work-decision.test.mjs` covers the waiting-decision
+  projection, its session scoping, bounded plain-text rendering and the panel
+  action that opens the bound session.
+  `packages/host-runtime/src/live-work/ask-answer.test.ts` covers the spoken
+  answer intent and its routing (resolved, refused, unknown and never resent),
+  and `apps/desktop/test/spoken-answer.test.mjs` covers the option-only
+  matching, the bounded read-out and the delivery budget.
   `voice-runtime/src/live/playback-monitor.test.ts` covers local audio signal
   detection. This is targeted automated coverage, not the complete
   W2-001—W2-096 matrix or real-provider E2E.
@@ -147,6 +290,38 @@
 - **Coverage:** Host fork regression, renderer session-fork-running tests,
   session IPC contract tests, and real-model desktop acceptance. A local model
   fixture or mocked component result is not real-model acceptance evidence.
+
+### E2E-CONVERSATION-minimap-jump-leaves-follow
+
+- **Preconditions:** One Desktop conversation long enough that the transcript
+  overflows its viewport, opened at the bottom so follow mode is pinned, with
+  the conversation outline (minimap) visible on the transcript's left edge.
+- **Steps:** Click the outline dash of an earlier turn without scrolling the
+  transcript first.
+- **Expected:** The transcript scrolls to that turn and stays there: the turn
+  lands just below the scroller's top edge and the jump-to-latest control
+  appears, because the jump leaves follow mode before it scrolls. A pinned
+  follow must never re-bottom the view one frame after the click. The outline's
+  earlier-history control keeps its existing reveal behavior.
+- **Status:** Automated in `pnpm test:e2e:transcript-minimap-jump`, which mounts
+  the production `ChatTranscript` in a real Chromium page with a synthetic
+  session, clicks an outline dash while follow is pinned, and asserts the
+  scroller's distance from the bottom once the exchange has settled.
+
+### E2E-ASKTOOL-compact-card-interaction
+
+- **Preconditions:** No live provider is required; the fixture stubs
+  `api.resolveAskTool` and seeds one two-question ask through the real store
+  slice.
+- **Steps:** Mount the production `AskToolCard`, assert the header Tab order
+  (decline, skip, next) with no legacy bottom action row, then walk select →
+  next → submit, skip → submit, decline-all, and a custom answer, remounting
+  with a fresh request id between flows.
+- **Expected:** Every flow resolves through the store's `resolveAsk` with the
+  exact answers (skips recorded as `null`), and no render errors are reported.
+- **Status:** Automated in `pnpm test:e2e:asktool-card`, which mounts the
+   production `AskToolCard` in a real Chromium page and clicks through the
+   header actions.
 
 ### E2E-POWER-keep-awake-setting
 
@@ -254,9 +429,16 @@
   select a daily time period from four fixed defaults; open the weekday menu,
   select custom days, save and reopen; reject empty days; verify the four defaults,
   arrows, Home/End, Enter, Escape/Tab and outside dismissal; select hourly without time
-  fields and verify its first occurrence is one hour away; pause/resume; Run now;
-  open the result conversation; configure a daily task for the next real minute;
-  observe automatic completion; delete the settled task. In a normal Agent
+  fields and verify its first occurrence is one hour away; pause/resume; Run now
+  and read the admitted run's transcript inside the task page; select an interval
+  cadence, enter 30 minutes and verify the row states that span instead of a
+  clock, then switch to a weekly cadence and back to confirm the value survived;
+  open the edit form and verify the task column and the task page step aside;
+  let one task accumulate more runs than the shared window while another stays
+  idle, and verify the idle task still reports its own last outcome; open the
+  result conversation from that page and verify its top bar offers the way back
+  to the scheduled task; return and confirm the same task and run are still
+  selected; observe automatic completion; delete the settled task. In a normal Agent
   conversation, use model tool calls to discover, create, list, update to 15:30
   and delete a task. Verify the custom time appears in the form and survives
   renaming. The model is a local deterministic fixture, not a live provider.
@@ -266,12 +448,19 @@
   Composer-style bottom toolbar, including at the narrow viewport, with no horizontal overflow.
   Legacy rows without the new fields retain their previous defaults. Configuration
   persists, next time is visible, paused tasks do
-  not dispatch, both execution paths reach the real Agent sidecar, history links
-  to the persisted transcript, and automatic execution does not require a
+  not dispatch, both execution paths reach the real Agent sidecar, the task's own
+  history lists each run with its status and duration and Open conversation
+  reaches the persisted transcript while the SessionList and session search never
+  list it, that conversation's top bar returns to the same task and run, an
+  interval task arms from the span the form states and reports it in its row,
+  the task form owns the page while it is open, a task that stayed idle while
+  another accumulated more runs than the shared window still reports its own
+  last outcome, and
+  automatic execution does not require a
   renderer prompt. Host tests additionally prove duplicate admission rejection,
   stale/missed occurrence handling, invalid input rejection and recovery.
-- **Specs:** 04-ux/01-ui-ia §3.3; 03-runtime/04-data-storage §4.11;
-  ADR scheduled-desktop-automations; ADR 0305.
+- **Specs:** 04-ux/01-ui-ia §3.3; 04-ux/08-component-spec §6, §20A;
+  03-runtime/04-data-storage §4.11; ADR scheduled-desktop-automations; ADR 0305.
 - **Acceptance:** Scheduled task execution and recoverable run history.
 - **Milestone:** Post-MVP desktop automations.
 - **Status:** Automated in `node scripts/e2e-scheduled.mjs`; run against the
@@ -388,7 +577,7 @@ levels does not waive the relevant E2E gate.
 
 | Requirement | Detail |
 |---|---|
-| Platform | macOS arm64 and Intel x64, Windows x64, and Linux x64 release targets (D126/D285) |
+| Platform | macOS arm64 and Intel x64, Windows x64, and Linux x64 and arm64 release targets (D126/D285, D638 / ADR 0318) |
 | Profile | Clean `~/.pi-desktop` profile (no prior config) |
 | Fixtures | Sample project directory (`examples/fixtures/sample-project/`) |
 | Sample plugin | `examples/plugins/hello` loaded from local path |
@@ -513,7 +702,11 @@ identify the platform validation still needed.
   restart. 5) Allow the persistence outbox to flush.
 - **Expected**: Active shell processes never exceed the configured global and
   per-session limits. Excess work returns `HOST_OVERLOADED` or waits in the
-  bounded queue. Only one restart loop runs; stale-generation calls fail fast
+  bounded queue. Queued requests do not reserve execution capacity: with four
+  running Bash calls and twelve queued Bash calls, another session can still
+  Read and Write. A saturated session cannot reserve spare class capacity, and
+  admission-future cancellation/timeout restores queue and execution counters.
+  Only one restart loop runs; stale-generation calls fail fast
   as `HOST_UNAVAILABLE`; no repeated `ERR_STREAM_DESTROYED` persistence storm
   is emitted. Temporary OS thread pressure during the same burst does not
   terminate host-core through its stdio control path; the host remains on one
@@ -524,7 +717,10 @@ identify the platform validation still needed.
   `03-runtime/09-logging-and-observability.md`, ADR 0051
 - **Acceptance**: A (runtime health), C (tool execution and recovery)
 - **Milestone**: M5
-- **Status**: Documented; automation pending
+- **Status**: Cross-session admission is automated by
+  `node scripts/e2e-tool-admission.mjs` against an isolated real host. Class,
+  session, global, mutation, queue bounds, fairness, cancellation, and timeout
+  are unit-covered by `tool_budget/tests.rs`; restart coverage remains pending.
 
 ### Release & Packaging
 
@@ -532,7 +728,7 @@ identify the platform validation still needed.
 
 - **Preconditions**: A `vX.Y.Z` tag matches `apps/desktop/package.json`; the
   Linux x64 release runner can complete `dist:linux` and has a system Electron
-  available for repackaging validation.
+  available for repackaging validation. The arm64 lane is E2E-192a.
 - **Steps**: 1) Run the tag release workflow. 2) Inspect the published GitHub
   Release assets. 3) Confirm the versioned
   `PI-Desktop-X.Y.Z-linux-x64.asar` asset is present. 4) Place that archive in
@@ -547,6 +743,31 @@ identify the platform validation still needed.
 - **Milestone**: M6+
 - **Status**: Documented; artifact export is unit-covered, native system-Electron
   repackaging remains runner validation
+
+#### E2E-192a: Linux arm64 release lane publishes native arm64 packages
+
+- **Preconditions**: A `vX.Y.Z` tag matches `apps/desktop/package.json`; GitHub's
+  arm64 `ubuntu-22.04-arm` runner is available to the repository.
+- **Steps**: 1) Run the tag release workflow. 2) Confirm the arm64 lane ran on
+  an `aarch64` runner and that the packaged
+  `target/release/pi-desktop-host-core` is an AArch64 binary. 3) Inspect the
+  published Release assets for `PI-Desktop-X.Y.Z-linux-arm64.AppImage`,
+  `pi-desktop_X.Y.Z_arm64.deb`, `pi-desktop-X.Y.Z-aarch64.rpm`,
+  `PI-Desktop-X.Y.Z-linux-arm64.asar`, and
+  `pi-host-X.Y.Z-linux-arm64.tar.gz` with its `.sha256`. 4) Confirm
+  `latest-linux.yml` still lists the x64 AppImage while
+  `latest-linux-arm64.yml` lists the arm64 one. 5) Install the arm64 AppImage,
+  deb, or rpm on an arm64 Linux machine and launch it.
+- **Expected**: Both feeds describe exactly one architecture-labelled AppImage
+  each, the arm64 packages carry an arm64 host-core, the app starts on arm64
+  Linux, and merging the lanes never replaces the x64 feed with the arm64 one.
+- **Specs linked**: `06-delivery/06-release-runbook.md`, `01-product/01-product-scope.md`
+- **Acceptance**: Quality (release artifact and packaging compatibility)
+- **Milestone**: M6+
+- **Status**: The matrix, feed naming, artifact naming, and the ASAR export are
+  unit/source-contract covered (`ci-workflow.test.mjs`, `release-asar.test.mjs`);
+  native arm64 installation remains runner validation. Microphone capture stays
+  Raspberry Pi only on arm64 Linux (D638 / ADR 0318).
 
 #### E2E-200: Linux RPM preserves the Wayland desktop identity
 
@@ -671,21 +892,29 @@ identify the platform validation still needed.
   development lane, workspace package build outputs are absent or older than
   their TypeScript sources.
 - **Steps**: 1) Launch PI-Desktop. In the development lane, use `pnpm dev`.
-  2) Observe main window appears.
+  2) Observe main window appears. In the macOS development lane, confirm the
+  menu-bar tray icon appears.
 - **Expected**: Development launch rebuilds all workspace dependencies before
   host-core and Electron startup. Window first shows the branded startup splash
   while bootstrap runs, then reveals the main shell in English with the current
   locale catalog; no compile error, missing-menu runtime error, or crash;
-  version info visible. Key lifecycle and error records are written to the
-  categorized logs. GitHub auto-update is not started until after `ensureWindow`, and a hung
-  feed cannot keep updater status on `checking` for Chromium's ~60s timeout.
+  version info visible. The macOS development bundle contains both tray icon
+  resources, and the tray starts without a missing-icon warning. Key lifecycle
+  and error records are written to the categorized logs. GitHub auto-update is
+  not started until after `ensureWindow`, and a hung feed cannot keep updater
+  status on `checking` for Chromium's ~60s timeout. The Main output root also
+  resolves from inside Rollup shared chunks (`out/main/chunks/*.js`), so the
+  renderer entry, preloads, and the forked plugin host keep their authored
+  relative paths instead of resolving one level too deep (black screen).
 - **Specs linked**: `03-runtime/07-process-model.md`, `04-ux/01-ui-ia.md`,
   `03-runtime/09-logging-and-observability.md`
 - **Acceptance**: A (app startup)
 - **Milestone**: M1
 - **Status**: Partially automated (`runtime-build-contract.test.mjs` covers the
   dependency build contract; `update-timeout.test.mjs` and
-  `auto-update.test.mjs` cover the bounded auto-check contract; Electron window
+  `auto-update.test.mjs` cover the bounded auto-check contract;
+  `main-module-path.test.mjs` covers the Main output-root contract from the
+  entry bundle and from inside `out/main/chunks/`; Electron window
   launch remains Draft)
 
 #### E2E-002: IPC bridge is functional
@@ -753,7 +982,7 @@ identify the platform validation still needed.
 
 - **Preconditions**: App running; no provider configured; the models.dev snapshot ships with the build.
 - **Steps**: 1) Open Settings → Model configuration and choose Add provider. 2) Confirm the dialog is ONE form with no stepper or Next/Back buttons. The first control is Service — a searchable menu (Choose a service, Custom endpoint, then a flat vendor list from models.dev including Xiaomi), not a native select, region grouping, or vendor-card grid. Open it, type to filter client-side, then choose **Custom endpoint**. Confirm Name and Base URL appear on one row with no helper paragraph under the URL (placeholder only), API Key and API format appear side by side on the next row (not behind Advanced), and that a focused field plus its 2px accent ring stays fully inside the dialog, including on a window narrower than 1040px. 3) Enter a name and a base URL for a service that publishes a `/models` route, then paste an API key. 4) Confirm the models section fills with the models THAT SERVICE returned, not with every model its vendor publishes; confirm a model the deployment does not host is absent. 5) Type in the filter box and confirm the list narrows client-side with no network request per keystroke. 6) Confirm each row shows the models.dev-derived context/output for models the catalog knows, that its compact text tracks the published value instead of a coarser rounded one (a 1,050,000 window reads `1.05M`, never `1.1M`), and that a model with no catalog match still lists with generic defaults. 7) Select two models with the checkboxes. 8) Expand Advanced on one chosen row, override its limits and toggle thinking chips; confirm each numeric field has a five-chip preset ladder for common values, clicking a chip writes the value, hand editing remains possible, and a non-preset value leaves the ladder unselected. Set max output to 8,192 while its context window still follows the catalog. On a model whose published image input is enabled, toggle image input off and then back on before saving, so the explicit choice equals the current catalog value. Confirm the label and optional hint sit above one compact grouped control and do not force the options onto a second row at normal dialog width; confirm all seven canonical levels are available, that published levels start selected for a known reasoning model, and that a non-reasoning or unknown row shows the same chips unselected with the manual-override hint; enable one level on that row and confirm the other row is unaffected. 9) Open the form-level Advanced and confirm the API format is present but pre-derived. 10) Add a free-form model ID the service did not return; confirm it is added with 128,000 / 8,192 / no-thinking defaults, then enable a thinking level if the endpoint supports it; confirm re-adding the same ID in different letter case is rejected as already added. 11) Save.
-- **Expected**: The service is asked first and models.dev only enriches the answer and seeds known-model defaults. Newly fetched or checked model rows stay collapsed until the user opens Advanced, so every selected model ID remains visible in the right pane after a multi-select. The settings picker always offers the seven canonical thinking levels, and the Composer later renders the explicit levels saved in the same model binding; an empty or `off`-only binding resolves to `off`. Discovery is debounced ~600 ms, does not mark loading until that window elapses, and a slow reply from an earlier keystroke never replaces a newer list; named add-path discovery waits for an API key, while an unsaved custom provider is probed with the typed base URL (and key, if any) before it exists. Preset ladders cover common context/output limits while preserving hand-edited values. The explicitly selected 8,192 output remains pinned independently of the catalog-sourced context window, and the image-input choice remains explicitly enabled after it is toggled back to the published value; neither is reinterpreted as "follow catalog" on save/reopen. Later catalog corrections change only values whose own source is `catalog`. Limit text renders through one shared compact formatter, so neighbouring published windows stay distinguishable (`1M` / `1.05M` / `1.1M`) and a compact limit never reads above its published value. Custom endpoint keeps API format beside the key and omits Base URL helper copy; named endpoints do not show format. Point the same custom form at an unreachable or unauthorized URL and confirm the left pane shows a classified error (not a raw JSON/HTML dump and not a second “no models” empty state); with cached rows from a later edit, the same error is a one-line banner above the list. Point a second provider at a base URL with no `/models` route and confirm the list falls back to the catalog, is labelled as coming from models.dev rather than the service, and still saves. The provider appears as a row with its host, model count and secret badge; the key is stored securely (not in plaintext config); `models` contains both bindings and `models[0]` remains the provider default.
+- **Expected**: The service is asked first and models.dev only enriches the answer and seeds known-model defaults. Newly fetched or checked model rows stay collapsed until the user opens Advanced, so every selected model ID remains visible in the right pane after a multi-select. The settings picker always offers the seven canonical thinking levels, and the Composer later renders the explicit levels saved in the same model binding; an empty or `off`-only binding resolves to `off`. Discovery is debounced ~600 ms, does not mark loading until that window elapses, and a slow reply from an earlier keystroke never replaces a newer list; named add-path discovery waits for an API key, while an unsaved custom provider is probed with the typed base URL (and key, if any) before it exists. Preset ladders cover common context/output limits while preserving hand-edited values. The explicitly selected 8,192 output remains pinned independently of the catalog-sourced context window, and the image-input choice remains explicitly enabled after it is toggled back to the published value; neither is reinterpreted as "follow catalog" on save/reopen. Later catalog corrections change only values whose own source is `catalog`. Limit text renders through one shared compact formatter, so neighbouring published windows stay distinguishable (`1M` / `1.05M` / `1.1M`) and a compact limit never reads above its published value. Custom endpoint keeps API format beside the key and omits Base URL helper copy; named endpoints do not show format. Point the same custom form at an unreachable or unauthorized URL and confirm one classified sentence reaches the app toast while the left pane keeps its single “no list” label (not a raw JSON/HTML dump and not a second “no models” empty state); with cached rows from a later edit the same reason is toasted while the rows stay. Point a second provider at a base URL with no `/models` route and confirm the list falls back to the catalog, is labelled as coming from models.dev rather than the service, and still saves. The provider appears as a row with its host, model count and secret badge; the key is stored securely (not in plaintext config); `models` contains both bindings and `models[0]` remains the provider default.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`, `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`, `03-runtime/14-secrets-storage.md`, `04-ux/06-settings-ia.md`
 - **Acceptance**: B (multi-model provider configuration, save key)
 - **Milestone**: M2
@@ -796,7 +1025,7 @@ identify the platform validation still needed.
 
 - **Preconditions**: One provider saved with two model bindings; one fixture provider row exists with only the legacy `default_model_id` and no `config_json.models`; one fixture row carries an unknown or legacy `apiStyle` string.
 - **Steps**: 1) Reopen the saved provider; confirm the single form opens with its cached model list painted immediately, and that the API key field explains an unchanged key is kept. 2) Confirm the live probe then refreshes that list without a retyped key, because the stored secret is reused. 3) Confirm both existing bindings are still chosen and check-marked, with their limits, thinking chips and defaults intact. 4) Enable a level the fixture catalog does not publish, edit one row's limits and save. 5) Reopen the fixture provider and confirm its legacy model appears as one chosen row with 128,000 context, 8,192 max output and all seven thinking choices available but unselected. 6) Reopen the unknown-style fixture and confirm the editor renders with Chat Completions selected instead of an error boundary; save it and confirm the repaired style is persisted. 7) Save the fixture provider without changing the model. 8) Select the second binding as the app default, reopen the provider and save unchanged; confirm the app default stays on that binding. Save another provider and confirm the app default is unchanged. Reopen the default provider, remove the selected binding, and save; confirm the app default falls back to the first remaining binding. 9) Take the service offline or revoke the key, reopen the provider, and confirm the cached rows stay visible with a compact classified discovery error rather than an empty list or a raw host dump.
-- **Expected**: Editing never drops an unmodified binding. An explicitly enabled level remains saved even when the catalog does not publish it, so the Composer reads the same binding rather than silently narrowing it; a binding whose model discovery is unavailable keeps its stored levels untouched. Legacy read materializes one binding without losing the old model ID; the subsequent write stores `config_json.models` and keeps `defaultModelId` equal to the first binding for older readers. An unknown or legacy `apiStyle` is treated as a compatibility input: the editor falls back to Chat Completions, remains usable, and repairs the stored value on save. Saving the default provider preserves `settings.defaultModelId` while the selected model remains configured; only removal of that model falls back to the first remaining binding. Editing another provider never changes the app default. A failed live probe degrades to the cached list plus a compact classified error, never to a blank picker or a raw HTTP/JSON dump, and a catalog fallback is never written into the model cache.
+- **Expected**: Editing never drops an unmodified binding. An explicitly enabled level remains saved even when the catalog does not publish it, so the Composer reads the same binding rather than silently narrowing it; a binding whose model discovery is unavailable keeps its stored levels untouched. Legacy read materializes one binding without losing the old model ID; the subsequent write stores `config_json.models` and keeps `defaultModelId` equal to the first binding for older readers. An unknown or legacy `apiStyle` is treated as a compatibility input: the editor falls back to Chat Completions, remains usable, and repairs the stored value on save. Saving the default provider preserves `settings.defaultModelId` while the selected model remains configured; only removal of that model falls back to the first remaining binding. Editing another provider never changes the app default. A failed live probe degrades to the cached list, one classified toast sentence and a one-line pane label, never to a blank picker or a raw HTTP/JSON dump, and a catalog fallback is never written into the model cache. Deleting a configured model and saving forgets that model's cached parameters, so the pane no longer paints the deleted id from cache and a later re-add starts from what the service or the catalog says. A probe that no longer publishes a model drops its cached row the same way, unless the row is the user's own (a hand-typed id, a configured binding), and a save that moves the base URL or the API format drops the answer the previous endpoint produced.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`, `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`, ADR 0114
 - **Acceptance**: F (provider persistence and migration)
 - **Milestone**: M2
@@ -872,18 +1101,22 @@ identify the platform validation still needed.
 - **Status**: Unit-covered (header merge, one-shot stream options, and the
   compaction summary request)
 
-#### E2E-005E: Model-level wire API wins over the provider style
+#### E2E-005E: Provider and model wire API precedence stays explicit
 
 - **Preconditions**: An OpenCode Go provider is configured; a deterministic
   fixture serves `muse-spark-1.3-contributor` on `/responses` and 500s it on
-  `/chat/completions`. A second generic provider serves the same model id on
-  `/chat/completions`.
+  `/chat/completions`. A generic provider and a custom endpoint each serve the
+  same model id; the custom model metadata pins `openai-completions`, while its
+  saved provider style is Responses.
 - **Steps**: 1) Select the muse model on the OpenCode Go provider and send a
   turn. 2) Capture the outbound request path. 3) Repeat against the generic
-  provider with the same model id.
+  provider with the same model id. 4) Select the model on the custom endpoint
+  and send a turn, then capture its outbound request path.
 - **Expected**: The OpenCode Go turn posts to `/responses` (the model-level
   `api: "openai-responses"` pin wins); the generic turn still posts to
-  `/chat/completions`. Replayed history carries the resolved API.
+  `/chat/completions`; the custom endpoint posts to `/responses` because its
+  saved provider style wins over the model metadata. Replayed history carries
+  the resolved API.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`,
   `03-runtime/12-provider-config-schema.md`, ADR 0116
 - **Acceptance**: F (runtime provider requests)
@@ -1087,13 +1320,18 @@ identify the platform validation still needed.
   label while the probe is in flight, and then shows rows. 3) Click Fetch list
   again. Confirm it keeps the current rows on screen and replaces them with the
   live answer. 4) Take the service offline and click Fetch list; confirm the
-  classified error appears and the previous rows remain. 5) Restore the
+  classified error reaches the toast and the previous rows remain. 5) Restore the
   service, click Fetch list, and confirm the live list returns. 6) Repeat in
   the vendor-account editor.
 - **Expected**: The header action probes the service immediately, including
   during the edit debounce after a URL becomes valid. Automatic discovery on
   credential edits is unchanged. The same control is present for both
   credential kinds because both dialogs render the shared picker.
+- **Revocation regression**: Configure two served models, revoke one upstream,
+  add another, then Fetch list. The left service pane shows the current served
+  pair, including when the revoked ID has a published catalog record. The right
+  chosen pane retains both saved bindings and their overrides; refresh does not
+  delete configuration. A manual/offline fallback still exposes configured IDs.
 - **Specs linked**: `03-runtime/13-model-catalog-and-selection.md`,
   `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`
 - **Acceptance**: B (multi-model provider configuration)
@@ -1355,11 +1593,13 @@ identify the platform validation still needed.
 
 - **Preconditions**: A session can produce both a deliberately delayed first
   token and a streaming response.
-- **Steps**: 1) Send ordinary text and stop before assistant text, thinking, or
-  a tool row begins. 2) Confirm the user row is undone and the text returns to
-  the composer. 3) Send again, wait for partial output, then stop during the
-  stream. 4) Observe the transcript and composer.
-- **Expected**: The unanswered send is undone and its draft restored. The
+- **Steps**: 1) Send ordinary text and click Stop immediately, including while
+  the prompt is still being admitted. 2) Confirm the user row is undone and
+  the text returns to the composer after that first Stop. 3) Send again, wait
+  for partial output, then stop during the stream. 4) Observe the transcript
+  and composer.
+- **Expected**: The first Stop is honored even if prompt admission is still in
+  progress; the unanswered send is undone and its draft restored. The
   streaming send stops with its partial response preserved and no draft
   restoration or duplicate user turn. The session remains usable.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`
@@ -1599,6 +1839,35 @@ identify the platform validation still needed.
 - **Coverage**: `scripts/e2e/composer-submission.tsx`, executed by
   `pnpm test:e2e:composer-paste`; real desktop recording uses isolated data and
   a local model with a controlled response delay.
+
+#### E2E-SESSION-reference-conversation-link: A pasted conversation link carries that conversation into the turn
+
+- **Preconditions**: Isolated desktop profile; one project with conversations A
+  and B, and a second project with conversation C; a configured model that
+  answers from the context it is given.
+- **Steps**: 1) In A's conversation overflow menu choose Copy conversation
+  link and read the clipboard. 2) Open B, paste the link into the Composer
+  draft, send it, and inspect the user message. 3) Ask a follow-up in B without
+  repeating the link. 4) Paste C's link into B and send. 5) In A, send A's own
+  link. 6) Rename A from its conversation overflow menu, then return to B.
+- **Expected**: The clipboard holds `pi-desktop://session/<A's id>`. B's user
+  message keeps the link text visible and shows a chat-icon chip labelled with
+  the catalog's reference label and A's title; activating the chip opens A. The
+  answer uses A's content, and the follow-up still reads the same reference
+  without the link being written again. C's link and A's own link attach
+  nothing: the message keeps its plaintext and the model receives no excerpt
+  from them, because the resolver drops a self-reference before any read and
+  discards an excerpt whose conversation belongs to another project.
+  Renaming A afterwards renames the chip in B, which names the conversation from
+  its current title; the excerpt the model already read keeps the name recorded
+  when the reference was made.
+- **Specs linked**: `04-ux/08-component-spec.md` §20B,
+  `03-runtime/04-data-storage.md`, `03-runtime/02-agent-runtime.md`
+- **Acceptance criterion**: C — Conversation & stream
+- **Milestone**: M2
+- **Status**: Draft — the resolver and the chip are covered at source level by
+  `apps/desktop/test/session-references.test.mjs` and
+  `apps/desktop/test/session-reference-ui.test.mjs`
 
 #### E2E-COMPOSER-input-history-recall
 
@@ -3017,12 +3286,12 @@ identify the platform validation still needed.
 
 #### E2E-024J: Plugin theme applies and falls back when withdrawn
 
-- **Preconditions**: A marketplace/package-installable `examples/plugins/hello` variant (`demo.hello`) whose `midnight` theme CSS references a declared package-relative image at `art/preview.png`; a plugin with CSS using `@import` or remote `url()` for rejection plus a comment-only variant; an asset theme with `windowAppearance` variants with and without `ui.window.appearance`.
+- **Preconditions**: A marketplace/package-installable `examples/plugins/hello` variant (`demo.hello`) whose `midnight` theme CSS references a declared package-relative image at `art/preview.png`; a plugin with CSS using `@import` or remote `url()` for rejection plus a comment-only variant; an asset theme with `windowAppearance` variants with and without `ui.window.appearance`, including `cornerRadius: 0` and an invalid value above 24.
 - **Steps**: 1) Install the packaged Hello variant from Marketplace or its `.piplug` package and select `Hello Midnight` in Settings → General → Theme. 2) Restart the app. 3) Disable the providing plugin. 4) Re-enable it, then uninstall it. 5) Load the plugin with unsafe CSS. 6) Load the comment-only variant. 7) Select the asset variant's theme on Windows/Linux and on macOS, verify the package-relative image renders through `plugin-asset:` in the shell and the plugin's panel, and load a sheet with an undeclared package-relative `url()` to verify it is refused. 8) Deselect its theme after removing `ui.window.appearance`.
-- **Expected**: The packaged plugin installs successfully with its relative image resolved inside the plugin root; its theme appears in the picker alongside the built-ins and applies immediately, with the image served through `plugin-asset:`; the choice survives restart as `plugin:demo.hello:midnight`; disabling or uninstalling the provider falls back to `system` instead of an unstyled shell; unsafe CSS is refused at load with the reason logged and no `<style>` element injected; the comment-only sheet loads and contributes its theme, because the sanitizer only inspects CSS the browser would apply; the declared asset paints through `plugin-asset:` in the shell and in the plugin's own panel, an undeclared reference is refused with the reason logged, the declared background colours the native window on Windows/Linux and is never sent on macOS, and deselecting the theme or dropping the grant returns the window to the host background; the whole shell follows the theme, including the work-panel column, its header, and the browser/file viewer strips, all of which read `--ds-bg-dock` / `--ds-bg-dock-raised` rather than a literal.
+- **Expected**: The packaged plugin installs successfully with its relative image resolved inside the plugin root; its theme appears in the picker alongside the built-ins and applies immediately, with the image served through `plugin-asset:`; the choice survives restart as `plugin:demo.hello:midnight`; disabling or uninstalling the provider falls back to `system` instead of an unstyled shell; unsafe CSS is refused at load with the reason logged and no `<style>` element injected; the comment-only sheet loads and contributes its theme, because the sanitizer only inspects CSS the browser would apply; the declared asset paints through `plugin-asset:` in the shell and in the plugin's own panel, an undeclared reference is refused with the reason logged, the declared background colours the native window on Windows/Linux and is never sent on macOS, and `cornerRadius: 0` makes only the Windows main window rectangular while the authorized theme is selected. Deselecting the theme or dropping the grant restores the host background and 4 DIP Windows corners; a radius above 24 rejects without changing the window. The whole shell follows the theme, including the work-panel column, its header, and the browser/file viewer strips, all of which read `--ds-bg-dock` / `--ds-bg-dock-raised` rather than a literal.
 - **Specs linked**: `07-plugins/02-plugin-manifest-schema.md`, `07-plugins/04-plugin-security.md` §3.1, `04-ux/07-ui-design-system.md`, D175
 - **Acceptance**: G (theme contribution) + Security
-- **Status**: Unit-covered (`plugin-themes.test.mjs`, `theme-css` SDK tests, host-core package-relative asset/install tests); visual scenario Draft
+- **Status**: Unit-covered (`plugin-themes.test.mjs`, `theme-css` SDK tests, host-core package-relative asset/install tests). `test:e2e:window-controls` selects an authorized test plugin theme with `cornerRadius: 0` and returns to a built-in theme, verifying the native shape follows both choices. The broader asset visual scenario remains Draft.
 
 #### E2E-PLUGIN-runtime-theme-apis
 
@@ -3051,6 +3320,20 @@ identify the platform validation still needed.
 - **Acceptance**: G (MCP bridge) + E (tools & permissions) + Security
 - **Status**: Unit-covered (`plugin-mcp.test.mjs` stdio + HTTP stubs); agent-facing scenario Draft
 
+#### E2E-MCP-pi-client-owner-policy: Pi protocol under existing Desktop owners
+
+- **Preconditions**: Pi 1.0.0 with the pinned host-policy patch; offline stdio and
+  HTTP fixtures, no paid provider or user credentials.
+- **Steps**: Run `plugin-mcp.test.mjs`, `user-mcp.test.mjs`,
+  `mcp-stdio-launch.test.mjs`, `mcp-call-registry.test.mjs`, `mcp-oauth.test.mjs`,
+  and `mcp-oauth-discovery.test.mjs` under `apps/desktop/test` using `node --test`.
+- **Expected**: Concurrent discovery starts one process; host launch/env/egress
+  policies remain enforced; Pi delivers progress and structured content; progress
+  cannot extend the total call deadline; cancellation reaches the stdio peer and
+  leaves other calls usable. OAuth uses Pi DCR/PKCE/refresh with host TLS/redirect,
+  scope, callback-state, and encrypted-storage boundaries. No legacy client runs.
+- **Status**: Offline integration-covered; packaged Electron journey NOT RUN.
+
 #### E2E-MCP-CANCEL: Stop interrupts only the calling session's MCP request
 
 - **Preconditions**: Two Agent sessions share one user or plugin MCP server;
@@ -3064,6 +3347,28 @@ identify the platform validation still needed.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md` §12a,
   `07-plugins/04-plugin-security.md` §8.1
 - **Status**: Client and session-isolation unit-covered; full desktop journey Draft
+
+#### E2E-MCP-tool-requires-approval: User MCP tools prompt under ask and accept-edits
+
+- **Preconditions**: A project-bound Agent session; one user-configured stdio
+  MCP server whose tool list annotates a tool as read-only/low risk.
+- **Steps**: 1) With the session in `ask`, ask the agent to call the MCP tool.
+  2) Answer the card with allow-once, call it again, then answer with
+  allow-session and call it a third time. 3) Switch to `accept-edits` in a new
+  session and repeat the call. 4) Switch to `auto` and call it. 5) Switch to
+  Plan, then Goal, and call it.
+- **Expected**: Under `ask` and `accept-edits` every call shows an approval card
+  with reason "MCP server tool requires approval" at `medium` risk, regardless of
+  the server's self-declared annotation. Allow-once covers only that call;
+  allow-session suppresses further cards for the same `mcp_<serverId>_<tool>`
+  name in that session only, and does not cover other tools of the server.
+  `auto` runs the tool without a card. Plan and Goal deny it even with a
+  session grant.
+- **Specs linked**: `03-runtime/03-tools-and-permissions.md`,
+  `05-security/01-security.md`, D640, ADR `mcp-tool-approval-risk`
+- **Acceptance**: E (tools & permissions) + Security
+- **Status**: Unit-covered (host-core `permissions.rs` MCP risk and mode tests);
+  desktop journey Draft
 
 #### E2E-024L: Resident plugin service is supervised and visible
 
@@ -3305,7 +3610,7 @@ identify the platform validation still needed.
 
 #### E2E-195: Linux glibc below 2.35 names supported distros
 
-- **Preconditions**: Linux x64 packaged app; the machine glibc is older than
+- **Preconditions**: Linux x64 or arm64 packaged app; the machine glibc is older than
   2.35 (for example Ubuntu 20.04 / Debian 11 / Fedora 35), or a test doubles
   `process.report` to `2.31`.
 - **Steps**: 1) Launch the AppImage, deb, or rpm. 2) Observe the main window and
@@ -3504,7 +3809,7 @@ identify the platform validation still needed.
 
 - **Preconditions**: One retained logical project is visible in the sidebar and
   in Settings → Project archive; it has a primary folder and one additional
-  folder.
+  folder without chats.
 - **Steps**: 1) Open the project's overflow menu in the sidebar and choose
   Edit project. 2) Change the name, remove the additional folder, and add it
   again with the native folder picker. 3) Confirm the Primary row cannot be
@@ -3520,14 +3825,35 @@ identify the platform validation still needed.
   Primary folder as the first row, and updates the root count without removing
   another row. Saving persists one logical group with the adjusted roots; the
   name survives restart, while normalized paths, workspace identity, sessions,
-  and on-disk folders remain unchanged. A root with existing chats is rejected
-  instead of orphaning those chats.
+  and on-disk folders remain unchanged.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/08-component-spec.md`,
   `04-ux/09-interaction-patterns.md`
 - **Acceptance**: D (workspace identity), F (local presentation persistence)
 - **Milestone**: M5
 - **Status**: Unit-covered (`project-edit.test.mjs`,
   `sidebar-preferences.test.mjs`); rendered scenario Draft
+
+#### E2E-048c: Detach a project folder with chats and delete it
+
+- **Preconditions**: One retained logical project has a primary folder and an
+  additional folder with at least one saved chat. All chats are idle.
+- **Steps**: 1) Open Edit project and remove the additional folder. 2) Save and
+  inspect the remaining group and the standalone project row for the detached
+  folder. 3) Open the detached project's chat and confirm its transcript is
+  intact. 4) Delete the detached project using its two-click delete action.
+  5) Inspect the remaining group, project list, chat list, and folder on disk.
+- **Expected**: Removing the folder from the group preserves its project row,
+  chats, and transcripts, and exposes it as a standalone project. Future chats
+  use the detached project's path-scoped context; shared instructions and
+  memory remain with the original group. The confirmed delete then removes that
+  project's sessions and transcripts while keeping its folder on disk; the
+  original group remains with its primary folder.
+- **Specs linked**: `03-runtime/04-data-storage.md`,
+  `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, ADR 0249,
+  ADR 0251.
+- **Acceptance**: C (project and chat interaction), F (persistence), Quality.
+- **Milestone**: M5
+- **Status**: Host RPC integration-covered; full UI scenario Draft
 
 #### E2E-048A: Project session lists fold after the ten most recent rows
 
@@ -3777,7 +4103,7 @@ identify the platform validation still needed.
   and native bounds while opening, repeating the same open action, resizing the
   panel, collapsing, reopening, and closing the final resource. Repeat collapse
   on Windows while watching the entire frameless window. 9) With the panel open,
-  resize the application from each native edge and confirm only the application
+  resize the application from each edge and confirm only the application
   bounds change; the panel remains at its renderer-committed width. Resize from
   the left edge and repeat after toggling the sidebar. 10) Open, resize, and
   collapse on a small work area, then repeat while maximized and fullscreen. 11)
@@ -4583,7 +4909,12 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   inspect the sidecar model snapshot/request metadata. 4) Use Settings → Model
   configuration to force a models.dev refresh and confirm the new record is
   visible without changing the bundled file or writing a user cache. 5) Repeat
-  with an ID absent from models.dev.
+  with an ID absent from models.dev and confirm its limits display as unknown
+  in Settings. 6) Open the picker at a wide but short
+  viewport (1254 × 772 CSS px): confirm the model panes remain side by side,
+  both lists scroll inside their panes, and a selected model's Advanced fields
+  are reachable. Narrow the viewport to 520 × 480 CSS px and confirm the panes
+  stack while both lists and Advanced remain reachable.
 - **Expected**: The matching models.dev record is authoritative, including its
   `limit`, `modalities`, `reasoning_options`, `tool_call`,
   `structured_output`, dates, and cost fields; no provider secret is sent to
@@ -4592,14 +4923,18 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   model shows PDF in its modality metadata; PDF attachments remain bounded file
   references until the selected transport exposes a native PDF block. A
   provider-discovered or explicitly configured ID absent from models.dev remains
-  runnable with the generic text-only, non-reasoning shape; pi-ai supplies only
-  the selected wire adapter, OAuth flow, and account model availability. A
-  ChatGPT Plus/Pro or GitHub Copilot account lists `gpt-6-sol`, `gpt-6-luna`,
-  and `grok-4.7` from the pinned pi-ai 0.87.1 catalog; models.dev then
-  supplies their published metadata.
+  runnable with the generic text-only, non-reasoning shape; Settings shows an
+  em dash instead of presenting its 128k / 8.2k runtime fallback as a published
+  model limit. Explicit user limits remain visible. pi-ai supplies only
+  the selected wire adapter, OAuth flow, and fallback account IDs. The custom
+  endpoint keeps its selected API style even if the published model adapter
+  differs; named providers may retain a model-level route when required. A
+  ChatGPT Plus/Pro or GitHub Copilot account lists IDs returned by its live
+  account endpoint; matching models.dev records supply their published metadata, while
+  live-only IDs absent from models.dev keep generic chat limits and capabilities.
 - **Specs linked**: `02-architecture/02-tech-stack.md`,
   `03-runtime/11-provider-model-system.md`,
-  `03-runtime/13-model-catalog-and-selection.md`, ADR 0134
+  `03-runtime/13-model-catalog-and-selection.md`, ADR `models-dev-catalog-authority`
 - **Acceptance**: B (model config), C (conversation & stream), Security
 - **Milestone**: M5
 - **Status**: Unit-covered (`model-capabilities.test.ts`,
@@ -5948,8 +6283,11 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     before a checkpoint boundary drops that record specifically; records
     anchored on surviving messages are preserved/remapped.
   - The exact provider overflow removes only the failed assistant from model
-    context, retries once after compaction, and does not loop on a second
-    overflow.
+    context, keeps the visible assistant bubble in a running state while
+    compaction/retry is pending, retries once after compaction, and does not
+    loop on a second overflow. A recoverable first overflow emits no terminal
+    error message or `error` event; only a failed retry (or failed compaction)
+    closes the bubble with `CONTEXT_TOO_LARGE` / the actual terminal error.
   - If automatic summary generation fails, a durable retained-tail fallback
     checkpoint is appended, the run stays active, and one warning explains
     that older model context was reduced; the transcript row for that
@@ -6445,6 +6783,22 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Milestone**: M6
 - **Status**: Automated (passed 2026-08-04): `test:e2e:plan` plus host-core
   permission/policy and agent-runtime tool-composition tests
+
+#### E2E-PLAN-WORKSPACE: Missing workspace does not strand a contract turn
+
+- **Preconditions**: Isolated host, active global workspace, temporary session
+  without a persisted project workspace; repeat for Plan and Goal.
+- **Steps**: Enter the contract from Agent mode and submit. In the runtime,
+  submit from a workspace-less contract session, receive the tool error, deliver
+  a final explanation, and repeat on
+  the user's next "continue" turn. Use a bound project as the success control.
+- **Expected**: Entry succeeds and leaves the session in planning state.
+  Submission fails with `PLAN_WORKSPACE_REQUIRED` without an approval or
+  artifact. The runtime returns a non-terminating error with workspace binding
+  guidance and permits a final assistant response. No execution is authorized.
+  Bound-project submission still produces a pending immutable checkpoint.
+- **Status**: Automated by `scripts/e2e-plan.mjs` and the runtime Plan transition
+  tests with a scripted provider boundary.
 
 #### E2E-106: SubmitPlan rejects into editable planning and resubmits a new artifact
 
@@ -7285,7 +7639,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   5. Ask again in each project.
   6. In the already-open `~/personal/site` session — assembled while the server
      was global — ask the agent to call one of the server's tools by name.
-  7. Edit the server's `env` and save; ask in `~/work/api` again.
+  7. Edit the server's `env`, set a 45-second connection timeout, and save.
+     Reopen it to confirm the value persisted, then clear the timeout and save.
+     Ask in `~/work/api` again.
   8. Rename the server and re-scope it; ask once more.
   9. Point the server's command at a binary that does not exist, save, and open
      a new session.
@@ -7317,6 +7673,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   - The `env` edit drops the connection: the next assembly or call re-handshakes, and
      the tool's behaviour reflects the new value. The rename in step 8 does not
      reconnect anything.
+  - The editor restores a saved timeout when reopened. Clearing it removes the
+    override so the next connection uses the default handshake timeout.
   - The broken command records `failed` with a message, contributes no tools,
      and is not re-dialled on the following session assembly; pressing Test
      retries it.
@@ -7347,6 +7705,14 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Milestone**: M5
 - **Discovery regression (#1221):** Local HTTP authorization flow covers root and path issuers, ordered OAuth/OIDC fallbacks, challenge-scope precedence, all protected-resource scopes, and omitted scope when absent. It checks the real callback, PKCE token exchange and storage handoff using synthetic tokens; no external account is contacted.
 - **Status**: Unit-covered (`apps/desktop/test/mcp-oauth.test.mjs`, `apps/desktop/test/user-mcp.test.mjs`); local HTTP flow covered by `apps/desktop/test/mcp-oauth-discovery.test.mjs`; full UI journey Draft
+
+#### E2E-261: Clear a per-server MCP timeout override
+
+- **Preconditions**: Isolated Electron profile and a saved MCP server with a 45-second timeout override; no live server or provider.
+- **Steps**: Open the production MCP editor, enter an out-of-range value and confirm Save is disabled, then clear the timeout field and save.
+- **Expected**: An invalid timeout cannot be saved. Clearing an existing override is valid and serializes as `timeoutSeconds: null`, allowing host-core to remove the override and use the default.
+- **Acceptance**: `node scripts/e2e-mcp-timeout-clear.mjs` exercises the production editor and save serialization. `apps/desktop/test/mcp-editor-timeout.test.mjs` covers value conversion; host-core MCP tests cover null clearing and default behavior. No live MCP server is contacted.
+- **Milestone**: M6+
 
 #### E2E-SKILL-import-multiple-folders
 
@@ -7733,7 +8099,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 #### E2E-102e: Unknown model ids fail closed for vision transport
 
-- **Preconditions**: A custom provider/model id absent from the pi-ai catalog,
+- **Preconditions**: A custom provider/model id absent from the models.dev catalog,
   discovery data that incorrectly labels it `vision`, no explicit
   `supportsImages` binding override, and a pasted PNG.
 - **Steps**:
@@ -8220,6 +8586,25 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   transport and orchestration integration test, not live OAuth, visual UI or
   Host persistence validation. Post-integration main E2E is NOT RUN.
 
+#### E2E-OAUTH-anthropic-copy-code: Anthropic copy-code login uses the existing prompt bridge
+
+- **Preconditions**: A local token-endpoint fixture intercepts only Anthropic's
+  OAuth token URL. The production pi-ai Anthropic flow and Desktop `VendorOAuth`
+  use an in-memory Host RPC fixture. No real account or remote endpoint is used.
+- **Steps**: Start an Anthropic vendor login; choose `copy_code` from the
+  `select` prompt; inspect the generated authorization URL; provide a synthetic
+  `code#state` to the manual-code prompt; finish token exchange against the
+  fixture; resolve request auth and inspect the stored Host credential.
+- **Expected**: The select options retain `browser` and `copy_code`; the
+  authorization URL uses `https://platform.claude.com/oauth/code/callback`;
+  the token exchange succeeds; refresh credentials stay under the
+  provider-scoped Host OAuth reference and only the short-lived access token is
+  returned to runtime auth. No API-key secret is created.
+- **Specs linked**: `03-runtime/14-secrets-storage.md` §10; `07-plugins/16-trusted-extensions.md` §4.
+- **Acceptance**: B (vendor accounts), Security, Quality.
+- **Status**: Local provider-flow integration fixture; no live account or visual
+  renderer validation.
+
 #### E2E-151: Multiple vendor accounts stay isolated through login, use, and removal
 
 - **Preconditions**: A build with `registerBunOAuthFlows()` running at startup
@@ -8404,16 +8789,20 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   6. Click a project file path in the conversation. Confirm it opens in this
      view on that file — a chat click now prefers the file view over the host
      `file:` tab.
-  7. Disable the File Manager plugin. Confirm the view disappears from the menu
+  7. Click a conversation reference to `src/example.ts:42`. Confirm the host
+     `file:` tab opens at line 42 even though the File Manager plugin is enabled.
+  8. Disable the File Manager plugin. Confirm the view disappears from the menu
      and the panel, and that a clicked conversation file path falls back to the
      host `file:<path>` tab under Open resources.
-  8. Re-enable it, then restart the app. Confirm the enabled state and the tree
+  9. Re-enable it, then restart the app. Confirm the enabled state and the tree
      return, and that the registry did not gain a duplicate row.
 - **Expected**: A panel surface runs entirely on the public plugin contribution
   channel, is user-disableable, cannot be uninstalled, and survives restart. Its
   host-mediated actions obey the declared `fs.read` scope, and its own reads and
   writes stay inside the jail of the one project folder it is browsing
-  (ADR 0241, ADR 0263).
+  (ADR 0241, ADR 0263). Plain project-file links open in the bundled view; a
+  positioned `path:line` reference opens the host file tab and scrolls the
+  requested line even while the plugin view is available.
 - **Specs linked**: `07-plugins/03-plugin-api.md` §3,
   `07-plugins/13-plugin-permissions-matrix.md` §2,
   `04-ux/08-component-spec.md` §5, ADR 0104, ADR 0109, ADR 0111,
@@ -8551,19 +8940,27 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
      the provider's configured base URL/API style. 3. Force a Settings catalog
      refresh and confirm it refetches models.dev without changing the bundled
      release file or writing a user cache. 4. Add an ID absent from models.dev
-     and inspect its generic fallback card.
+     and inspect its generic fallback card. 5. In the OAuth protocol fixture,
+     sign in to an account that offers a new Claude ID absent from models.dev
+     while a same-tier Pi sibling exists. Resolve its runtime binding, apply
+     runtime model configuration without a saved model binding, and send a
+     request through the real Anthropic adapter to an intercepted HTTP boundary.
+     Confirm the sibling does not supply chat limits, reasoning levels or effort
+     mappings.
 - **Expected**: models.dev fields prefill known model bindings and remain the
-  sole metadata source. Provider keys are never included in the fixed
-  models.dev request. Provider discovery remains available only to supply
-  custom/account-specific IDs; those IDs receive the generic text-only,
-  non-reasoning defaults. pi-ai supplies the selected transport and OAuth/account
-  availability, not model metadata.
-- **Specs linked**: `03-runtime/11-provider-model-system.md` §6.2,
+  published metadata source. Provider keys are never included in the fixed
+  models.dev request. Custom IDs without metadata retain generic defaults.
+  An OAuth live-only ID does not inherit metadata from a Pi sibling; only an
+  exact models.dev match supplies its chat limits and reasoning shape. The
+  selected adapter keeps its wire behavior, and Copilot Bearer authentication
+  remains unchanged.
+- **Specs linked**: `03-runtime/11-provider-model-system.md` §6.2 and §8a,
   `03-runtime/13-model-catalog-and-selection.md` §11.1–§12, ADR 0134
 - **Acceptance**: B (model config), C (conversation & stream), Security
 - **Milestone**: M6+
-- **Status**: Unit/source-contract covered; full provider-dialog journey Draft
-  (run only in a capable environment when this surface changes)
+- **Status**: OAuth-to-runtime-binding-to-adapter HTTP contract automated in
+  `apps/desktop/test/vendor-oauth-login.test.mjs`. Full provider-dialog journey
+  Draft. No live account or paid provider request is required for this fixture.
 
 #### E2E-NAV-plugins-button-goes-back: Plugins footer reuses navigation history
 
@@ -8862,10 +9259,49 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `pnpm test:e2e:settings-scroll`; full renderer-driven password persistence
   assertions and checkpoint-level local recovery fault injection remain.
 
+**E2E-CHAT-session-todo-checklist: TodoWrite to session-aware TodoDock**
+
+- **Preconditions**: An isolated local Electron profile with a deterministic
+  Agent/host fixture, two Desktop sessions, and no real provider or paid API.
+- **Steps**: Start a multi-step Agent turn that calls `TodoWrite` with ordered
+  pending and `in_progress` items. Observe the TodoDock above the Composer,
+  expand it, switch sessions, and confirm the checklist stays session-scoped.
+  Complete and cancel items, confirm the bounded eight-row display and the
+  all-cancelled label, then clear the checklist and reload/restart the host.
+  Deliver an out-of-order older `todos.changed` event and confirm it cannot
+  replace the newer snapshot. Exercise invalid payload, Plan/Goal, delegated,
+  and remote-session paths.
+- **Expected**: Host SQLite is authoritative; each successful full replacement
+  advances revision, including clear, and emits one committed `todos.changed`
+  snapshot. Invalid or unauthorized writes do not mutate or emit. TodoDock
+  renders plain text, does not take focus, resets expansion on session changes,
+  rejects stale events, and skips local recovery for `remote:` sessions because
+  RACP v1 has no Todo snapshot operation.
+- **Specs**: `03-runtime/03-tools-and-permissions.md`,
+  `03-runtime/04-data-storage.md`, `03-runtime/06-host-rpc-protocol.md`,
+  `04-ux/08-component-spec.md`, ADR 0312.
+- **Acceptance**: C / E / F / Quality / Security.
+- **Milestone**: M6+.
+- **Automation**: `pnpm test:e2e:todos` exercises the isolated Electron
+  checklist journey through the production Agent's ToolSearch/TodoWrite path,
+  the production renderer, and a real host/SQLite profile. Only the external
+  model stream and preload transport are fixtures; no live provider or user
+  profile is used. The scenario includes Unicode truncation with warning replay,
+  single-active-item normalization, a
+  failed initial read followed by host recovery without changing sessions,
+  cached-snapshot reconciliation, and stale-event rejection. Runtime
+  `runtime-todos.test.ts` exercises Agent tool validation, overlong content
+  normalization, and continuation through a deterministic provider.
+- **Status**: Run against the exact request candidate after building the
+  desktop and host. Host-core and targeted renderer tests are companion checks,
+  not substitutes for the Electron journey.
+
 ## 8. Traceability Matrix
 
 | Acceptance | Scenarios |
 |---|---|
+| C / E / F / Quality / Security — Session Todo checklist | E2E-CHAT-session-todo-checklist |
+| C / E / Security / Quality — Live Voice four-stage interaction | E2E-LIVE-VOICE-four-stage-ui |
 | C / F — Hourly task updates | E2E-SCHEDULED-manual-to-hourly |
 | C / F / Quality — Saved project isolation | E2E-SCHEDULED-manual-workspace-binding |
 | C / F / Quality — Desktop automations | E2E-SCHEDULED-desktop-automation-lifecycle |
@@ -8876,8 +9312,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | A / C / Quality — Sidebar material and settings return | E2E-LAYOUT-sidebar-settings |
 | C / Quality — Destination loading and focus | E2E-087b |
 | A / H / Quality — Renderer process crash recovery | E2E-RUNTIME-renderer-crash-recovery |
+| C / F / Quality — Project folder with chats detaches and deletes safely | E2E-048c |
 | B / F / Security — Provider copy | E2E-PROVIDER-copy-config-without-credentials |
 | B / F / Quality — Selected model order | E2E-MODEL-selected-order-persists |
+| E / F / Quality — MCP server timeout override | E2E-261 |
 | A — App startup | E2E-001, E2E-002, E2E-003, E2E-004, E2E-067, E2E-076, E2E-079, E2E-092, E2E-097, E2E-143, E2E-150, E2E-168, E2E-204 |
 | A / C / F / Quality — Tray session navigation | E2E-TRAY-bounded-session-navigation |
 | B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-163, E2E-166, E2E-172, E2E-174, E2E-197, E2E-005G, E2E-005J, E2E-199, E2E-201, E2E-202, E2E-203, E2E-205, E2E-206, E2E-209 |
@@ -8935,6 +9373,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 | Milestone | Scenarios |
 |---|---|
+| Post-MVP experimental interaction maintenance | E2E-LIVE-VOICE-four-stage-ui |
 | M1 | E2E-001, E2E-002, E2E-003, E2E-028, E2E-029 |
 | M2 | E2E-004, E2E-005, E2E-006, E2E-007, E2E-008, E2E-008d, E2E-008e, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-020, E2E-021, E2E-021a, E2E-027, E2E-031, E2E-036, E2E-037, E2E-042, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-COMPOSER-narrow-controls, E2E-144, E2E-005J, E2E-201, E2E-202, E2E-207, E2E-206 |
 | M3 | E2E-012, E2E-013, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-040 |
@@ -8947,6 +9386,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174, E2E-176, E2E-179, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-202, E2E-203, E2E-205, E2E-209, E2E-210, E2E-UPDATE-preference-and-once-only-reminder, E2E-212, E2E-213, E2E-214, E2E-215, E2E-216, E2E-217, E2E-218, E2E-259, E2E-219, E2E-257, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation |
 | M6+ (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
 | M6+ (Selected model order) | E2E-MODEL-selected-order-persists |
+| M6+ (MCP server timeout override) | E2E-261 |
 | M6+ (Destination loading and focus) | E2E-087b |
 | M6+ (Session list responsiveness) | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | M6+ (Windows updater cache) | E2E-260 |
@@ -8957,6 +9397,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M6+ (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
+| Post-baseline local automation (MCP `pi_session_get` large compaction) | E2E-MCP-session-get-projects-large-compaction |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
 | Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-HOOKS-prompt-chain, E2E-HOOKS-cancel-and-dispose, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | Trusted extensions (R7 v1 npm recovery) | E2E-PLUGIN-import-extension-recovers-missing-npm |
@@ -8995,9 +9436,8 @@ The `US-UI-*` visual scenarios (§UI shell visual scenarios) trace to the
 Codex parity decisions in [decisions-log §D](../08-meta/decisions-log.md)
 rather than the A–H criteria; their gold source is the capture suite.
 
-The release artifact paths are covered by E2E-192, E2E-196a, E2E-196b, E2E-196c,
-and E2E-200
-(Quality, M6+).
+The release artifact paths are covered by E2E-192, E2E-192a, E2E-196a,
+E2E-196b, E2E-196c, and E2E-200 (Quality, M6+).
 
 ---
 
@@ -11360,10 +11800,11 @@ This test plan spec is accepted when:
   adoption, previous-display replan regression, work-area clamping); the
   two-display desktop journey and the relaunch/hotplug legs are pending
 
-#### E2E-167: Native edge resize stays smooth and persists the settled bounds
+#### E2E-167: Window edge resize stays smooth and persists the settled bounds
 
 - **Preconditions**: PI-Desktop is open in a normal, non-maximized window on
-  macOS, Windows, or Linux. Run the case with the work panel closed and once
+  macOS, Windows, or Linux. On Windows, the left, bottom, and right rim must
+  have no visible native border. Run the case with the work panel closed and once
   with it open at a committed width.
 - **Steps**:
   1. Drag each reachable window edge and one corner slowly, including a brief
@@ -11375,21 +11816,38 @@ This test plan spec is accepted when:
      native bounds stay fixed. Repeat below the panel minimum and above its
      maximum, then verify the target follows the live budget (`client width - 360px - expanded sidebar`) instead of a fixed cap.
   4. Close and relaunch the app after the resize settles.
+  5. On Windows, start an edge gesture, press Escape, and verify original bounds
+     return. Release the pointer outside the original window bounds, then
+     maximize and enter fullscreen; native hit regions must not block
+     window controls or content in those states.
+  6. On Windows, inspect the default 4 DIP corner cutouts before and after
+     resizing. Apply an authorized theme with `cornerRadius: 0`, then return to
+     a built-in theme. Reject an out-of-range radius without changing the shape.
 - **Expected**: Native edge and corner hit regions remain available in frameless
   chrome, the minimum size remains 800×560 (capped to the display
   work area), and the recovery watchdog does not
   compete with a slow resize stream. The renderer-owned divider updates the
   bounded panel target without changing native bounds; the last settled window
-  bounds and the committed panel width reopen after relaunch. No temporary
+  bounds and the committed panel width reopen after relaunch. Windows uses
+  Electron's frameless native hit regions without the thick-frame rim; no left, bottom,
+  or right native rim is visible. No temporary
   work-panel reservation width is persisted or restored.
+  The four normal-window corners have no painted or interactive pixels outside
+  the active radius; the default is 4 DIP, an authorized theme may choose 0..24
+  DIP, and maximized/fullscreen windows are rectangular.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,
   `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
   ADR 0029 / ADR 0151
 - **Acceptance**: A (app shell), F (persistence), Quality
 - **Milestone**: M6+
-- **Status**: Unit/source-contract covered; native desktop edge/corner journey
-  remains pending
+- **Status**: `test:e2e:window-controls` covers corner cutouts, theme radius
+  changes, fullscreen, maximize, and controls in an isolated profile.
+  `test:e2e:window-resize-native` adds physical Windows left/right/bottom/corner
+  drags and the 800×560 minimum; run it on a dedicated interactive desktop,
+  since another app can take foreground or pointer input during the gesture.
+  Relaunch persistence remains for native qualification; macOS/Linux native
+  edge behavior is unchanged.
 
 #### E2E-168: Expanded sidebar width follows an anchored resize gesture
 
@@ -11453,7 +11911,9 @@ This test plan spec is accepted when:
   account model and save. 5) Reopen the account editor and read that model's
   chips. 6) For an OpenAI Codex account, inspect `gpt-6-astra` (or another
   account model also published under models.dev's `openai` provider) and confirm
-  its published context/output limits and reasoning levels are present. 7) In
+  its published context/output limits and reasoning levels are present. For
+  `gpt-6.1-sol`, verify a 1,050,000-token context and 128,000-token output cap.
+  7) In
   the account editor, hand-type a custom model ID the catalog does not publish,
   enable a thinking level on it, and save.
 - **Expected**: Both dialogs render the same picker — the same discovered list,
@@ -11466,8 +11926,9 @@ This test plan spec is accepted when:
   generic 128,000 / 8,192 / no-reasoning defaults. The authenticated ChatGPT
   list comes from `GET {base}/codex/models` on the account token, so an id the
   pin does not know yet is selectable when that response includes it; pi-ai is
-  only the fallback when the request fails. models.dev cannot add a missing
-  OAuth ID. A model with no published record keeps its explicit levels, starts
+  only the OAuth/transport adapter; it supplies no sibling chat-model limits.
+  models.dev enriches an ID only when its record matches. A model with no
+  published record keeps its explicit levels, starts
   at `off` when no binding default is stored, and keeps all choices available
   for manual opt-in. The account's default model stays the head binding.
 - **Specs linked**: `04-ux/06-settings-ia.md`,
@@ -11534,7 +11995,9 @@ This test plan spec is accepted when:
 - **Preconditions**: A provider fixture can complete multiple sequential tasks,
   trigger inline automatic compaction at 90% of `hardLimit` (before the hard
   boundary), exercise an active-turn checkpoint during a tool loop, and restart
-  a session.
+  a session. The desktop transcript runner also replays a deterministic local
+  provider-overflow recovery through the production runtime event handler,
+  transcript store projection, and assistant-turn renderer.
 - **Steps**:
   1. Complete task A and task B in one session with distinct instructions and
      visible completion replies.
@@ -11550,6 +12013,9 @@ This test plan spec is accepted when:
      capture the first request and confirm preflight compaction runs before
      `continue()` while retaining the internal approved-plan instruction.
   6. Restart and reopen the session, then send another prompt.
+  7. In the isolated overflow fixture, pause compaction after the first provider
+     response exceeds the context window. Inspect the rendered assistant turn,
+     then let the retry complete.
 - **Expected**: Automatic session compaction starts at
    `floor(hardLimit * 0.9)` for prompt, approved-plan, and in-run turn
    preflights; the estimate includes serialized messages, the active system
@@ -11562,7 +12028,10 @@ This test plan spec is accepted when:
    checkpoint retains exactly the latest active user prompt, with no older
    user prompts or pre-boundary assistant/tool messages. Restart honors
    `retainedTailMode`, and legacy multi-user tails normalize to the latest user
-   message. If automatic summary generation fails at the hard boundary, the
+   message. During recoverable overflow compaction, the existing assistant
+   bubble stays streaming without an error card; a successful retry completes
+   that same bubble once. A failed retry surfaces its terminal error. If
+   automatic summary generation fails at the hard boundary, the
    fallback retains a bounded recent user tail. The visible transcript remains
    complete and checkpoint rows remain.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`,
@@ -11571,7 +12040,8 @@ This test plan spec is accepted when:
 - **Acceptance**: C (chat/stream), F (persistence), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`packages/agent-runtime/src/context-budget.test.ts`,
-  `runtime.test.ts`, `subagent-context.test.ts`); provider/UI journey Draft
+  `runtime.test.ts`, `subagent-context.test.ts`); isolated overflow recovery
+  fixture passed through `pnpm test:e2e:transcript`; broader provider/UI journey Draft
 
 #### E2E-165: A2A and Peer tools are withdrawn
 
@@ -11795,17 +12265,22 @@ are withdrawn with ADR 0165.
   back. 3) Confirm the newest user row (and any streaming tail) is at the
   bottom of the transcript and the session still shows as running. 4) Optional:
   Stop, switch away and back; the same newest rows remain in chronological
-  order.
+  order. 5) With an older identical prompt already durable, send that same
+  text again and immediately switch away and back before its persistence
+  acknowledgement is applied.
 - **Expected**: Revalidation does not append older live history after the
   bounded durable page. The mounted trailing window still shows the just-sent
   prompt and the live tail. The turn continues in the background across the
-  switch. Stop is not required to make the prompt visible again.
+  switch. The older same-text row remains distinct and cannot suppress the new
+  optimistic prompt; the durable echo replaces that prompt in place. Stop is
+  not required to make the prompt visible again.
 - **Specs linked**: `04-ux/08-component-spec.md` §1.6 / §3.5,
   `04-ux/09-interaction-patterns.md` (session isolation), ADR 0120, ADR 0137,
   `08-meta/decisions-log.md` (D261, D317)
 - **Acceptance**: C (conversation & stream), F (persistence), Quality
 - **Milestone**: M5
-- **Status**: Unit-covered (`session-transcript.test.mjs` D317 cases); full
+- **Status**: Unit-covered (`session-transcript.test.mjs` D317 and missed-ack
+  same-text cases); full
   desktop journey Draft (run only in a capable environment when this surface changes)
 
 #### E2E-183: Switching an idle session keeps a completed reply that is not on disk yet
@@ -12692,22 +13167,27 @@ are withdrawn with ADR 0165.
   Dismiss it, navigate away and back, repeat the check, then restart and check
   again. 4) Confirm the same version does not raise another notice, while the
   Settings row still shows it and opens Releases. 5) Select Automatic and
-  confirm the existing in-app download/install behavior resumes. 6) Launch the
-  portable ZIP profile and confirm Manual is the default; inspect the warning
-  before explicitly selecting Automatic.
+  surface an available version. Dismiss the in-app banner while downloading;
+  verify the transfer is cancelled and the update will not install on quit.
+  Restart, check the same version again, and verify it remains dismissed and
+  does not download. Then surface a newer version and verify automatic
+  downloading resumes. 6) Launch the portable ZIP profile and confirm Manual
+  is the default; inspect the warning before explicitly selecting Automatic.
 - **Expected**: The preference persists per installation. Manual performs
   discovery only and stores the last reminded version so repeated checks and
-  app restarts do not repeat the notice; the Info row remains actionable.
-  Automatic retains the existing installer behavior where supported. ZIP and
-  legacy portable builds default to Manual, and Automatic is an explicit,
-  warned opt-in that can replace the extracted copy with NSIS.
+  app restarts do not repeat the notice; the Info row remains actionable. A
+  dismissed version stays ignored across restarts in either mode. In-app
+  dismissal cancels an active transfer and prevents install-on-quit for that
+  version; a newer release clears the dismissal and resumes automatic delivery.
+  ZIP and legacy portable builds default to Manual, and Automatic is an
+  explicit, warned opt-in that can replace the extracted copy with NSIS.
 - **Specs linked**: `03-runtime/07-process-model.md`,
   `04-ux/09-interaction-patterns.md`, ADR 0022 / D628
 - **Acceptance**: Quality (settings interaction and release safety)
 - **Milestone**: M6+
 - **Status**: Setting selection/persistence covered by
-  `pnpm test:e2e:settings-scroll`; mode/reminder policy covered by
-  `update-preference.test.mjs`. Packaged Windows installer journey remains
+  `pnpm test:e2e:settings-scroll`; dismissal and download cancellation covered
+  by `updater-controller.test.mjs`. Packaged Windows installer journey remains
   runner validation.
 
 #### E2E-213: The first Composer model menu paint keeps configured aliases
@@ -12953,6 +13433,29 @@ are withdrawn with ADR 0165.
 - **Status**: MCP protocol/unit-covered by `apps/desktop/test/mcp-control.test.mjs`;
   full Electron journey documented and remains deferred by the no-local-E2E
   policy
+
+#### E2E-MCP-session-get-projects-large-compaction
+
+- **Preconditions**: Start PI-Desktop with `PI_DESKTOP_MCP_CONTROL=1`. A durable
+  session exists whose `session.compaction` record (`summary` / `retainedTail` /
+  `details.modifiedFiles`) alone serializes to more than the 512 KiB MCP result
+  limit.
+- **Steps**: 1) Read `mcp-control.json`, use its URL and bearer token, and
+  complete the MCP handshake. 2) Call `pi_session_get` for that session with any
+  `messageLimit` / `contentLimit` / `messageBefore`. 3) Inspect
+  `structuredContent`. 4) Repeat for a small session.
+- **Expected**: The answer is not the `{truncated: true, reason:
+  "MCP_RESULT_LIMIT", preview}` envelope; `session.messages` carries the
+  requested transcript page; `session.compaction` keeps `createdAt` and
+  `details.generation` while `summary`, `retainedTail`, and
+  `details.modifiedFiles` are absent. The small session's answer is unchanged.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` §13d
+- **Acceptance**: C (sessions), Quality
+- **Milestone**: M6+
+- **Status**: The local MCP server contract test in
+  `apps/desktop/test/mcp-control.test.mjs` exercises authenticated JSON-RPC
+  `tools/call` for both oversized and under-limit `pi_session_get` results. The
+  separate full Electron-to-Host journey remains release qualification.
 
 #### E2E-234: Workspace security denylist and ignore layers
 
@@ -13871,15 +14374,17 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 #### E2E-244: Unsupported APIs, load errors, and handler timeouts degrade to diagnostics
 
-- **Preconditions**: Three enabled fixture extensions: one importing
-  `@earendil-works/pi-tui` at top level and calling `ui.setWidget`; one whose
+- **Preconditions**: Four enabled fixture extensions: one importing
+  `@earendil-works/pi-tui` at top level and calling `ui.setWidget`; one importing
+  an unsupported named export from `@earendil-works/pi-coding-agent`; one whose
   module throws at load; one whose `context` handler never resolves.
 - **Steps**: 1) Start a turn. 2) Open the diagnostics drawer for each entry.
-  3) Wait past the 30 s handler limit. 4) Disable the throwing extension and
-  start another turn.
+  3) Confirm the unsupported export stays undefined. 4) Wait past the 30 s
+  handler limit. 5) Disable the throwing extension and start another turn.
 - **Expected**: The pi-tui import succeeds, `setWidget` returns an inert
   `dispose`, and one diagnostic per member is recorded; the throwing
-  extension shows `error` with message and stack, the composer shows a
+  coding-agent export stays unavailable and reports `unsupported_api`; the
+  throwing extension shows `error` with message and stack, the composer shows a
   one-line notice, and the other extensions still load; the stalled handler
   is abandoned after 30 s with a diagnostic and the turn completes with the
   unmodified context; after disabling, the notice disappears at the next turn
@@ -13887,7 +14392,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Specs linked**: `07-plugins/16-trusted-extensions.md` §4.2, §4.4, §5, §6
 - **Acceptance**: Quality
 - **Milestone**: Post-MVP (R7 v1)
-- **Status**: Partially automated (`pnpm test:e2e:trusted-extensions`); load errors and inert terminal-UI APIs degrade to diagnostics, while the stalled-handler timeout and disable-at-boundary journey remain additional validation.
+- **Status**: Partially automated (`pnpm test:e2e:trusted-extensions`); missing static named exports are covered through the real Jiti loader by `runner.test.ts`, while diagnostics-drawer rendering for that import, the stalled-handler timeout, and disable-at-boundary journey remain additional validation.
 
 #### E2E-245: The packaged sidecar loads a TypeScript extension through jiti
 
@@ -14260,6 +14765,21 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Status**: Unit-covered (`apps/desktop/test/project-create-dialog.test.mjs`,
   `apps/desktop/test/git-clone.test.mjs`); full UI scenario Draft (run only in a
   capable environment when this surface changes)
+
+#### E2E-261: Creating from a closed project folder reopens its group
+
+- **Preconditions**: A durable project group exists for a local folder and is
+  closed from the sidebar; its directory remains available.
+- **Steps**: Open Create project, select only that folder, and click Create.
+- **Expected**: The existing group reopens at its primary root, appears in the
+  sidebar, and the dialog closes. Its existing name, roots, chats, instructions,
+  and memory remain intact; no duplicate project group is created.
+- **Specs linked**: `04-ux/08-component-spec.md`, ADR 0249.
+- **Acceptance**: The production creation action resolves the host group before
+  attempting creation and activates the existing primary path.
+- **Milestone**: M5 (project organization maintenance).
+- **Status**: Unit/source-contract covered (`apps/desktop/test/project-create-dialog.test.mjs`);
+  full UI scenario remains Draft.
 #### E2E-257: Importing into an archived project restores its visibility
 
 - **Preconditions**: A durable project has been archived in the renderer
@@ -15101,10 +15621,10 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   reaches an already saved binding without deleting and re-adding the model, while
   a number the user entered in Settings is never overwritten.
 - **Steps**:
-  1. Configure a provider, select a model models.dev publishes a `limit.context`
+  1. Configure a provider, select a model models.dev publishes a context window
      for, and save. Open the row's Advanced body and read the context-window field
      and its hint.
-  2. Serve a corrected catalog record for that model (a different published
+  2. Serve a corrected models.dev record for that model (a different published
      window), reopen Settings, and read the row, the context inspector, and the
      window a new session launches with.
   3. Type a window in the Advanced field — the preset ladder once and a
@@ -15116,7 +15636,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   5. Repeat step 4 with a row whose stored output cap is the generic `8192`, and
      one whose cap the user typed, and read the cap in the settings row and in the
      request a new session launches with.
-- **Expected**: Step 1 shows the published number with the "follows models.dev"
+- **Expected**: Step 1 shows the published number with the "follows the catalog"
   hint. Step 2 shows the corrected number everywhere the effective window is used
   (settings row, context inspector, session launch) with no delete and re-add.
   Step 3 keeps the entered number in the settings row, in the inspector, and in
@@ -15619,6 +16139,13 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Coverage**: `chat-links.test.mjs`; native desktop click-through with the normal browser destination.
 - **Specs linked**: `04-ux/08-component-spec.md` §8.3.
 
+#### E2E-CHAT-user-link-selection: URLs in user messages are selectable text
+
+- **Steps**: Send `介绍一下这个项目：https://github.com/vastsa/PI-Desktop` in a user message. Drag from the start of the message past the end of the URL, then copy. Click the URL once afterwards.
+- **Expected**: The selection highlights the prose and the URL together, and the copied text is the whole message including the URL. A plain click on the URL still opens it through the Link open destination.
+- **Coverage**: `transcript-style.test.mjs` asserts `.chat-text-link` opts back into text selection over the unselectable `button` baseline; drag-and-copy checked in Chromium against the full renderer stylesheet (issue #1243).
+- **Specs linked**: `04-ux/08-component-spec.md` §8.3.
+
 #### E2E-IME-escape: Composition cancellation preserves drafts
 
 - **Steps**: Edit a user message; type a draft; dispatch composing Escape and Cmd/Ctrl+Enter. Open global search and dispatch composing Escape from its input. Repeat with legacy keyCode 229, then ordinary Escape and retry shortcuts.
@@ -15851,3 +16378,136 @@ renderer's durable transcript reads. No real model or provider is contacted.
 - **Acceptance:** Cache-path, migration, and cleanup unit tests pass; Windows task-candidate validation confirms the updater feed transport, installer handoff, and filesystem behavior without a live release feed.
 - **Milestone:** M6+
 - **Status:** Unit and source-contract covered (`update-cache.test.mjs`, `auto-update.test.mjs`); Windows installer/E2E validation remains required.
+
+## E2E-OAUTH-pi-installation-identity-and-standalone-load
+
+- **Preconditions**: Pi 1.0.0; temporary Host secrets and account fixtures;
+  network/browser/callback I/O mocked; no user account or paid service.
+- **Steps**: Run `installation-identity.test.mjs`, `vendor-oauth-login.test.mjs`
+  and `oauth-standalone-bundle.test.mjs` under `apps/desktop/test`.
+- **Expected**: One lazy, persisted UUID per installation; failed persistence
+  never reaches login and is retryable. Multiple same-vendor accounts retain
+  separate credentials. The standalone bundle executes the actual ChatGPT and
+  Meta OAuth flows from outside the repository with empty `NODE_PATH`, including
+  PKCE, callback validation and token conversion. Legacy Codex credentials remain
+  unchanged; account deletion leaves the installation identity and other accounts.
+- **Acceptance**: Offline identity/account/module-loading contracts pass.
+- **Status**: Offline integration covered. Installed Electron artifact loading,
+  Anthropic/Codex/Copilot flow execution and final migration packaging NOT RUN.
+
+## E2E-PI-0991-account-operations-and-usage
+
+- Scope: pi-ai and pi-agent-core; coding-agent design review is reference-only.
+- Offline provider/catalog flows preserve same-vendor account isolation, live
+  entitlement, unavailable-account errors, relay matching and explicit overrides.
+- Native Pi image operation contract tests cover generations/edits, cancellation,
+  downloads, multiple artifacts, text/response IDs and physical usage provenance.
+- Shared/Main/Host tests replay parent, delegate and image records, including late
+  old-turn usage, and assert one ledger entry per physical operation.
+- Production sidecar hosted-search E2E covers seven scenarios with offline
+  providers, delegation and persisted restore. Standalone OAuth tests execute
+  actual login modules outside the repository with mocked external I/O.
+- Installed Electron, real account/paid API and cross-version rollback are
+  separate release qualification. No MCP, Codemode or virtual-router migration
+  is included. See `docs/project/pi-0991-adoption.md` for candidate evidence.
+
+### E2E-SYSTEM-TRANSCRIPT: Ordered model state survives restart and compaction
+
+- Fixture: isolated Host data directory, production AgentSidecar transport and
+  separate Node runtime/Pi process, local SSE provider; no real provider
+  credentials or user's Desktop process. The harness persists completed
+  messages; it does not exercise Electron's UI or persistence outbox.
+- Send a prompt, activate BrowserPreview through ToolSearch, and verify the next
+  request includes the schema. Confirm the baseline and delta are acknowledged
+  by Host and survive stopping/restarting both processes without duplicate rows.
+- Resume the session, update a skill catalog on the same runtime, and confirm the
+  next request uses the new catalog while keeping a second unchanged entry.
+  Runtime/adapter tests verify the native delta contains only the modified entry,
+  and fallback models receive the complete current catalog with removals applied.
+  Invoke Skill through the actual sidecar
+  bridge with a fixture body supplied by the embedding host. Compact, restart
+  the sidecar, and verify current skills and active tools survive without
+  replaying old tool results. Remove the final skill and verify its catalog and
+  executable schema disappear without recreating the runtime.
+- Automated: `node scripts/e2e-system-transcript.mjs` with
+  `PI_DESKTOP_HOST_BIN` pointing to the candidate Host binary. Requires built
+  shared/host-runtime/agent-runtime packages. Renderer projection tests ensure
+  model-state records stay hidden while ordinary system notices remain visible.
+- Adapter contract tests cover exact model/API/endpoint capability binding,
+  partial support, unverified relay fallback, removals/redefinitions and model
+  switching without canonical-history mutation. Real cache-hit improvement is
+  a separately authorized provider experiment, not an offline-test claim.
+
+- Flash regression: load the pinned Pi `deepseek-flash` model, serialize its
+  Desktop projection, and pass skill updates/removals through the real adapter.
+  The official binding preserves the earlier wire prefix; changed bindings
+  retain the folded fallback. Covered by `flash-transcript.test.ts`.
+- Authorized live Flash acceptance: use isolated development sessions with
+  short and long contexts. Alternate unchanged turns and single-skill updates,
+  confirm current Skill bodies execute, and compare actual outgoing prefixes
+  plus reported usage. After restart, verify no duplicate system updates and
+  same-model assistant reasoning remains separate from visible content. Adapter
+  regressions also cover legacy identities and genuine account/model changes. Cache
+  percentages are observations, not deterministic pass thresholds.
+
+### E2E-FIXED-TOOL-DECLARATIONS: Stable Flash schemas with independent activation
+
+- Fixture: production AgentSidecar and isolated Host, official Pi Flash binding,
+  and a child-process fetch boundary redirected to local HTTP/SSE. Credentials
+  are dummy values and synthetic tools have no external side effects.
+- Prompt, search Alpha, execute Alpha, search Beta and execute Beta. HTTP payload
+  tests assert identical ordered `tools` and unchanged prior message prefixes.
+  Directly calling a declared but inactive tool must fail before the Host.
+- Restart both processes, then compact and restart again: Alpha stays activated,
+  Beta remains inactive despite its declaration. Activate Beta, then remove it
+  from the catalog and verify it cannot execute. New schema/route epochs must
+  not restore old grants. Host rejection and Plan guards remain effective.
+- Runtime contracts additionally cover legacy migration, interrupted activation,
+  malformed metadata, temporary prompt replacement, deterministic catalog order,
+  the 128-tool boundary and insufficient-context fallback.
+- Automated: `node scripts/e2e-fixed-tool-declarations.mjs` with built
+  shared/host-runtime/agent-runtime and `PI_DESKTOP_HOST_BIN` set to the candidate
+  Host binary; `fixed-tool-runtime.test.ts` and `fixed-tool-declarations.test.ts`
+  cover HTTP payload and policy contracts. Electron UI/outbox is outside this
+  fixture's scope.
+- Separately authorized official Flash experiments compare several independent
+  on-demand/fixed sessions with the same synthetic catalog and call sequence.
+  Record cold requests, both activations, follow-up cache hits/misses and
+  cumulative input cost. Report the larger first request and possible short-chat
+  cost increase, alongside any longer-conversation benefit. Offline test success
+  alone is not evidence of provider cache behavior.
+
+- Overflow/system-update integration: recover a provider context overflow with
+  a system delta after the failed assistant message. Keep that delta, remove the
+  failed assistant before compaction, and reuse one visible assistant message
+  through successful recovery. Terminal failure and Stop retain their existing
+  closure behavior. Covered by the parameterized runtime overflow user-path test.
+
+
+#### E2E-262: Transcript path:line opens and scrolls the host file viewer
+
+- **Preconditions:** Isolated Electron/Chromium, an active workspace and session,
+  the bundled file-manager view available, and deterministic filesystem IPC
+  fixtures.
+- **Steps:** Render a real transcript `path:line:column` reference followed by
+  sentence punctuation; click its verified file chip and wait for the host file
+  viewer to load.
+- **Expected:** Despite the bundled file-manager view being available, the
+  positioned reference opens in the host's read-only file tab. The file request
+  retains its line and column, and the viewer scrolls the requested line into
+  the visible center area. The path and file contents remain the same as the
+  reference target.
+- **Specs:** `04-ux/08` §11.8; ADR 0262.
+- **Status:** `node scripts/e2e-file-ref-line-scroll.mjs` mounts production
+  `LinkifiedText` and `FilesTab` in isolated Electron with filesystem IPC
+  fixtures; no real project files or provider are used.
+
+### Imported-extension GUI executable discovery regression (#1173)
+
+Start dependency installation with a GUI-like PATH that cannot resolve Node/npm
+and a trusted fixture installation in `~/.local/bin`. Validation and both npm
+stages must use that installation, preserve the application PATH, and avoid shell
+startup probing. Explicit selections keep their bin directory first. Missing
+installations still return `npm-unavailable` and retain native picker recovery.
+The executable integration fixture uses real isolated child processes and checks
+registry-only installation and credential isolation.

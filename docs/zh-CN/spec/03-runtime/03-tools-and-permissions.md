@@ -43,6 +43,7 @@
 | `Edit` | 高 | 通过针对已校验 `tag` 的行锚定操作修改文件（[18](18-line-anchored-edit-contract.md)） |
 | `Bash` | 高 | 执行命令 |
 | `asktool` | 低 | 询问一个或多个用户问题并将提交的答案作为工具输出返回 |
+| `TodoWrite` | 低 | 替换当前 Agent 会话清单；由主机校验并持久化完整有序快照 |
 
 > 名称可以在实现过程中进行微调，但语义保持一致。
 
@@ -365,6 +366,13 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 | 低 | 会话根目录内的 Read/Glob/Grep | 自动允许 |
 | 中等 | 低风险 network/metadata | 政策确认或允许 |
 | 高 | Write/Edit/Bash | 默认确认 |
+
+用户配置的 MCP 服务器提供的工具（`mcp_<serverId>_<tool>`）归类为 `medium`，
+与未声明有效风险的插件工具相同。MCP 服务器自行声明的风险级别不被信任，
+这与用户已接受的插件 manifest 中的风险不同。在 `ask` 和 `accept-edits` 下，
+MCP 工具调用会显示审批卡片，原因为 "MCP server tool requires approval"；
+`allow-session` 授权会在该会话内对该工具名不再提示（授权仅保存在内存中）。
+`auto` 自动允许，Plan/Goal 合约模式的硬拒绝仍然生效（D640，ADR `mcp-tool-approval-risk`）。
 
 ### 决策类型
 

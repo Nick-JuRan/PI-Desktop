@@ -40,6 +40,7 @@ Let the agent get things done, but stay under control by default.
 | `Edit` | high | Modify files through line-anchored ops against a verified `tag` ([18](18-line-anchored-edit-contract.md)) |
 | `Bash` | high | Execute commands |
 | `asktool` | low | Ask one or more user questions and return the submitted answers as tool output |
+| `TodoWrite` | low | Replace the current Agent session checklist; host validates and persists the full ordered snapshot |
 
 > Names may be fine-tuned during implementation, but semantics stay consistent.
 
@@ -398,6 +399,15 @@ Initial denylist (extensible):
 | low | Read/Glob/Grep inside the session roots | Auto-allow |
 | medium | low-risk network/metadata | Confirm or allow by policy |
 | high | Write/Edit/Bash | Confirm by default |
+
+Tools from user-configured MCP servers (`mcp_<serverId>_<tool>`) are classified
+`medium`, the same as a plugin tool without a valid declared risk. A risk level
+self-declared by an MCP server is not trusted, unlike the risk in a plugin
+manifest the user accepted. Under `ask` and `accept-edits` an MCP tool call
+shows an approval card with reason "MCP server tool requires approval"; an
+`allow-session` grant suppresses further prompts for that tool name in that
+session (grants are in-memory only). `auto` auto-allows it, and the Plan/Goal
+contract-mode hard deny still applies (D640, ADR `mcp-tool-approval-risk`).
 
 ### Decision Types
 

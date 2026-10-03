@@ -53,9 +53,14 @@ Permission prompts do not consume an execution slot. A full queue returns
 `HOST_OVERLOADED` with retryable semantics in the tool result instead of
 waiting indefinitely or spawning more work. The limits are host-owned so
 Electron and the sidecar cannot independently over-admit the same resources.
-The per-session mutation permit is acquired before the global mutation slot;
-queued `Write`/`Edit` calls therefore do not hold global capacity while waiting
-for an earlier mutation in the same session.
+Admission reserves total, tool-class, session, and session-mutation capacity
+atomically. A queued call holds no execution capacity. When capacity returns,
+the oldest runnable request is admitted; a request blocked by one class or
+session does not block unrelated runnable work. Calls wait at most 30 seconds.
+Dropping a waiting admission future or letting it time out removes its queue
+entry and releases any reservation made before the caller receives its permit. The health counters report only
+fully admitted reservations, including those awaiting delivery to the caller;
+`queued` counts only requests still waiting for capacity.
 
 Electron's `HostProcess` treats an explicit `HOST_OVERLOADED` response as
 retryable backpressure for renderer-facing calls. It waits 50, 100, 200, and
@@ -488,6 +493,28 @@ The host rejects unknown roles, non-RFC3339 or non-monotonic timestamps, and
 oversized/deep payloads. Tool values are sanitized for host-reserved keys. The
 per-plugin rolling limits are 10 single imports, 5 batch imports, and 20
 deletes per 60 seconds. P2/P3 methods are not present in protocol v11.
+
+### Session Todo checklist
+
+- `todos.get({ sessionId })` returns the committed checklist snapshot for a live
+  Desktop session: `{ sessionId, todos, revision, updatedAt }`. Unknown or
+  soft-deleted sessions return `NOT_FOUND`; native Pi sessions and blank ids are
+  rejected as `INVALID_ARGUMENT`.
+- `tools.execute` with `toolName: "TodoWrite"` accepts only `{ todos }` and
+  replaces the complete ordered checklist. The host trims content, defaults
+  priority to `medium`, truncates overlong Unicode content at 500 characters
+  with a warning, demotes later `in_progress` items to `pending`, and rejects
+  more than 50 items or malformed values. The owner session and running turn
+  come from the trusted transport fields, never from tool arguments.
+- TodoWrite is allowed only for an Agent session's own running turn. Plan/Goal,
+  delegated, plugin, and MCP calls receive a tool result error and do not mutate
+  storage. A successful replacement advances the session revision even when
+  `todos` is empty and emits `todos.changed` after the transaction commits.
+  The event payload is the same complete snapshot returned by `todos.get`.
+- SQLite ownership is host-core only. The renderer receives snapshots through
+  Electron Main IPC, keeps them by session id, and ignores revisions older than
+  or equal to the cached revision. Remote RACP sessions are local-only for this
+  vertical slice because RACP v1 has no Todo snapshot operation.
 
 ### Stats
 
