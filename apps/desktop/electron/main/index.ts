@@ -11,7 +11,6 @@ import {
   currentNetworkProxy,
   testNetworkProxy,
 } from "./network-proxy";
-import { installInsecureEndpointNotice } from "./network-notice";
 import {
   APP_VERSION,
   IPC,
@@ -366,6 +365,7 @@ const createdSessionLaunchRuntime = createSessionLaunchRuntime({
   logger,
   userMcp,
   plugins,
+  agentExtensions,
   sessionProjects,
   dataDir,
   vendorOAuth,
@@ -380,6 +380,7 @@ sessionLaunchRuntime = createdSessionLaunchRuntime;
 const {
   refreshUserMcp,
   activeUserSkills,
+  subagentToolCatalog,
   activeUserSubagentDocuments,
   disabledBuiltinSubagents,
   loadUserSkillBody,
@@ -479,10 +480,8 @@ function sendToRenderer(channel: string, payload: unknown) {
     // it. Notifying a gone frame is routine teardown, never an error:
     // supervision must keep running with no window attached.
   }
-
 }
 
-installInsecureEndpointNotice(sendToRenderer);
 
 applicationLifecycle = createApplicationLifecycle({
   getRunningSessionIds: () => activeTurns.keys(),
@@ -888,6 +887,7 @@ function registerIpc() {
     bindingForModel,
     agentExtensions,
     activeUserSkills,
+    subagentToolCatalog,
     pluginActiveInProject,
     getWorkPanelReservationWidth: () => mainState.requestedWorkPanelReservation,
     setWorkPanelReservationWidth: (width: number) => {
