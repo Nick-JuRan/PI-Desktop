@@ -13,6 +13,7 @@ import {
   withNestedDelegationGuidance,
   type DelegationScope,
 } from "./fork/delegation-depth.js";
+import { resolveMcpToolSelection } from "./mcp-tool-selection.js";
 import { TOOL_ACTIVATION_SECTION, toolDeclarationPolicy, toolActivationSection, restoredToolActivation, syncToolActivation, type ToolDeclarationPolicy } from "./fixed-tool-declarations.js";
 import { orderSystemRows, SystemTranscriptJournal } from "./system-transcript-journal.js";
 import { planWorkspaceRequiredResult } from "./plan-workspace-error.js";
@@ -47,6 +48,8 @@ import {
 import {
   isContextOverflow,
   getCurrentTools,
+  getToolStateChanges,
+  toToolDeclaration,
   Type,
   type Api,
   type AssistantMessage,
@@ -205,6 +208,7 @@ import {
 } from "./output-cap.js";
 import {
   composeSubagentSystemPrompt,
+  MAX_SUBAGENT_REPORT_CHARS,
   SubagentRun,
   SUBAGENT_LIST_TOOL_NAME,
   SUBAGENT_STOP_TOOL_NAME,
@@ -305,6 +309,9 @@ export type RuntimePromptAttachment = Omit<AgentPromptAttachment, "kind"> & {
 
 export type RuntimePrompt = {
   text: string;
+  /** Explicit user selection, resolved against the host-provided tool catalog. */
+  mcpServerIds?: string[];
+  mcpToolNames?: string[];
   sessionMessage?: SessionMessageOrigin;
   attachments?: RuntimePromptAttachment[];
 };
@@ -506,6 +513,10 @@ export const ASK_TOOL_NAME = "asktool";
  * be re-read by id without re-running it.
  */
 const MAX_RETAINED_DELEGATIONS = 100;
+const DELEGATION_MODEL_OPT_IN_GUIDANCE =
+  'To authorize a model override, open Settings → Models, edit the service or account, expand its model Advanced settings, enable "Available for AI delegation", and save. Use an exact key from the delegation catalog; never guess a provider/model key.';
+const DELEGATION_DEFAULT_MODEL_GUIDANCE =
+  "Omit the `model` parameter on Task to use the definition's default model, or inherit the parent conversation's selected model when no default is pinned. Repeating the definition's own Default model key is the same as omitting `model`.";
 /**
  * `TaskWait` blocks the turn, and the model picks the timeout, so the ceiling
  * is what bounds how long a session can look hung with no way to intervene.
@@ -552,6 +563,8 @@ export type DelegationRecord = {
   /** True when `TaskStop` asked for this stop, so an aborted run reads as
    * `stopped` rather than `aborted`. */
   stopRequested: boolean;
+  /** System interruption preserves resume eligibility; explicit Stop wins. */
+  parentErrorInterrupted?: boolean;
   turns: number;
   toolCalls: number;
   lastToolName?: string;
@@ -967,6 +980,8 @@ function contextFallbackReminder(): string {
 }
 
 export type PluginToolDef = {
+  /** Present only on tools resolved from a user MCP server by Electron main. */
+  mcpServerId?: string;
   /** Full exposed name (`plugin_<pluginIdSafe>_<toolName>`, D015). */
   name: string;
   description?: string;
@@ -1571,6 +1586,21 @@ export function toolResultFromUi(
         blocks.push({ type: "image", data: b.data, mimeType: b.mimeType });
       }
     }
+  } else if (Array.isArray(raw)) {
+    // Plugin tools may return a bare content-block array; restore its text
+    // and image blocks so a restart does not flatten them into JSON (#1360).
+    for (const b of raw) {
+      if (!isRecord(b)) continue;
+      if (b.type === "text" && typeof b.text === "string") {
+        blocks.push({ type: "text", text: b.text });
+      } else if (
+        b.type === "image" &&
+        typeof b.data === "string" &&
+        typeof b.mimeType === "string"
+      ) {
+        blocks.push({ type: "image", data: b.data, mimeType: b.mimeType });
+      }
+    }
   } else if (typeof raw === "string" && raw.trim()) {
     blocks.push({ type: "text", text: raw });
   } else if (raw !== undefined && raw !== null) {
@@ -1891,7 +1921,7 @@ export class DesktopAgentRuntime {
   private acceptingSteering = false;
   private steeringContinuation = false;
   private steeringWaitAbort?: AbortController;
-  private pendingSteering = new Map<AgentMessage, string>();
+  private pendingSteering = new Map<AgentMessage, { id: string; toolNames: string[] }>();
   private pendingOverflow = false;
   private overflowRecoveryAttempted = false;
   private overflowRecoveryInProgress = false;
@@ -2159,6 +2189,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           convertToLlm(this.dropDuplicateToolCalls(messages)), this.reasoningReplayIdentity(),
         );
       },
+      prepareRequest: ({ context }) => this.prepareToolDeclarations(context),
       prepareNextTurnWithContext: (context, signal) =>
         this.prepareNextTurn(context, signal),
       afterToolCall: async (context) => this.afterToolCall(context),
@@ -2285,6 +2316,27 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.agent.state.messages = rebuildSystemTranscript(
       this.agent.state.messages.filter((message) => message.role !== "system" || !this.systemJournal.isPersisted(message)), messages,
     );
+  }
+
+  /** Steering is consumed after next-turn preparation; sync before dispatch. */
+  private prepareToolDeclarations(context: AgentContext): AgentLoopTurnUpdate {
+    const tools = this.declaredTools();
+    let messages = context.messages;
+    const changes = getToolStateChanges(getCurrentTools(messages), tools.map(toToolDeclaration));
+    if (changes.toolsAdded.length || changes.toolsRemoved.length) {
+      messages = [...messages, {
+        role: "system", content: "", ...changes, timestamp: Date.now(),
+      }];
+    }
+    if (this.trackToolActivation && this.declarationPolicy) {
+      messages = syncToolActivation(messages, toolActivationSection(
+        this.declarationPolicy.key, this.activeDeferredToolNames,
+      ));
+    }
+    for (const message of messages.slice(context.messages.length)) {
+      this.agent.state.messages.push(message);
+    }
+    return { context: { ...context, messages, tools } };
   }
 
   private setAgentTools(tools: AgentTool[]): void {
@@ -3486,8 +3538,54 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         const imageBlocks: Array<{ type: "image"; data: string; mimeType: string }> = [];
         let text: string;
         let details: unknown = rawContent;
+        const vision = visionFromModelConfig(this.provider.modelConfig);
+        // Collect image blocks from a content-block array; only well-formed
+        // image entries ({ type, data, mimeType }) are accepted.
+        const collectImageBlocks = (blocks: unknown[]): void => {
+          for (const block of blocks) {
+            if (
+              isRecord(block) &&
+              block.type === "image" &&
+              typeof block.data === "string" &&
+              typeof block.mimeType === "string"
+            ) {
+              if (vision) {
+                imageBlocks.push({
+                  type: "image",
+                  data: block.data,
+                  mimeType: block.mimeType,
+                });
+              }
+            }
+          }
+        };
         if (typeof rawContent === "string") {
           text = rawContent;
+        } else if (Array.isArray(rawContent)) {
+          // Plugin tools may return a bare content-block array
+          // ([{ type: "text" }, { type: "image" }]); render the text blocks
+          // and hand images to the model instead of stringifying (#1360).
+          const textParts: string[] = [];
+          for (const block of rawContent) {
+            if (isRecord(block) && block.type === "text" && typeof block.text === "string") {
+              textParts.push(block.text);
+            }
+          }
+          collectImageBlocks(rawContent);
+          text = textParts.join("\n") || JSON.stringify(rawContent, null, 2);
+          details = { blocks: rawContent, imageCount: imageBlocks.length };
+        } else if (isRecord(rawContent) && Array.isArray(rawContent.content)) {
+          // MCP tools return `content: [{ type: "image" | "text", ... }]`.
+          const contentBlocks = rawContent.content;
+          const textParts: string[] = [];
+          for (const block of contentBlocks) {
+            if (isRecord(block) && block.type === "text" && typeof block.text === "string") {
+              textParts.push(block.text);
+            }
+          }
+          collectImageBlocks(contentBlocks);
+          text = textParts.join("\n") || JSON.stringify(rawContent, null, 2);
+          details = { ...rawContent, imageCount: imageBlocks.length };
         } else if (isRecord(rawContent) && Array.isArray(rawContent.images)) {
           text =
             typeof rawContent.text === "string"
@@ -3497,7 +3595,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                   null,
                   2,
                 );
-          const vision = visionFromModelConfig(this.provider.modelConfig);
           for (const image of rawContent.images) {
             if (
               !isRecord(image) ||
@@ -3911,12 +4008,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             ? params.query.trim()
             : "";
         const matches = this.findDeferredTools(query);
-        const activated = matches.filter(
-          (name) => !this.activeDeferredToolNames.has(name),
-        );
-        for (const name of activated) {
-          this.activeDeferredToolNames.add(name);
-        }
+        const activated = this.activateDeferredTools(matches);
         const available = [...this.deferredToolNames];
         const availablePreview = available.slice(0, MAX_TOOL_SEARCH_RESULT_NAMES);
         const remaining = available.length - availablePreview.length;
@@ -4114,8 +4206,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     if (keys.length === 0) {
       return [
         "No delegation model overrides are configured.",
-        "Omit the `model` parameter on Task to use the definition's default model, or inherit the parent conversation's selected model when no default is pinned.",
-        "Repeating a definition's own Default model key is the same as omitting `model`. Never invent a provider/model key.",
+        DELEGATION_DEFAULT_MODEL_GUIDANCE,
+        DELEGATION_MODEL_OPT_IN_GUIDANCE,
       ].join(" ");
     }
     const lines: string[] = [
@@ -4472,7 +4564,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               "Only pass `model` when deliberately overriding the definition default with a listed delegation model; otherwise omit it. Repeating the definition's own Default model key, or the exact parent provider/model, is the same as omitting `model`.",
             ]
           : [
-              "No delegation model overrides are configured. Omit `model` to use the definition's default, or the parent model when no default is pinned. Repeating a definition's own Default model key is the same as omitting `model`; never invent a provider/model key.",
+              `No delegation model overrides are configured. ${DELEGATION_DEFAULT_MODEL_GUIDANCE} ${DELEGATION_MODEL_OPT_IN_GUIDANCE}`,
             ]),
         "`task` is the delegate's only instruction. It cannot see this conversation, and you cannot correct it while it runs, so state the goal, the paths and facts it cannot infer, and exactly what to report back.",
         "To run delegates concurrently, emit several Task calls in one assistant message. A message that mixes Task with any other tool runs one call at a time. You may keep working or talk to the user while they run; the runtime delivers their reports when they finish. Call TaskStop only to cancel.",
@@ -4574,7 +4666,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             const available = this.availableSubagentModelKeys();
             const hint = available.length
               ? ` Available: ${available.join(", ")}.`
-              : " No models are configured for delegation.";
+              : ` No delegation model overrides are configured. ${DELEGATION_DEFAULT_MODEL_GUIDANCE} ${DELEGATION_MODEL_OPT_IN_GUIDANCE}`;
             return this.subagentToolError(
               toolCallId,
               `Model "${modelOverride}" is not available for delegation.${hint}`,
@@ -4900,6 +4992,15 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     result: SubagentRunResult,
   ): void {
     if (record.status !== "running") return;
+    if (result.status === "aborted" && record.parentErrorInterrupted && !record.stopRequested) {
+      const message = `The parent turn failed and interrupted this delegation. Continue it with Task(resume: "${record.delegationId}").`;
+      result = {
+        ...result,
+        status: "failed",
+        report: truncateTextWithMarker(`${message}\n\n${result.report}`, MAX_SUBAGENT_REPORT_CHARS, "\n[report truncated]\n"),
+        error: { code: "SUBAGENT_PARENT_FAILED", message, resumeId: record.delegationId },
+      };
+    }
     record.status =
       record.stopRequested && result.status === "aborted"
         ? "stopped"
@@ -4990,8 +5091,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   /** Abort every running delegation (user Stop, dispose, parent fatal error). */
-  private abortRunningDelegations(): void {
+  private abortRunningDelegations(parentErrorInterrupted = false): void {
     for (const record of this.runningDelegations()) {
+      record.parentErrorInterrupted = parentErrorInterrupted;
       record.abort();
     }
   }
@@ -5035,7 +5137,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.acceptingSteering = false;
     this.steeringWaitAbort?.abort();
     this.retainPendingSteering();
-    this.abortRunningDelegations();
+    this.abortRunningDelegations(!this.runCancelled && !this.disposed);
     this.delegationWaitTargets = undefined;
     this.clearAgentActivity();
   }
@@ -5607,6 +5709,22 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         };
       },
     };
+  }
+
+  private selectedMcpTools(input: string | RuntimePrompt): string[] {
+    return resolveMcpToolSelection(
+      typeof input === "string" ? undefined : input.mcpServerIds,
+      this.pluginTools,
+      name => this.toolCatalog.has(name) && this.isToolAllowedInMode(name),
+      typeof input === "string" ? undefined : input.mcpToolNames,
+    );
+  }
+
+  private activateDeferredTools(names: readonly string[]): string[] {
+    const activated = names.filter(name => this.deferredToolNames.has(name)
+      && !this.activeDeferredToolNames.has(name));
+    for (const name of activated) this.activeDeferredToolNames.add(name);
+    return activated;
   }
 
   private findDeferredTools(query: string): string[] {
@@ -7890,9 +8008,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       }
       case "message_end": {
         if (event.message.role === "user") {
-          const steeringId = this.pendingSteering.get(event.message);
-          const id = steeringId ?? this.pendingUserMessageId ?? randomUUID();
-          if (steeringId) {
+          const steering = this.pendingSteering.get(event.message);
+          const id = steering?.id ?? this.pendingUserMessageId ?? randomUUID();
+          if (steering) {
+            if (steering.toolNames.length) {
+              this.activateDeferredTools(steering.toolNames);
+              this.setAgentTools(this.activeTools());
+            }
             this.pendingSteering.delete(event.message);
             // User input is now part of the model context: whatever the model
             // says next answers the user, not a completion notice, so the
@@ -8576,6 +8698,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   ): Promise<{ turnId: string }> {
     if (this.disposed) throw new Error("runtime disposed");
     this.assertNotRunning();
+    const selectedTools = this.selectedMcpTools(input);
     const modelInput = typeof input !== "string" && input.sessionMessage
       ? { ...input, text: formatSessionMessage(input.text, input.sessionMessage), sessionMessage: undefined }
       : input;
@@ -8589,6 +8712,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // Capabilities and path-scoped instruction claims belong to one prompt.
     this.subagentOverrideProviders = {};
     this.resetDeferredToolsForPrompt();
+    if (selectedTools.length) {
+      this.activateDeferredTools(selectedTools);
+      this.setAgentTools(this.activeTools());
+    }
     this.refreshResumablePrompt();
     this.pathInstructionClaims.clear();
     this.pendingUserMessageId = userMessageId;
@@ -8786,7 +8913,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   steer(input: RuntimePrompt, expectedTurnId: string, message: UiMessage): { accepted: boolean; turnId: string } {
     this.steeringContext(expectedTurnId);
     const queued: AgentMessage = { role: "user", content: promptContent(input), timestamp: Date.now() };
-    this.pendingSteering.set(queued, message.id);
+    const toolNames = this.selectedMcpTools(input);
+    this.pendingSteering.set(queued, { id: message.id, toolNames });
     this.agent.steer(queued);
     this.steeringWaitAbort?.abort();
     // Main persists this echo through the same outbox as assistant messages.
@@ -8801,9 +8929,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
 
   private retainPendingSteering(): void {
     this.agent.clearSteeringQueue();
-    for (const [message, id] of this.pendingSteering) {
+    for (const [message, pending] of this.pendingSteering) {
       if (!this.agent.state.messages.includes(message)) this.setAgentMessages([...this.agent.state.messages, message]);
-      this.appendLiveEntry(id, message);
+      this.appendLiveEntry(pending.id, message);
     }
     this.pendingSteering.clear();
 

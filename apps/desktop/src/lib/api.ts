@@ -4,6 +4,7 @@ import {
   normalizeSubagentMaxDepth,
   type SubagentToolCatalog,
 } from "@pi-desktop/shared/fork";
+import { projectPlanHistory } from "./plan-history";
 import type {
   ScheduledTaskRun,
   ActivationScope,
@@ -287,6 +288,9 @@ export interface ExternalMcpImportItem {
 }
 
 export interface ExternalMcpImportPayload {
+  /** Defaults to global for existing callers. */
+  level?: "global" | "project";
+  projectPath?: string;
   items: ExternalMcpImportItem[];
 }
 
@@ -341,6 +345,7 @@ function normalizeSessionDetail(detail: SessionDetail | null): SessionDetail | n
   return detail
     ? {
         ...detail,
+        messages: projectPlanHistory(detail.messages, detail.planHistory ?? [], detail.id),
         mode: normalizeMode((detail as { mode?: unknown }).mode),
       }
     : null;
