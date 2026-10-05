@@ -86,7 +86,11 @@ function rendererApi(invoke) {
     "@pi-desktop/shared": shared,
     "@pi-desktop/shared/protocol": shared,
   });
-  const { api } = load("../src/lib/api.ts", { "@pi-desktop/shared": shared, "@pi-desktop/shared/fork": shared }, {
+  const { api } = load("../src/lib/api.ts", {
+    "@pi-desktop/shared": shared,
+    "@pi-desktop/shared/fork": shared,
+    "./plan-history": load("../src/lib/plan-history.ts", {}),
+  }, {
     window: { piDesktop: bridge },
   });
   return { api, bridge };

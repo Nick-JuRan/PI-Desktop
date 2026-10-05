@@ -959,12 +959,25 @@ type ToolTokenUsage = {
 
 type SessionDetail = SessionSummary & {
   messages: UiMessage[];
+  /** Authoritative metadata for SubmitPlan/SubmitGoal calls in this page. */
+  planHistory?: Array<{ proposal: PlanProposal; superseded: boolean }>;
   /** Zero-based start offset when the renderer received a bounded page. */
   messageStart?: number;
   /** True when an older page can be requested with session.get. */
   hasMoreBefore?: boolean;
 };
 ```
+
+Historical contract reads attach `planHistory` only for submission call IDs in
+that session's returned page. SQLite supplies the current approval status,
+exact Markdown snapshot, artifact path, and same-kind supersession; original
+JSONL tool results stay immutable. Display content caps do not truncate these
+bounded contract snapshots (submission already enforces the Markdown limit).
+This additive field is optional for older/native hosts and empty forks: no
+approval record is copied or inferred from tool output or artifact filenames.
+The renderer may attach it to `UiMessage.planHistory` as display-only metadata;
+it must never persist that projection as model evidence.
+
 
 `messageCount` is the host-authoritative count of messages in the current
 canonical transcript. The renderer uses it to distinguish an empty durable
@@ -2282,13 +2295,17 @@ error model. Both the text payload and `structuredContent` are size-bounded to
 replaced by `{truncated: true, reason: "MCP_RESULT_LIMIT", preview: "<the first
 512 KiB of the JSON>"}`, so an external caller can never receive a silently
 shortened payload. If an oversized answer comes from `session/get`
-(`pi_session_get`) and has a `compaction` record, Main projects that record to
-the compact identity (`createdAt` and `details.generation`) and checks the size
-again before returning the truncation envelope. This lets a long session's
-transcript survive when its unbounded `ContextCompactionRecord` (`summary` /
-`retainedTail` / `details.modifiedFiles`) alone caused the overflow. Results
-already under the limit retain their full compaction details, and the desktop's
-own session detail is unchanged.
+(`pi_session_get`) and carries a `compaction` record or a `compactions` history,
+Main projects each record to the compact identity (`createdAt` and
+`details.generation`) and checks the size again before returning the truncation
+envelope. This lets a long session's transcript survive when its unbounded
+`ContextCompactionRecord` (`summary` / `retainedTail` / `details.modifiedFiles`)
+alone caused the overflow — including the case where the newest `compaction` is
+already compact but the unbounded `compactions` history alone still exceeds the
+limit, which no `messageLimit` / `contentLimit` reduction can fix because the
+overflow is independent of the transcript page. Results already under the limit
+retain their full compaction details, and the desktop's own session detail is
+unchanged.
 
 The six `session/collaboration/*` operations are first-party-plugin-only: they
 require an authenticated plugin tool invocation context, so they appear in

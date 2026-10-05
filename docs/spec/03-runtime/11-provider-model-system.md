@@ -125,11 +125,16 @@ models.dev record publishes a reasoning `effort` option and no
 reject `thinking.type=enabled` with HTTP 400, and the model's published
 reasoning options determine that wire shape.
 Models that still publish `budget_tokens`, including those that also publish
-`effort`, keep budget thinking by default. The catalog uses this same rule
-for the protocol displayed in model settings. An explicit
-`ModelBinding.thinkingProtocol` selection (`legacy` or `adaptive`) overrides
-the default; an absent field preserves the existing inference. An explicit
-catalog `compat` record is preserved.
+`effort`, keep budget thinking by default. A reasoning-enabled non-OAuth
+generic model config with no `thinkingProtocol` or reasoning options
+also defaults to adaptive thinking when its id contains `claude` and the wire
+API is Anthropic Messages; this covers unpublished Claude relay ids whose
+metadata is missing. Live-only OAuth vendor rows keep their existing fallback.
+An explicit `ModelBinding.thinkingProtocol` selection (`legacy` or `adaptive`)
+takes priority, followed by an explicit per-model
+`compat.forceAdaptiveThinking` value, then catalog metadata or the Claude-id
+fallback. For catalog-published models, model settings display the protocol
+derived from the same effort/budget metadata.
 
 An Anthropic Messages row the catalog cannot identify (for example a custom
 gateway URL serving an id several publishers list) still falls back to the
@@ -545,13 +550,13 @@ type ModelDescriptor = {
 - keep model cards compact by default, expand metadata/configuration on demand,
   and keep dialog actions outside the independently scrollable content
 - do not expose raw catalog compatibility internals or provider secrets
-- Settings → Import can copy provider/model rows from Claude Code, Codex,
-  OpenCode, Pi, and CC Switch. The scan is explicit. Stored API keys are
-  copied into the host secret store; OAuth/subscription grants are not.
-  An equivalent provider (normalized URL + API style + same credential) is
-  skipped on re-import. Different credentials at one endpoint remain
-  independent providers. No protocol or schema version bump
-  (D342 / ADR 0179 / ADR 0188).
+- Settings → Models → Providers can scan and copy provider/model rows from
+  Claude Code, Codex, OpenCode, Pi, and CC Switch. The inline scan is explicit.
+  Stored API keys are copied into the host secret store; OAuth/subscription
+  grants are not. An equivalent provider (normalized URL + API style + same
+  credential) is skipped on re-import. Different credentials at one endpoint
+  remain independent providers. No protocol or schema version bump
+  (D342 / ADR 0179 / ADR 0188 / D645).
 
 ### Model selector
 - search all models across enabled providers

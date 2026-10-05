@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -16,8 +17,7 @@ const dataDir = join(root, "data");
 const profile = join(root, "profile");
 const project = join(root, "project");
 const evidence = process.env.PI_KEEP_AWAKE_EVIDENCE_DIR;
-const baseCdpPort = Number(process.env.PI_KEEP_AWAKE_CDP_PORT || 19400);
-let launchCount = 0;
+const configuredPort = process.env.PI_KEEP_AWAKE_CDP_PORT ? Number(process.env.PI_KEEP_AWAKE_CDP_PORT) : null;
 mkdirSync(dataDir);
 mkdirSync(project);
 const host = new Host(resolveHostBinary(), dataDir);
@@ -45,11 +45,24 @@ function hasElectronPowerRequest() {
   }
 }
 
+/** Reserve an ephemeral port: each launch gets its own DevTools server. */
+async function freePort() {
+  const server = createServer();
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port: available } = server.address();
+  await new Promise((resolve) => server.close(resolve));
+  return available;
+}
+
+let launchCount = 0;
+
 async function launch() {
-  // A second Electron launch uses the same isolated profile to prove
-  // persistence, but gets a fresh DevTools port so a slow first-process
-  // shutdown cannot make the new CDP endpoint ambiguous.
-  const port = baseCdpPort + launchCount++;
+  // A fresh port and profile per launch: the previous instance's DevTools
+  // server and single-instance lock can outlive the 5s close window, which made
+  // the restart assertions talk to the instance that was shutting down.
+  const port = configuredPort ?? (await freePort());
+  const userDataDir = `${profile}-${++launchCount}`;
+  mkdirSync(userDataDir);
   const env = {
     ...process.env,
     PI_DESKTOP_DATA_DIR: dataDir,
@@ -59,7 +72,7 @@ async function launch() {
   delete env.ELECTRON_RUN_AS_NODE;
   const child = spawn(
     electronBinary,
-    [`--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, "."],
+    [`--remote-debugging-port=${port}`, `--user-data-dir=${userDataDir}`, "."],
     { cwd: appDir, env, stdio: ["ignore", "pipe", "pipe"] },
   );
   let output = "";
@@ -122,11 +135,13 @@ async function launch() {
 async function close() {
   if (!session) return;
   session.ws.close();
-  session.child.kill();
-  if (session.child.exitCode === null) {
-    await Promise.race([once(session.child, "exit"), delay(5_000)]);
-  }
+  const { child } = session;
   session = null;
+  if (child.exitCode === null) {
+    child.kill();
+    await Promise.race([once(child, "exit"), delay(15_000)]);
+  }
+  if (child.exitCode === null) child.kill("SIGKILL");
 }
 
 async function click(selector) {

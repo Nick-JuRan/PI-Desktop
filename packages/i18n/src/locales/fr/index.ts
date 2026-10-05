@@ -259,6 +259,7 @@ export const fr = {
   },
   "chat": {
     "tableActions": "Actions du tableau",
+    "markdownPlainTextFallback": "La réponse volumineuse est affichée en texte brut pour préserver la réactivité.",
     "copyTableMarkdown": "Copier le tableau en Markdown",
     "exportTableCsv": "Télécharger le tableau en CSV",
     "tablePreview": "Agrandir le tableau",
@@ -293,6 +294,7 @@ export const fr = {
     "slashGroupApp": "Commandes d'application",
     "slashGroupPlugins": "Commandes du plug-in",
     "slashGroupExtensions": "Commandes d'extension",
+    slashGroupMcp: "MCP",
     "slashGroupSkills": "Compétences",
     "slashEmpty": "Aucune commande correspondante",
 "slashCommandSourceUnavailable": "Liste des commandes indisponible, rien n'a été envoyé. Réessayez.",
@@ -311,7 +313,6 @@ export const fr = {
       "progress": "{{completed}}/{{total}} terminées",
       "current": "{{completed}}/{{total}} · Actuelle : {{content}}",
       "completed": "{{completed}}/{{total}} terminées",
-      "more": "{{count}} éléments supplémentaires",
       "updated": "Liste mise à jour",
       "updating": "Mise à jour de la liste",
       "status": { "pending": "En attente", "in_progress": "En cours", "completed": "Terminée", "cancelled": "Annulée" }
@@ -558,6 +559,8 @@ export const fr = {
     "userMessage": "Message utilisateur",
     "assistantMessage": "Message de l'assistant",
     "model": "Modèle",
+    recentModels: "Récemment utilisés",
+    otherModels: "Autres modèles",
     "searchModels": "Rechercher des modèles",
     "noModelResults": "Aucun modèle correspondant",
     "modelBadgeReasoning": "raisonnement",
@@ -594,6 +597,15 @@ export const fr = {
     "renameCancel": "Annuler",
     "renameSave": "Enregistrer",
     "renameSaving": "Enregistrer…"
+  },
+  planHistory: {
+    pending: "En attente d’approbation",
+    approved: "Approuvé",
+    rejected: "Rejeté",
+    expired: "Expiré",
+    interrupted: "Interrompu",
+    unknown: "État indisponible",
+    superseded: "Remplacé",
   },
   "plan": {
     "planning": "Planification",
@@ -807,7 +819,6 @@ sklm: {
       "skills": "Compétences",
       "mcp": "MCP",
       "subagents": "Sous-agents",
-      "import": "Importation",
       "projects": "Projets",
       "sync": "Synchronisation cloud",
       "remoteHosts": "Hôtes distants",
@@ -816,7 +827,6 @@ sklm: {
     },
     "configSync": {
       title: "Cloud sync",
-      experimental: "Expérimental",
       connectionTitle: "WebDAV cloud sync",
       connectionDescription:
         "Synchronize portable configuration through an encrypted WebDAV vault. Conversation history, source files, and runtime state are never included.",
@@ -1199,7 +1209,6 @@ sklm: {
     "skillSaved": "Enregistré {{name}}",
     "subagentCreated": "Créé {{name}}",
     "subagentSaved": "Enregistré {{name}}",
-    "import": "Importation",
     "projectArchive": "Archive du projet",
     "remoteHosts": {
       "title": "Hôtes distants",
@@ -1250,7 +1259,6 @@ sklm: {
     "importFound": "Sessions trouvées : {{count}}",
     "importFound_one": "1 session trouvée",
     "importFound_other": "{{count}} sessions trouvées",
-    "importCodexCapped": "Codex est limité aux {{limit}} fichiers de session les plus récents (par date de dossier).",
     "importNone": "Aucune session importable trouvée sur cette machine.",
 
     "importSelectAll": "Sélectionner tous les",
@@ -1261,9 +1269,6 @@ sklm: {
     "importMessages_other": "{{count}} messages",
     "importMessagesUnknown": "—",
     "importNoProject": "Aucun projet",
-    "importSessionCount": "{{count}} sessions",
-    "importSessionCount_one": "1 session",
-    "importSessionCount_other": "{{count}} sessions",
     "importSelectedCount": "{{count}} sélectionnées",
     "importGroupBy": "Regrouper par",
     "importGroupByPath": "Chemin du projet",
@@ -2608,6 +2613,8 @@ sklm: {
     phase: { idle: "Désactivée", preparing: "Préparation", "acquiring-mic": "En attente du microphone", negotiating: "Négociation", connecting: "Connexion…", connected: "Connectée", reconnecting: "Reconnexion", closing: "Arrêt…", ended: "Terminée", failed: "Arrêtée" },
   },
   "errors": {
+    COMPOSER_MCP_UNAVAILABLE: "Le serveur MCP sélectionné est déconnecté ou indisponible dans ce projet. Reconnectez-le et sélectionnez-le à nouveau.",
+    COMPOSER_MCP_REQUEST_REQUIRED: "Après avoir sélectionné un serveur ou un outil MCP, saisissez une tâche ou ajoutez une pièce jointe.",
     "HOST_UNAVAILABLE": "Le service local n'est pas disponible",
     "MODEL_NOT_CONFIGURED": "Ce modèle n'est pas configuré ou le fournisseur d'IA ne le propose pas.",
     "TOOL_DENIED": "L'autorisation a été refusée pour cette action",

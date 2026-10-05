@@ -7416,6 +7416,49 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(host.call).toHaveBeenCalledTimes(1);
   });
 
+  it("guides empty override catalogs to model opt-in without blocking default delegation (#1043)", async () => {
+    const host = { call: vi.fn().mockRejectedValue(new Error("not enabled for delegation")) };
+    const runtime = createRuntime({ subagents: [explorer], subagentModelKeys: [], host });
+    subagentRuns.calls.length = 0;
+    subagentRuns.deferred = false;
+    subagentRuns.result = undefined;
+    const tool = taskTool(runtime);
+    const denied = await tool.execute("empty-override", {
+      agent: "explorer", task: "Search.", model: "guessed/model",
+    });
+    for (const guidance of [
+      denied.details.error, tool.description, (runtime as any).agent.state.systemPrompt,
+    ]) {
+      expect(guidance).toContain("Settings → Models");
+      expect(guidance).toContain("Advanced");
+      expect(guidance).toContain("Available for AI delegation");
+      expect(guidance).toContain("save");
+      expect(guidance).toContain("Omit");
+    }
+    expect(denied.details.error).toContain("not available for delegation");
+    expect(subagentRuns.calls).toHaveLength(0);
+    const inherited = await tool.execute("inherit-after-denial", { agent: "explorer", task: "Search." });
+    expect(inherited.details.error).toBeUndefined();
+    expect(subagentRuns.calls).toHaveLength(1);
+    expect(subagentRuns.calls[0].provider).toBe(provider);
+    await runtime.dispose();
+  });
+
+  it("lists exact authorized keys instead of empty-catalog guidance for an invalid override (#1043)", async () => {
+    const runtime = createRuntime({
+      subagents: [explorer],
+      subagentProviders: { "allowed/selected-model": provider },
+      subagentModelKeys: ["allowed/selected-model"],
+      host: { call: vi.fn().mockRejectedValue(new Error("not enabled for delegation")) },
+    });
+    const denied = await taskTool(runtime).execute("unknown-override", {
+      agent: "explorer", task: "Search.", model: "guessed/model",
+    });
+    expect(denied.details.error).toContain("Available: allowed/selected-model.");
+    expect(denied.details.error).not.toContain("Settings → Models");
+    await runtime.dispose();
+  });
+
   it("allows an opted-in model to override a definition pin without changing D278", async () => {
     const pinnedProvider = { ...provider, modelId: "remote-model", modelConfig: undefined };
     const selected = { ...provider, modelId: "selected-model", modelConfig: undefined };
@@ -8189,7 +8232,7 @@ describe("DesktopAgentRuntime subagents", () => {
     await runtime.dispose();
   });
 
-  it("aborts leftover delegates on parent rate-limit exhaustion so the session can continue", async () => {
+  it("keeps interrupted delegates resumable after parent rate-limit exhaustion", async () => {
     const onEvent = vi.fn();
     const runtime = createRuntime({ subagents: [explorer], onEvent });
     subagentRuns.calls.length = 0;
@@ -8244,9 +8287,12 @@ describe("DesktopAgentRuntime subagents", () => {
 
     await vi.waitFor(() => {
       expect((runtime as any).delegations.get(delegationId).status).toBe(
-        "aborted",
+        "failed",
       );
     });
+    expect((runtime as any).delegationChains.resolveResume({
+      resume: delegationId, agentName: "explorer", runningDelegationIds: new Set(),
+    }).ok).toBe(true);
 
     const prompt = vi.fn(async () => undefined);
     (runtime as any).agent.prompt = prompt;
@@ -8837,6 +8883,78 @@ describe("DesktopAgentRuntime subagents", () => {
       };
     }
 
+    it("resumes both delegates interrupted by parent failure with their own history", async () => {
+      const runtime = createRuntime({ subagents: [explorer] });
+      const internals = runtime as any;
+      subagentRuns.calls.length = 0;
+      subagentRuns.instances.length = 0;
+      subagentRuns.result = undefined;
+      subagentRuns.deferred = true;
+      try {
+        const ids: string[] = [];
+        for (let index = 0; index < 2; index++) {
+          const callId = `original-${index}`;
+          const started = await startTask(runtime, callId, { agent: "explorer", task: `Task ${index}` });
+          ids.push((started.details as any).delegationId);
+          subagentRuns.calls[index].onEvent(delegateEnvelope(callId, { type: "message_end", message: {
+            id: `child-${index}`, role: "assistant", content: `Finding ${index}`,
+            createdAt: "2026-10-04T00:00:00.000Z", status: "complete",
+          } }));
+        }
+        internals.terminateParentTurn();
+        await vi.waitFor(() => {
+          expect(ids.map((id) => internals.delegations.get(id).status)).toEqual(["failed", "failed"]);
+        });
+        expect(internals.runningDelegations()).toHaveLength(0);
+        for (const id of ids) {
+          expect(internals.delegations.get(id).result).toMatchObject({ status: "failed",
+            error: { code: "SUBAGENT_PARENT_FAILED", resumeId: id } });
+        }
+        internals.agent.prompt = vi.fn(async () => undefined);
+        internals.agent.waitForIdle = vi.fn(async () => undefined);
+        await runtime.prompt("Continue the failed delegates");
+        subagentRuns.deferred = false;
+        for (let index = 0; index < 2; index++) {
+          const result = await startTask(runtime, `resumed-${index}`, {
+            agent: "explorer", task: "Continue", resume: ids[index],
+          });
+          expect((result.details as any).resumedFrom).toBe(ids[index]);
+          const context = JSON.stringify(subagentRuns.calls.at(-1).initialMessages);
+          expect(context).toContain(`Finding ${index}`);
+          expect(context).not.toContain(`Finding ${1 - index}`);
+        }
+      } finally {
+        subagentRuns.deferred = false;
+        await runtime.dispose();
+      }
+    });
+
+    it.each(["abort", "TaskStop"])("explicit %s wins over a pending parent-error interruption", async (action) => {
+      const runtime = createRuntime({ subagents: [explorer] });
+      const internals = runtime as any;
+      subagentRuns.calls.length = 0;
+      subagentRuns.instances.length = 0;
+      subagentRuns.deferred = true;
+      subagentRuns.ignoreAbort = true;
+      try {
+        const started = await startTask(runtime, "original", { agent: "explorer", task: "Find it" });
+        const id = (started.details as any).delegationId;
+        internals.terminateParentTurn();
+        const cancelled = action === "abort" ? runtime.abort() : internals.agent.state.tools
+          .find((tool: any) => tool.name === "TaskStop").execute("stop", { delegationIds: [id] });
+        subagentRuns.resolveRun?.({ agentName: "explorer", status: "aborted", report: "Aborted",
+          turns: 1, toolCalls: 0 });
+        await cancelled;
+        await vi.waitFor(() => expect(internals.delegations.get(id).status).toBe(action === "abort" ? "aborted" : "stopped"));
+        expect(internals.delegationChains.resolveResume({ resume: id, agentName: "explorer",
+          runningDelegationIds: new Set() }).ok).toBe(false);
+      } finally {
+        subagentRuns.ignoreAbort = false;
+        subagentRuns.deferred = false;
+        await runtime.dispose();
+      }
+    });
+
     it("records a delegate's reads in-session so the same session can resume them", async () => {
       const runtime = createRuntime({ subagents: [explorer] });
       const internals = runtime as any;
@@ -8960,9 +9078,10 @@ describe("DesktopAgentRuntime subagents", () => {
       await runtime.dispose();
     });
 
-    it("resumes a chain a restart rebuilt from a completed Task row", async () => {
+    it.each(["completed", "failed"])("resumes a chain a restart rebuilt from a %s Task row", async (status) => {
       const history: UiMessage[] = [
-        restartedTaskRow("task-1", "del-1", { status: "completed" }),
+        restartedTaskRow("task-1", "del-1", { status,
+          ...(status === "failed" ? { error: { code: "SUBAGENT_PARENT_FAILED" } } : {}) }),
         delegateRow("child-1", "task-1"),
       ];
       const runtime = createRuntime({ subagents: [explorer], history });
@@ -11020,6 +11139,91 @@ describe("toolResultFromUi image restoration (issue #1073)", () => {
     };
     const restored = toolResultFromUi(row, timestamp);
     expect(restored.content).toEqual([{ type: "text", text: expect.stringContaining("broken.png") }]);
+  });
+
+  it("restores a bare plugin content-block array without flattening it to JSON (#1360)", () => {
+    const row = {
+      id: "call-3",
+      role: "tool" as const,
+      content: "",
+      createdAt: new Date(timestamp).toISOString(),
+      toolCallId: "call-3",
+      toolName: "plugin_shot",
+      // A plugin tool returned a bare content-block array rather than an
+      // object with `content` or a top-level `images` field.
+      toolResult: [
+        { type: "text", text: "here is the screenshot" },
+        { type: "image", data: "cG5nLWJ5dGVz", mimeType: "image/png" },
+      ],
+      toolStatus: "success" as const,
+      isError: false,
+    };
+    const restored = toolResultFromUi(row, timestamp);
+    expect(restored.content).toEqual([
+      { type: "text", text: "here is the screenshot" },
+      { type: "image", data: "cG5nLWJ5dGVz", mimeType: "image/png" },
+    ]);
+  });
+
+  it.each([
+    [
+      "MCP content property",
+      {
+        content: [
+          { type: "text", text: "MCP returned a screenshot" },
+          { type: "image", data: "cG5nLWJ5dGVz", mimeType: "image/png" },
+        ],
+        isError: false,
+      },
+    ],
+    [
+      "plugin bare content-block array",
+      [
+        { type: "text", text: "Plugin returned a screenshot" },
+        { type: "image", data: "cG5nLWJ5dGVz", mimeType: "image/png" },
+      ],
+    ],
+  ])("normalizes %s into model image blocks", async (_shape, rawContent) => {
+    const host = {
+      call: vi.fn().mockImplementation((method: string) =>
+        Promise.resolve(
+          method === "project.instructions.resolve"
+            ? { entries: [] }
+            : { ok: true, content: rawContent },
+        ),
+      ),
+    };
+    const runtime = createRuntime({ host });
+    const read = (runtime as any).toolCatalog.get("Read");
+    const result = await read.execute("image-result", { path: "screenshot.png" });
+    const expectedText =
+      _shape === "MCP content property"
+        ? "MCP returned a screenshot"
+        : "Plugin returned a screenshot";
+    const expected = [
+      { type: "text", text: expectedText },
+      { type: "image", data: "cG5nLWJ5dGVz", mimeType: "image/png" },
+    ];
+
+    expect(result.content).toEqual(expected);
+    expect(result.details).toMatchObject({ imageCount: 1 });
+
+    const restored = toolResultFromUi(
+      {
+        id: "image-result",
+        role: "tool",
+        content: "",
+        createdAt: new Date(timestamp).toISOString(),
+        toolCallId: "image-result",
+        toolName: "Read",
+        toolResult: result,
+        toolStatus: "success",
+        isError: false,
+      },
+      timestamp,
+    );
+    expect(restored.content).toEqual(expected);
+    await runtime.dispose();
   });
 });
 
