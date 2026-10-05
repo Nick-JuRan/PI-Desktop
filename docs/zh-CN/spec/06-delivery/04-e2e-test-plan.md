@@ -8124,10 +8124,10 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   1. 打开新的 Agent 会话，发送一条匹配该 Skill 描述的提示。
   2. 检查第一个 provider 请求及其工具列表。
   3. 确认模型直接用精确 id 调用 `Skill`，且没有先调用 `ToolSearch`，返回内容就是技能正文。
-  4. 在输入框发送 `/<skill-id>`，检查随后的回合。
+  4. 选择 Skill 并在输入框发送 `/skill:<skill-id>`，检查随后的回合以及工具收到的原始 Skill ID。
   5. 把会话切换到 Plan 模式，再次检查工具列表。
   6. 禁用或移除全部 Skill，再发起一个 Agent 回合。
-- **预期**：只要技能目录非空，`Skill` 就随第一个请求下发，且绝不出现在 `# On-demand tools` 中，因此匹配任务与 `/skill-id` 调用都能直接加载正文，不再多一次发现往返。`ToolSearch` 仍服务于其他按需能力，且永远不会返回 `Skill`。Plan 模式不提供该工具与 `# Skills` 段落；目录为空时不注册任何 `Skill` 工具。
+- **预期**：只要技能目录非空，`Skill` 就随第一个请求下发，且绝不出现在 `# On-demand tools` 中，因此匹配任务与 `/skill:<skill-id>` 调用都能直接加载正文，不再多一次发现往返。未加前缀的同名命令或模板保持原行为，不作为 Skill 别名。`ToolSearch` 仍服务于其他按需能力，且永远不会返回 `Skill`。Plan 模式不提供该工具与 `# Skills` 段落；目录为空时不注册任何 `Skill` 工具。
 - **链接规格**：`03-runtime/02-agent-runtime.md`（§7.1）、`03-runtime/03-tools-and-permissions.md`（§2.1）、`04-ux/04-builtin-commands.md`（§8）、`08-meta/decisions-log.md`（D404）、ADR 0048、ADR 0219、ADR 0230
 - **验收**：C（对话与流）、E（工具与权限）、品质
 - **里程碑**：M5

@@ -1439,7 +1439,7 @@ execution activation rules:
 
 - Agent: `Read`, `Bash`, `Edit`, and `Write` (matching pi's coding-agent core)
 - Agent: `Skill` whenever the skill catalog is non-empty (D404, ADR 0230) — the
-  `# Skills` section and a user-typed `/skill-id` both ask the model to call
+  `# Skills` section and a user-typed `/skill:<skill-id>` both ask the model to call
   it, and a tool that is missing from the schema cannot be called at all
 - Agent: `Task`, `TaskWait`, `TaskList`, and `TaskStop` as well, whenever the
   subagent catalog is non-empty (§5f) — a capability the model has to go
