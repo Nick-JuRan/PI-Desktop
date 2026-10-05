@@ -998,7 +998,6 @@ export type PluginToolDef = {
   /** Provenance used when a subagent selects a whole MCP server. */
   source?: "plugin" | "mcp";
   pluginId?: string;
-  mcpServerId?: string;
 };
 
 export type AgentRuntimeOptions = {
