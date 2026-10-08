@@ -4824,7 +4824,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         try {
           const { names: resolvedToolNames, tools, skillIds } =
             this.toolsForDelegation(definition, delegateScope);
-          const scopedTools = this.scopeDelegateTools(tools, definition, skillIds, delegationId);
+          const scopedTools = this.scopeDelegateTools(tools, definition, delegationId, skillIds);
           subagentRun = new SubagentRun({
             definition,
             sessionId: this.sessionId,
@@ -4959,8 +4959,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   private scopeDelegateTools(
     tools: AgentTool[],
     definition: SubagentDefinition,
-    skillIds: readonly string[],
     mutationOwner: string,
+    skillIds: readonly string[] = [],
   ): AgentTool[] {
     const scope = definition.permission ?? DEFAULT_SUBAGENT_PERMISSION;
     return tools.map((tool) => ({
