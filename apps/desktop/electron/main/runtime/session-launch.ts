@@ -10,6 +10,7 @@ import {
   ErrorCodes as SharedErrorCodes,
   isActiveInProject,
   isCommandShellCatalog,
+  JEV_API_KEY_SECRET_REF,
   imageGenerationBindings,
   isImageGenerationModel,
   normalizeMode,
@@ -774,18 +775,37 @@ export function createSessionLaunchRuntime({
             : [],
         ),
     );
+    const mode = normalizeMode(
+      overrides.mode ?? session.mode ?? settings.defaultMode ?? "agent",
+    );
+    let jevApiKey: string | undefined;
+    if (mode === "agent" && settings.jevEnabled === true) {
+      try {
+        const saved = await runtimeState.host!.call<{ value?: string | null }>(
+          "secrets.getForRuntime",
+          { secretRef: JEV_API_KEY_SECRET_REF },
+        );
+        if (typeof saved.value === "string" && saved.value.trim().length > 0) {
+          jevApiKey = saved.value;
+        }
+      } catch {
+        logger.app("session", "warn", "Jev API key could not be loaded", {
+          sessionId,
+        });
+      }
+    }
     return {
       providerId: provider.id,
       modelId,
       projectPath,
       sidecarParams: {
         sessionId,
-        mode: normalizeMode(
-          overrides.mode ?? session.mode ?? settings.defaultMode ?? "agent",
-        ),
+        mode,
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
         maxSubagentDepth: normalizeSubagentMaxDepth(settings.maxSubagentDepth),
+        infiniteProviderRetry: settings.infiniteProviderRetry === true,
+        ...(jevApiKey ? { jevApiKey } : {}),
         commandShell,
         scratchDir: join(dataDir, "scratch", sessionId),
         attachmentsDir: join(dataDir, "attachments"),
