@@ -772,7 +772,9 @@ attachment, scratch, and project roots. Each image remains subject to the 10 MB
 safety bound, and restored history has a 30 MB aggregate raw-byte budget.
 The newest refs are considered first; all eligible images remain image blocks
 when the history fits, while over-budget or oversized images become safe
-`@path` fallbacks. Reads are bounded by the admitted file size. Base64 is
+`@path` fallbacks. An image whose message names it inline (`inlinePath`) is
+spliced back into the prompt at that position, so a restored turn keeps the
+order the user wrote. Reads are bounded by the admitted file size. Base64 is
 transient and never restored into durable UI messages or transcript records.
 - Failed assistant messages remain durable diagnostic transcript entries but
   are never restored into pi model context on a later turn.
@@ -1595,7 +1597,10 @@ tool continues with the runtime's base/root chain rather than waiting for the
 general host RPC timeout. A failed resolution never leaves a previously
 resolved sibling-directory chain active.
 
-All discovery stays within the session project root. Empty, unreadable, and
+All discovery stays within the session project root. A target path outside the
+project root, or the root path itself, resolves to the root's own chain instead
+of an empty result. File tools on attachments or other locations therefore
+keep the root chain (which may itself be empty). Empty, unreadable, and
 out-of-root files are skipped. The combined UTF-8 content is capped at 32 KiB
 and source paths are labelled under `# Project instructions`.
 The sidecar never reads workspace instructions directly. A changed root chain
