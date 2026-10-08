@@ -1574,15 +1574,20 @@ identify the platform validation still needed.
 - **Preconditions**: Packaged or checkout build with bundled plugins; Agent
   session with a workspace HTML file; Plan session available.
 - **Steps**: 1) Confirm Plugins lists `pi.browser`, enabled, not uninstallable.
-  2) Open the work panel and launch Browser from plugin views. 3) Ask the
-  agent to preview a workspace HTML file (`BrowserPreview`) then snapshot via
-  ToolSearch `cdp` / `Browser`. 4) Switch to Plan and call the plugin Browser
-  tool. 5) Disable `pi.browser`. 6) Call `BrowserPreview` and click an http(s)
-  transcript link. 7) From a third-party or test caller, send
+  2) With the work panel closed, ask the agent to preview a workspace HTML
+  file (`BrowserPreview`) and verify the Browser tab opens in the visible work
+  panel. 3) Use ToolSearch `cdp` / `Browser` to snapshot and interact while the
+  panel remains visible. 4) For an HTTP(S) URL, verify the agent opens or
+  activates Browser before navigating; if it cannot reveal the view, it asks
+  the user to open it before continuing. 5) Switch to Plan and call the plugin
+  Browser tool. 6) Disable `pi.browser`. 7) Call `BrowserPreview` and click an
+  http(s) transcript link. 8) From a third-party or test caller, send
   `Network.getAllCookies` through `pi.browser.cdp`.
 - **Expected**: The launcher has no host Browser row. Preview opens the plugin
-  view and live-reloads the file. Plugin tool `plugin_pi_browser_Browser` can
-  snapshot after ToolSearch. Plan denies the plugin tool
+  view, reveals the work panel, and live-reloads the file. Browser operations
+  are made only while the view is visible; the agent waits for the user to
+  reveal it if necessary. Plugin tool `plugin_pi_browser_Browser` can snapshot
+  after ToolSearch. Plan denies the plugin tool
   (`PLUGIN_DISABLED_IN_PLAN`) while `BrowserPreview` remains callable. Disable
   hides the view and tools; `BrowserPreview` errors; http(s) chips use
   `openExternal`. Cookie CDP is denied. Guest bounds stay inside the plugin
@@ -3159,12 +3164,12 @@ identify the platform validation still needed.
 #### E2E-022C: Check, pack, install round-trip
 
 - **Preconditions**: A scaffolded plugin directory.
-- **Steps**: 1) `pnpm pi-plugin check <dir>`. 2) Delete the file named by `main` and run `check` again. 3) Restore it, declare `contributes.skills` without `agent.prompt.inject`, and run `check` again. 4) `pnpm pi-plugin pack <dir>`. 5) Install the resulting `.piplug` from the plugins page. 6) Ask the agent to run `PluginCheck` and `PluginPack` on the same directory.
-- **Expected**: A scaffolded plugin checks clean and reports its file count and size; the missing `main` is an error that blocks `pack`; the inert-skills case is a warning that does not block; `pack` writes `dist/<id>-<version>.piplug` with store-only entries and prints its sha256; the package installs through the normal permission review and appears under Active; the agent tools produce the same verdicts and refuse any directory outside the session workspace.
+- **Steps**: 1) `pnpm pi-plugin check <dir>`. 2) Delete the file named by `main` and run `check` again; repeat with the file named by `manifest.renderer` in a plugin that declares one. 3) Restore it, declare `contributes.skills` without `agent.prompt.inject`, and run `check` again. 4) `pnpm pi-plugin pack <dir>`. 5) Install the resulting `.piplug` from the plugins page. 6) Ask the agent to run `PluginCheck` and `PluginPack` on the same directory.
+- **Expected**: A scaffolded plugin checks clean and reports its file count and size; the missing `main` or `manifest.renderer` entry is an error that blocks `pack`; the inert-skills case is a warning that does not block; `pack` writes `dist/<id>-<version>.piplug` with store-only entries and prints its sha256; the package installs through the normal permission review and appears under Active; the agent tools produce the same verdicts and refuse any directory outside the session workspace.
 - **Specs linked**: `07-plugins/10-plugin-devex.md` §5–§6, `07-plugins/06-plugin-packaging.md`, ADR 0039
 - **Acceptance**: G (local packaging round-trip)
 - **Milestone**: Post-MVP
-- **Status**: Automated in part (`packages/plugin-devkit` vitest: scaffold→check→pack per template, store-method headers, every check rule); install step Documented
+- **Status**: Automated in part (`packages/plugin-devkit` vitest: scaffold→check→pack per template, store-method headers, every check rule, and a parity test that pins the `permission.high-risk` list to the permissions matrix's high rows); install step Documented
 
 #### E2E-023: Plugin command in global search and executes
 
@@ -3419,7 +3424,7 @@ window; opening a normal panel afterward must still work.
 
 - **Preconditions**: A marketplace/package-installable `examples/plugins/hello` variant (`demo.hello`) whose `midnight` theme CSS references a declared package-relative image at `art/preview.png`; a plugin with CSS using `@import` or remote `url()` for rejection plus a comment-only variant; an asset theme with `windowAppearance` variants with and without `ui.window.appearance`, including `cornerRadius: 0` and an invalid value above 24.
 - **Steps**: 1) Install the packaged Hello variant from Marketplace or its `.piplug` package and select `Hello Midnight` in Settings → General → Theme. 2) Restart the app. 3) Disable the providing plugin. 4) Re-enable it, then uninstall it. 5) Load the plugin with unsafe CSS. 6) Load the comment-only variant. 7) Select the asset variant's theme on Windows/Linux and on macOS, verify the package-relative image renders through `plugin-asset:` in the shell and the plugin's panel, and load a sheet with an undeclared package-relative `url()` to verify it is refused. 8) Deselect its theme after removing `ui.window.appearance`.
-- **Expected**: The packaged plugin installs successfully with its relative image resolved inside the plugin root; its theme appears in the picker alongside the built-ins and applies immediately, with the image served through `plugin-asset:`; the choice survives restart as `plugin:demo.hello:midnight`; disabling or uninstalling the provider falls back to `system` instead of an unstyled shell; unsafe CSS is refused at load with the reason logged and no `<style>` element injected; the comment-only sheet loads and contributes its theme, because the sanitizer only inspects CSS the browser would apply; the declared asset paints through `plugin-asset:` in the shell and in the plugin's own panel, an undeclared reference is refused with the reason logged, the declared background colours the native window on Windows/Linux and is never sent on macOS, and `cornerRadius: 0` makes only the Windows main window rectangular while the authorized theme is selected. Deselecting the theme or dropping the grant restores the host background and 4 DIP Windows corners; a radius above 24 rejects without changing the window. The whole shell follows the theme, including the work-panel column, its header, and the browser/file viewer strips, all of which read `--ds-bg-dock` / `--ds-bg-dock-raised` rather than a literal.
+- **Expected**: The packaged plugin installs successfully with its relative image resolved inside the plugin root; its theme appears in the picker alongside the built-ins and applies immediately, with the image served through `plugin-asset:`; the choice survives restart as `plugin:demo.hello:midnight`; disabling or uninstalling the provider falls back to `system` instead of an unstyled shell; unsafe CSS is refused at load with the reason logged and no `<style>` element injected; the comment-only sheet loads and contributes its theme, because the sanitizer only inspects CSS the browser would apply; the declared asset paints through `plugin-asset:` in the shell and in the plugin's own panel, an undeclared reference is refused with the reason logged, the declared background colours the native window on Windows/Linux and is never sent on macOS, and `cornerRadius: 0` makes only the Windows main window rectangular while the authorized theme is selected. Deselecting the theme or dropping the grant restores the host background and the global 12 DIP `--radius-md` Windows corners; a radius above 24 rejects without changing the window. The whole shell follows the theme, including the work-panel column, its header, and the browser/file viewer strips, all of which read `--ds-bg-dock` / `--ds-bg-dock-raised` rather than a literal.
 - **Specs linked**: `07-plugins/02-plugin-manifest-schema.md`, `07-plugins/04-plugin-security.md` §3.1, `04-ux/07-ui-design-system.md`, D175
 - **Acceptance**: G (theme contribution) + Security
 - **Status**: Unit-covered (`plugin-themes.test.mjs`, `theme-css` SDK tests, host-core package-relative asset/install tests). `test:e2e:window-controls` selects an authorized test plugin theme with `cornerRadius: 0` and returns to a built-in theme, verifying the native shape follows both choices. The broader asset visual scenario remains Draft.
@@ -9002,17 +9007,18 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   7. Click a conversation reference to `src/example.ts:42`. Confirm the host
      `file:` tab opens at line 42 even though the File Manager plugin is enabled.
   8. Disable the File Manager plugin. Confirm the view disappears from the menu
-     and the panel, and that a clicked conversation file path falls back to the
-     host `file:<path>` tab under Open resources.
-  9. Re-enable it, then restart the app. Confirm the enabled state and the tree
-     return, and that the registry did not gain a duplicate row.
+     and the panel. Click a project file path in the conversation; the host
+     should enable the bundled plugin and open that file in its view.
+  9. Restart the app. Confirm the enabled state and the tree return, and that
+     the registry did not gain a duplicate row.
 - **Expected**: A panel surface runs entirely on the public plugin contribution
   channel, is user-disableable, cannot be uninstalled, and survives restart. Its
   host-mediated actions obey the declared `fs.read` scope, and its own reads and
   writes stay inside the jail of the one project folder it is browsing
-  (ADR 0241, ADR 0263). Plain project-file links open in the bundled view; a
-  positioned `path:line` reference opens the host file tab and scrolls the
-  requested line even while the plugin view is available.
+  (ADR 0241, ADR 0263). Plain project-file links open in the bundled view,
+  bringing it up on demand after a direct click when its scope and permission
+  allow it; a positioned `path:line` reference opens the host file tab and
+  scrolls the requested line even while the plugin view is available.
 - **Specs linked**: `07-plugins/03-plugin-api.md` §3,
   `07-plugins/13-plugin-permissions-matrix.md` §2,
   `04-ux/08-component-spec.md` §5, ADR 0104, ADR 0109, ADR 0111,
@@ -9617,7 +9623,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | Post-baseline local automation | E2E-220 |
 | Post-baseline local automation (MCP `pi_session_get` large compaction) | E2E-MCP-session-get-projects-large-compaction |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
-| Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-HOOKS-prompt-chain, E2E-HOOKS-cancel-and-dispose, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
+| Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-HOOKS-prompt-chain, E2E-HOOKS-cancel-and-dispose, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-TRUSTED-EXTENSION-temporary-session-cwd-is-scratch, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | Trusted extensions (R7 v1 npm recovery) | E2E-PLUGIN-import-extension-recovers-missing-npm |
 | Post-MVP regression coverage (plugin tool dispatch) | E2E-PLUGIN-slow-tool-is-not-cut-off-by-host-dispatch |
 | M6+ (Project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
@@ -11195,12 +11201,20 @@ This test plan spec is accepted when:
   6. Emit `Edit` on a path that does not exist but whose basename and tag match
      exactly one file this session recorded, and inspect the warning.
   7. Repeat step 6 with two recorded candidates sharing that basename and tag.
+  8. Emit `MV` to the source itself, `./source`, `sub/../source`, and its
+     absolute path, plus a directory symlink (Windows junction) pointing back
+     to its directory; on a case-insensitive filesystem also use a case-only
+     alias. Repeat with a
+     content-changing `PUT` in the same call, then use the original Read tag
+     for a valid content edit.
 - **Expected**: Step 1 records a source deletion and a destination creation under
   one tool call; step 3 restores both or neither. Step 4's rollback restores the
   captured bytes, hash-guarded on the full digest rather than the 16-bit tag.
   Step 5 fails rather than editing against content the rollback replaced. Step 6
   rebinds to the real file with a warning, and the write-permission gate is
   evaluated against the rebound path; step 7 declines instead of picking one.
+  Step 8 returns `EDIT_NO_CHANGE` without writing or deleting the source, and
+  the original Read tag remains usable for the following valid edit.
 - **Specs linked**: `03-runtime/18-line-anchored-edit-contract.md` §9.2, §13.1,
   `03-runtime/03-tools-and-permissions.md` §4c, ADR 0043, ADR 0087
 - **Acceptance**: E (tools & permissions), Quality
@@ -12081,7 +12095,8 @@ This test plan spec is accepted when:
      return. Release the pointer outside the original window bounds, then
      maximize and enter fullscreen; native hit regions must not block
      window controls or content in those states.
-  6. On Windows, inspect the default 4 DIP corner cutouts before and after
+  6. On Windows, inspect the default 12 DIP corner cutouts, matching the global
+     `--radius-md` token, before and after
      resizing. Apply an authorized theme with `cornerRadius: 0`, then return to
      a built-in theme. Reject an out-of-range radius without changing the shape.
 - **Expected**: Native edge and corner hit regions remain available in frameless
@@ -12094,12 +12109,13 @@ This test plan spec is accepted when:
   or right native rim is visible. No temporary
   work-panel reservation width is persisted or restored.
   The four normal-window corners have no painted or interactive pixels outside
-  the active radius; the default is 4 DIP, an authorized theme may choose 0..24
+  the active radius; the default is the global 12 DIP `--radius-md` radius, an
+  authorized theme may choose 0..24
   DIP, and maximized/fullscreen windows are rectangular.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,
   `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
-  ADR 0029 / ADR 0151
+  ADR 0029 / ADR 0151 / ADR 0317
 - **Acceptance**: A (app shell), F (persistence), Quality
 - **Milestone**: M6+
 - **Status**: `test:e2e:window-controls` covers corner cutouts, theme radius
@@ -12744,14 +12760,18 @@ are withdrawn with ADR 0165.
   every allowed root. Repeat the path-recognition checks with a POSIX project
   path containing a space on macOS or Linux.
 - **Steps**: 1) Click the full path in the Write row. 2) Click the same full
-  path as inline code and as ordinary text in the assistant reply. 3) Click a
+  path as inline code and as ordinary text in the assistant reply. On Windows,
+  also click it as a Markdown link with an angle-bracketed destination, for
+  example `[readme.md](<C:\workspace with spaces\readme.md>)`. 3) Click a
   relative path whose middle directory contains a space, then a first-segment
   spaced path using an explicit `@"..."` reference. 4) Click the outside
   absolute path.
 - **Expected**: Every allowed reference opens the exact file in the existing
   side file view; no path is truncated to its suffix or redirected to the
-  same-name file. The outside path opens nothing and reports the access limit,
-  while a missing in-root file reports that no file matches.
+  same-name file. The Windows Markdown link keeps a valid sanitized address
+  and reaches the existing file opener with the original drive path. The outside
+  path opens nothing and reports the access limit, while a missing in-root file
+  reports that no file matches.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md` § fs,
   `04-ux/08-component-spec.md` §8.3.
 - **Acceptance**: C (conversation & stream), D (workspace), Quality
@@ -12775,14 +12795,14 @@ are withdrawn with ADR 0165.
   assistant reply and the same reference as a sent user chip. 5) Click the file
   path in the tool row's summary, then a path in the `Glob` result's file list
   and a path heading of the `Grep` result. 6) Disable the File Manager plugin,
-  click a project file reference and the tool row summary again, then re-enable
-  it and click both once more. 7) Click a reference that resolves in the
-  project's second folder, then one that resolves in its primary folder. 8)
-  Right-click the sent `@path` chip, the inline-code reference, the markdown
-  link, the local image, a tool row's file path, a tool result's file list, and
-  an attachment image chip; then right-click a reference that matches nothing. 9)
-  On that chip, use Copy full path and Copy relative path, then do the same on a
-  reference that resolves in the session scratch store.
+  then click a project file reference and the tool row summary. 7) Click a
+  reference that resolves in the project's second folder, then one that resolves
+  in its primary folder. 8) Right-click the sent `@path` chip, the inline-code
+  reference, the markdown link, the local image, a tool row's file path, a tool
+  result's file list, and an attachment image chip; then right-click a reference
+  that matches nothing. 9) On that chip, use Copy full path and Copy relative
+  path, then do the same on a reference that resolves in the session scratch
+  store.
 - **Expected**:
   - Right-clicking a file reference opens the renderer's own menu with the
     file's own folder (Show in folder) and both of its addresses (Copy full
@@ -12816,10 +12836,11 @@ are withdrawn with ADR 0165.
     Manager view on that file, reached by its absolute path, with no host
     `file:` tab; the reference from the primary folder opens in that same view
     addressed project-relative (ADR 0263).
-  - With the plugin disabled, a project file reference — from the reply and from
-    a tool row or result list alike — falls back to the host `file:` tab, the
-    surface those clicks used before, which now also reaches the project's other
-    folders; re-enabling the plugin restores the File Manager destination.
+  - With the plugin disabled, a direct project-file click from the reply, tool
+    row, or result list starts the bundled File Manager within its existing
+    scope and permission grant, then opens the requested file there. If the
+    scope or grant excludes the current project, or the view still cannot
+    start, the host `file:` tab opens with an unavailable notice.
 - **Specs linked**: `04-ux/08-component-spec.md` §8.3, §9.6,
   `04-ux/09-interaction-patterns.md` §8a.2, ADR 0104, ADR 0163, ADR 0241,
   ADR 0249, ADR 0262, ADR 0263
@@ -12828,8 +12849,10 @@ are withdrawn with ADR 0165.
 - **Status**: Unit-covered
   (`apps/desktop/test/transcript-file-chips.test.mjs` for the wiring and
   `apps/desktop/test/tool-row-file-refs.test.mjs` for the work-panel entry each
-  shape of resolution produces); full UI journey Draft (run only in a capable
-  environment when this surface changes)
+  shape of resolution produces). The isolated Electron renderer journey in
+  `scripts/e2e-file-ref-line-scroll.mjs` verifies a Markdown link enables the
+  File Manager on demand and a positioned reference still opens in the host
+  viewer; the full packaged UI journey remains Draft.
 
 #### E2E-CHAT-mp4-attachment-opens-in-system-player
 
@@ -12886,12 +12909,14 @@ are withdrawn with ADR 0165.
 
 - **Preconditions**: An Agent session in a workspace that contains
   `apps/desktop/src/App.tsx`, `docs/adr/0163-transcript-file-reference-chips.md`,
-  `docs/spec/00-baseline.md`, and a Unicode-named file such as `报告.pdf`.
+  `docs/spec/00-baseline.md`, `核查报告.md`, and a Unicode-named file such as
+  `报告.pdf`.
 - **Steps**: 1) Open an existing session whose transcript already contains
   assistant markdown. 2) Prompt a turn whose assistant reply mentions
   `apps/desktop/src/App.tsx` as a bare path, as inline code, a Unicode path such
-  as `报告.pdf`, and as a markdown link. 3) Click each. 4) Open the ADR markdown
-  file in the work-panel files viewer and click a `../spec/00-baseline.md` link.
+  as `报告.pdf`, and as a markdown link; also include
+  `[核查报告.md](核查报告.md)`. 3) Click each. 4) Open the ADR markdown file
+  in the work-panel files viewer and click a `../spec/00-baseline.md` link.
   5) Include an absolute path under the workspace, an outside absolute path,
   and a `~/` path in chat; confirm only the under-root path becomes a target.
   6) Send a user message `使用llama.cpp，给我迁移步骤，只读。`, then a user
@@ -12905,6 +12930,8 @@ are withdrawn with ADR 0165.
   - Each chat path opens `apps/desktop/src/App.tsx` in the File Manager
     work-panel view — the file view a chat click prefers — not a host `file:`
     tab.
+  - Clicking `[核查报告.md](核查报告.md)` in the assistant reply opens that
+    project Markdown file in the File Manager work-panel view.
   - Unicode filenames and multi-segment paths inside the workspace become
     targets, while an outside absolute path and a `~/` path stay plain text.
   - An absolute path under the workspace resolves to its workspace-relative
@@ -14688,6 +14715,22 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Acceptance**: A (app control), Quality
 - **Milestone**: Post-MVP (R7 v1)
 - **Status**: Partially automated (`pnpm test:e2e:trusted-extensions`); global/composer command discovery, prompt broker round-trip, abort, session rename, exec, and Host-owned queue pass, while no-session and remote-control cases remain additional validation.
+
+#### E2E-TRUSTED-EXTENSION-temporary-session-cwd-is-scratch: Extensions in a temporary session work in its scratch
+
+- **Preconditions**: An enabled fixture extension registering command `where`
+  that reports `ctx.cwd`, `ctx.sessionManager.getCwd()`, and the working
+  directory of a child started with `pi.exec` without a `cwd` option.
+- **Steps**: 1) Start a temporary session (no project) and run `/where`
+  before any tool call. 2) Run `/where` in a project session.
+- **Expected**: In the temporary session all three values are the session's
+  `scratch/<sessionId>` directory, which exists and the child starts in; none
+  is the sidecar's process directory. In the project session all three are
+  the project root, and no scratch directory is created for the extension.
+- **Specs linked**: `07-plugins/16-trusted-extensions.md` §7; D114
+- **Acceptance**: A (app control), Quality
+- **Milestone**: Post-MVP (R7 v1)
+- **Status**: Unit-covered (`packages/agent-runtime/src/extensions/runtime-lifecycle.test.ts`); Electron journey Documented
 
 #### E2E-244: Unsupported APIs, load errors, and handler timeouts degrade to diagnostics
 
@@ -16991,6 +17034,20 @@ host-created files. The full app's file-preview viewer is covered separately.
 - Automated provider-boundary flow: `node scripts/e2e-subagent-edit-isolation.mjs`
   with optional `--single` and `--patch`; runtime tests cover parent restart.
 
+
+## Mutation recovery file aliases
+
+- Retry a failing Edit using relative, absolute, `.`/`..`, directory-link and
+  Windows case-alias spellings of the same existing file. The third counted
+  failure terminates; changing spelling does not grant another recoverable-code
+  grace. Distinct files retain independent budgets.
+- Successfully Edit or Write through an alias and retry: the count and grace
+  reset. Removing the file through a linked path clears its pre-mutation identity.
+- Repeat relative/absolute aliases in a temporary session: its scratch root is
+  the relative base. Probe the directory's actual case sensitivity: distinct
+  case-sensitive files remain separate, while case aliases share an identity.
+- Automated filesystem/runtime boundary coverage: `runtime.test.ts` and
+  `mutation-recovery.test.ts`; no UI, production profile or real provider is used.
 
 ## Regenerate archival during quit
 
