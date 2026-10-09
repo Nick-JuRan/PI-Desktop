@@ -746,9 +746,9 @@ const MAX_LARGE_PASTE_THRESHOLD: i64 = 1_000_000;
 const DEFAULT_SUBAGENT_MAX_DEPTH: i64 = 1;
 const MIN_SUBAGENT_MAX_DEPTH: i64 = 0;
 const MAX_SUBAGENT_DEPTH: i64 = 5;
-/// Upper bound for one stored prompt-enhancement template, in characters.
-/// Mirrored by `PROMPT_ENHANCEMENT_TEMPLATE_MAX_LENGTH` in
-/// `packages/shared/src/prompt-enhancement.ts`; keep the two in step.
+/// Upper bound for a legacy prompt-enhancement template, in characters. The
+/// setting remains validated while older profiles and config-sync backups can
+/// still contain it for the optional plugin's one-time migration.
 const MAX_PROMPT_ENHANCEMENT_TEMPLATE_CHARS: usize = 8000;
 /// The placeholder a usable user template must carry.
 const PROMPT_ENHANCEMENT_DRAFT_VARIABLE: &str = "{{draft}}";
@@ -2262,9 +2262,9 @@ async fn handle_request(
             st.db
                 .set_setting("app", &settings)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            // Re-pin the marketplace channel in memory. Fetching here would hold
-            // the state lock behind a remote timeout, so the renderer triggers
-            // `market.refresh` after switching channels.
+            // Keep the marketplace channel in memory aligned with settings.
+            // Legacy source values are ignored, so this remains the official
+            // channel; the renderer owns remote refresh timing.
             let (channel, custom_url) =
                 crate::plugins::market_channel_from_settings(Some(&settings));
             st.plugins.set_market_channel(channel, custom_url);
@@ -2672,6 +2672,22 @@ async fn handle_request(
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "ok": ok }))
         }
+        "session.deriveTitle" => {
+            let id = params
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
+            let title = params
+                .get("title")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "title required", "INVALID_PARAMS"))?;
+            let title = sessions::normalize_session_title(title)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let updated = sessions::derive_session_title(&st.db, id, &title)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "updated": updated }))
+        }
         "session.appendMessage" => {
             let session_id = params
                 .get("sessionId")
@@ -2963,6 +2979,24 @@ async fn handle_request(
                 .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
             let st = state.lock().await;
             plugin_sessions::list_messages(&st.db, plugin_id, &params)
+                .map_err(plugin_session_rpc_err)
+        }
+        "plugin.session.autoTitleContext" => {
+            let plugin_id = params
+                .get("pluginId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            plugin_sessions::auto_title_context(&st.db, plugin_id, &params)
+                .map_err(plugin_session_rpc_err)
+        }
+        "plugin.session.setAutoTitle" => {
+            let plugin_id = params
+                .get("pluginId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            plugin_sessions::set_auto_title(&st.db, plugin_id, &params)
                 .map_err(plugin_session_rpc_err)
         }
         "plugin.session.rename" => {
