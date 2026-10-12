@@ -50,6 +50,7 @@ export * from "./subagent-tools.js";
 export * from "./subagent-presets.js";
 export * from "./provider-presets.js";
 export * from "./provider-endpoint.js";
+export * from "./provider-sync.js";
 export * from "./model-catalog.js";
 export * from "./github-feedback.js";
 export * from "./network-proxy.js";
