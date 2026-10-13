@@ -5,6 +5,7 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.18.0",
     date: "2026-10-09",
     highlights: [
+      "Create named SSH workspace projects from Home, browse folders in a separate dialog, and keep model requests and credentials on your computer.",
       "Set up TypeSafe's Jev classifier from Add Service and verify its API key before saving.",
       "Find Cloud sync in packaged Settings with its Experimental badge. Project lists stay on each device.",
       "Add plugin-owned API-key services from Add Service, with localized descriptions and model discovery after setup.",
@@ -17,6 +18,7 @@ export const enEntries: ChangelogEntry[] = [
       "Plugins can inspect or refuse network redirects; existing fetch calls still follow redirects by default.",
       "Stop a running subagent directly from its card or detail panel, or stop all subagents in the current session without stopping the coordinator.",
       "See total session time beside cumulative model response time and its share of the session.",
+      "A paired remote Host that falls behind the desktop release now upgrades itself through the same verified SSH install and re-pairs in place, instead of only asking you to upgrade it.",
     ],
   },
   {

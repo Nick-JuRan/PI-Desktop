@@ -5,6 +5,7 @@ export const ptBREntries: ChangelogEntry[] = [
     "version": "0.18.0",
     "date": "2026-10-09",
     "highlights": [
+      "Crie e nomeie projetos SSH na página inicial, escolha pastas em um diálogo separado e mantenha solicitações e credenciais do modelo no seu computador.",
       "Configure o classificador Jev da TypeSafe em Adicionar serviço e valide a chave de API antes de salvá-la.",
       "A sincronização na nuvem está disponível nas configurações da versão empacotada e é identificada como experimental. As listas de projetos permanecem em cada dispositivo.",
       "Adicione em Adicionar serviço provedores de plugins com chave de API, descrições localizadas e descoberta de modelos após a configuração.",
@@ -17,6 +18,7 @@ export const ptBREntries: ChangelogEntry[] = [
       "Plugins podem inspecionar ou recusar redirecionamentos de rede; chamadas fetch existentes continuam seguindo redirecionamentos por padrão.",
       "Pare um subagente em execução pelo cartão ou painel de detalhes, ou todos os subagentes da sessão atual, sem parar o coordenador.",
       "Veja o tempo total da sessão, o tempo acumulado de resposta do modelo e sua proporção no painel de uso de contexto.",
+      "Um Host remoto emparelhado que fica atrás da versão do desktop agora se atualiza pela mesma instalação SSH verificada e se emparelha novamente no mesmo lugar, em vez de apenas pedir que você o atualize.",
     ],
   },
   {

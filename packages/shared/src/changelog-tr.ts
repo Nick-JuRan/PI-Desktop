@@ -5,6 +5,7 @@ export const trEntries: ChangelogEntry[] = [
     "version": "0.18.0",
     "date": "2026-10-09",
     "highlights": [
+      "Ana sayfadan SSH çalışma alanı projeleri oluşturup adlandırın; klasörleri ayrı bir iletişim kutusunda seçin, model istekleri ve kimlik bilgileri bilgisayarınızda kalsın.",
       "TypeSafe Jev sınıflandırıcısını Hizmet Ekle'den kurun ve kaydetmeden önce API anahtarını doğrulayın.",
       "Bulut eşitlemesi paketlenmiş sürümün ayarlarında kullanılabilir ve deneysel olarak işaretlenir. Proje listeleri her cihazda yerel olarak kalır.",
       "Yerelleştirilmiş açıklamalar ve anahtar kurulumundan sonra model keşfiyle eklenti kaynaklı API anahtarlı hizmetleri ekleyin.",
@@ -17,6 +18,7 @@ export const trEntries: ChangelogEntry[] = [
       "Eklentiler ağ yönlendirmelerini inceleyebilir veya reddedebilir; mevcut fetch çağrıları varsayılan olarak yönlendirmeleri izlemeyi sürdürür.",
       "Çalışan bir alt ajanı kartından veya ayrıntı panelinden ya da geçerli oturumdaki tüm alt ajanları koordinatörü durdurmadan durdurabilirsiniz.",
       "Bağlam kullanımı panelinde toplam oturum süresini, birikimli model yanıt süresini ve oturum içindeki payını görün.",
+      "Masaüstü sürümünün gerisinde kalan eşleştirilmiş bir uzak Host artık aynı doğrulanmış SSH kurulumuyla kendini günceller ve yerinde yeniden eşleştirilir.",
     ],
   },
   {

@@ -5,6 +5,7 @@ export const esEntries: ChangelogEntry[] = [
     "version": "0.18.0",
     "date": "2026-10-09",
     "highlights": [
+      "Crea y nombra proyectos SSH desde Inicio, elige carpetas en un diálogo separado y conserva las solicitudes y credenciales del modelo en tu equipo.",
       "Configura el clasificador Jev de TypeSafe desde Añadir servicio y verifica la clave API antes de guardarla.",
       "La sincronización en la nube ya está disponible en los ajustes de la versión empaquetada y se marca como experimental. Las listas de proyectos permanecen en cada dispositivo.",
       "Añade desde Añadir servicio proveedores de plugins con clave API, descripciones localizadas y detección de modelos tras configurarlos.",
@@ -17,6 +18,7 @@ export const esEntries: ChangelogEntry[] = [
       "Los plugins pueden inspeccionar o rechazar redirecciones de red; las llamadas fetch existentes siguen las redirecciones de forma predeterminada.",
       "Detén un subagente en ejecución desde su tarjeta o panel de detalles, o todos los de la sesión actual, sin detener al coordinador.",
       "Consulta la duración total de la sesión, el tiempo acumulado de respuesta del modelo y su proporción en el panel de uso del contexto.",
+      "Un Host remoto emparejado que se queda atrás respecto a la versión de escritorio ahora se actualiza mediante la misma instalación SSH verificada y se vuelve a emparejar en el mismo lugar, en lugar de solo pedirle que lo actualice.",
     ],
   },
   {

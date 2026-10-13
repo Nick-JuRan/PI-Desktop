@@ -5,6 +5,7 @@ export const deEntries: ChangelogEntry[] = [
     "version": "0.18.0",
     "date": "2026-10-09",
     "highlights": [
+      "SSH-Arbeitsbereichsprojekte auf der Startseite benennen und Ordner in einem eigenen Dialog wählen; Modellanfragen und Zugangsdaten bleiben auf Ihrem Computer.",
       "Richten Sie den Jev-Klassifizierer von TypeSafe über „Dienst hinzufügen“ ein; der API-Schlüssel wird vor dem Speichern geprüft.",
       "Cloud-Synchronisierung ist in den Einstellungen der installierten Version verfügbar und als experimentell gekennzeichnet. Projektlisten bleiben auf dem jeweiligen Gerät.",
       "Fügen Sie über „Dienst hinzufügen“ Plugin-eigene API-Schlüssel-Dienste hinzu, mit lokalisierten Beschreibungen und Modellerkennung nach der Einrichtung.",
@@ -17,6 +18,7 @@ export const deEntries: ChangelogEntry[] = [
       "Plugins können Netzwerkweiterleitungen prüfen oder ablehnen; bestehende Fetch-Aufrufe folgen Weiterleitungen weiterhin standardmäßig.",
       "Stoppen Sie einen laufenden Unteragenten direkt über seine Karte oder Detailansicht oder alle Unteragenten der aktuellen Sitzung, ohne den Hauptagenten zu stoppen.",
       "Sehen Sie die gesamte Sitzungsdauer, die kumulierte Modellantwortzeit und deren Anteil an der Sitzung im Kontextverbrauchsfenster.",
+      "Ein gekoppelter entfernter Host, der hinter der Desktop-Version zurückbleibt, aktualisiert sich jetzt über dieselbe verifizierte SSH-Installation und wird an Ort und Stelle neu gekoppelt, statt Sie nur zum Aktualisieren aufzufordern.",
     ],
   },
   {
