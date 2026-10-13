@@ -70,7 +70,9 @@ loop evaluates it after `turn_end`, once the current assistant response and
 tool batch have completed, and emits a normal `agent_end` before another model
 request. It does not cancel an active provider stream or running tool. An idle
 runtime returns `{ requested: false }`; immediate `abort()` remains the
-separate cancellation path.
+separate cancellation path. `abort()` resolves only after the named active
+operation has completed its cancellation cleanup, so the same runtime can
+accept a follow-up prompt as soon as the abort request returns.
 
 ### 4.0 Active-turn steering
 
@@ -1687,6 +1689,9 @@ does not dispose, abort, or re-root a runtime belonging to another session.
   estimate visible thinking plus answer output at four Unicode code points per
   token and persist it as `responseOutputTokens` so stopped-turn throughput is
   still available and visibly approximate
+- preserve request-to-first-response wait and streamed thinking/answer duration
+  on assistant messages when available; stopped streams retain the elapsed
+  streamed duration captured before cancellation
 - renderer smart-stop transcript undo and structured Composer restoration are
   reconciliation after abort; they do not change runtime cancellation or roll
   back completed tool effects
