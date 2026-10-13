@@ -5787,6 +5787,101 @@ describe("DesktopAgentRuntime response duration", () => {
     await runtime.dispose();
   });
 
+  it("persists request wait separately from streamed thinking and answer time", async () => {
+    vi.useFakeTimers();
+    try {
+      const start = Date.parse("2026-10-01T00:00:00.000Z");
+      vi.setSystemTime(start + 1_000);
+      const onEvent = vi.fn();
+      const runtime = createRuntime({ onEvent });
+      const internals = runtime as unknown as {
+        handleAgentEvent(event: unknown): Promise<void>;
+        requestStartedAt: number | undefined;
+      };
+      internals.requestStartedAt = start;
+
+      await internals.handleAgentEvent({
+        type: "message_start",
+        message: { role: "assistant", content: [] },
+      });
+      await vi.advanceTimersByTimeAsync(2_500);
+      await internals.handleAgentEvent({
+        type: "message_end",
+        message: assistantMessage({
+          content: [
+            { type: "thinking", thinking: "reasoning" },
+            { type: "text", text: "answer" },
+          ],
+        }),
+      });
+
+      const events = onEvent.mock.calls.map(([envelope]) => envelope as any);
+      expect(events.find(({ event }) => event.type === "message_start")?.event.message)
+        .toMatchObject({ providerWaitMs: 1_000 });
+      expect(events.find(({ event }) => event.type === "message_end")?.event.message)
+        .toMatchObject({
+          providerWaitMs: 1_000,
+          modelStreamDurationMs: 2_500,
+        });
+      await runtime.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("accumulates request and stream timing across a provider retry", async () => {
+    vi.useFakeTimers();
+    try {
+      const start = Date.parse("2026-10-01T00:00:00.000Z");
+      vi.setSystemTime(start + 2_000);
+      const onEvent = vi.fn();
+      const runtime = createRuntime({ onEvent });
+      const internals = runtime as unknown as {
+        handleAgentEvent(event: unknown): Promise<void>;
+        requestStartedAt: number | undefined;
+        currentAssistant: unknown;
+        providerRetryInProgress: boolean;
+      };
+      internals.requestStartedAt = start + 1_000;
+      internals.providerRetryInProgress = true;
+      internals.currentAssistant = {
+        id: "assistant-retry",
+        role: "assistant",
+        content: "partial attempt",
+        createdAt: new Date(start).toISOString(),
+        status: "streaming",
+        modelId: "local-model",
+        providerId: "local",
+        providerWaitMs: 1_000,
+        modelStreamDurationMs: 500,
+      };
+
+      await internals.handleAgentEvent({
+        type: "message_start",
+        message: { role: "assistant", content: [] },
+      });
+      await vi.advanceTimersByTimeAsync(2_500);
+      await internals.handleAgentEvent({
+        type: "message_end",
+        message: assistantMessage({
+          content: [{ type: "text", text: "recovered answer" }],
+        }),
+      });
+
+      const terminal = onEvent.mock.calls
+        .map(([envelope]) => envelope as any)
+        .find(({ event }) => event.type === "message_end");
+      expect(terminal?.event.message).toMatchObject({
+        id: "assistant-retry",
+        providerWaitMs: 2_000,
+        modelStreamDurationMs: 3_000,
+      });
+      await runtime.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each(fallbackDurations)(
     "falls back to the sidecar stopwatch for a $label Pi duration",
     async ({ durationMs }) => {
@@ -7054,11 +7149,20 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     const agent = (runtime as any).agent;
     agent.prompt = vi.fn();
     vi.spyOn(runtime as any, "automaticCompactionNeeded").mockReturnValue(true);
+    let releaseCheckpoint!: () => void;
+    let checkpointStarted!: () => void;
+    const checkpointGate = new Promise<void>((resolve) => {
+      releaseCheckpoint = resolve;
+    });
+    const checkpointReady = new Promise<void>((resolve) => {
+      checkpointStarted = resolve;
+    });
     // The summary request is in flight when the user presses Stop.
     vi.spyOn(runtime as any, "buildCheckpoint").mockImplementation(
       async (...args: unknown[]) => {
         const signal = args[0] as AbortSignal;
-        await runtime.abort();
+        checkpointStarted();
+        await checkpointGate;
         return {
           ok: false,
           entries: [],
@@ -7069,9 +7173,14 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
       },
     );
 
-    await expect(runtime.prompt("stopped request", "user-stopped")).rejects.toMatchObject({
+    const prompt = runtime.prompt("stopped request", "user-stopped");
+    await checkpointReady;
+    const abort = runtime.abort();
+    releaseCheckpoint();
+    await expect(prompt).rejects.toMatchObject({
       name: "AbortError",
     });
+    await abort;
 
     expect(agent.prompt).not.toHaveBeenCalled();
     expect((runtime as any).fullEntries).toEqual([
@@ -7096,6 +7205,59 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
       ),
     ).toBe(false);
     expect(runtime.getStatus().isRunning).toBe(false);
+    await runtime.dispose();
+  });
+
+  it("waits for the aborted prompt to settle before accepting a follow-up", async () => {
+    const runtime = createRuntime();
+    const testRuntime = runtime as unknown as {
+      agent: {
+        prompt: () => Promise<void>;
+        abort: () => void;
+      };
+      handleAgentEvent: (event: { type: "agent_end" }) => Promise<void>;
+    };
+    const agent = testRuntime.agent;
+    let rejectFirstPrompt!: (error: Error) => void;
+    let firstPromptStarted!: () => void;
+    const firstPromptGate = new Promise<void>((_resolve, reject) => {
+      rejectFirstPrompt = reject;
+    });
+    const firstPromptReady = new Promise<void>((resolve) => {
+      firstPromptStarted = resolve;
+    });
+    let promptCount = 0;
+    agent.prompt = vi.fn(async () => {
+      promptCount += 1;
+      if (promptCount === 1) {
+        firstPromptStarted();
+        await firstPromptGate;
+        return;
+      }
+      await testRuntime.handleAgentEvent({ type: "agent_end" });
+    });
+    agent.abort = vi.fn();
+
+    const firstPrompt = runtime.prompt("first task", "user-first", "turn-first");
+    await firstPromptReady;
+    let abortSettled = false;
+    const abort = runtime.abort().then(() => {
+      abortSettled = true;
+    });
+    await Promise.resolve();
+    expect(abortSettled).toBe(false);
+
+    rejectFirstPrompt(Object.assign(new Error("The operation was aborted"), {
+      name: "AbortError",
+    }));
+    await expect(firstPrompt).rejects.toMatchObject({ name: "AbortError" });
+    await abort;
+    expect(abortSettled).toBe(true);
+
+    await expect(runtime.prompt("continue", "user-next", "turn-next")).resolves.toEqual({
+      turnId: "turn-next",
+    });
+    expect(agent.prompt).toHaveBeenCalledTimes(2);
     await runtime.dispose();
   });
 
