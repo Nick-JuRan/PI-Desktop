@@ -4,6 +4,7 @@ let registered = false;
 let registeredToolNames = [];
 let activeSemanticElementId = null;
 let tokenManager = null;
+let recordRegistry = null;
 let implementations = null;
 let toErrorResult = (error) => ({
   ok: false,
@@ -18,11 +19,12 @@ function getContribution(name) {
 
 async function loadImplementations() {
   if (!implementations) {
-    const [toolExecutor, tokenManagerModule] = await Promise.all([
+    const [toolExecutor, tokenManagerModule, recordRegistryModule] = await Promise.all([
       import("./src/tool-executor.mjs"),
       import("./src/token-manager.mjs"),
+      import("./src/record-registry.mjs"),
     ]);
-    implementations = { toolExecutor, tokenManagerModule };
+    implementations = { toolExecutor, tokenManagerModule, recordRegistryModule };
   }
   return implementations;
 }
@@ -34,6 +36,13 @@ function getTokenManager() {
   return tokenManager;
 }
 
+function getRecordRegistry() {
+  if (!recordRegistry) {
+    recordRegistry = implementations.recordRegistryModule.createRecordRegistry();
+  }
+  return recordRegistry;
+}
+
 async function onToolExecute(name, args, context) {
   const common = {
     args,
@@ -42,13 +51,26 @@ async function onToolExecute(name, args, context) {
     fetchImpl: (input) => pi.net.fetch(input),
   };
   if (name === "fusion_boolean_search") {
-    return implementations.toolExecutor.executeFusionBooleanTool({
+    const result = await implementations.toolExecutor.executeFusionBooleanTool({
       ...common,
       ...(activeSemanticElementId ? { semanticElementId: activeSemanticElementId } : {}),
     });
+    if (result?.ok === true) {
+      getRecordRegistry().rememberSession(result.session_id, result.database);
+    }
+    return result;
   }
   if (name === "fusion_semantic_result_page") {
-    return implementations.toolExecutor.executeFusionResultPageTool(common);
+    return implementations.toolExecutor.executeFusionResultPageTool({
+      ...common,
+      registry: getRecordRegistry(),
+    });
+  }
+  if (name === "fusion_full_text") {
+    return implementations.toolExecutor.executeFusionFullTextTool({
+      ...common,
+      registry: getRecordRegistry(),
+    });
   }
   const result = await implementations.toolExecutor.executeFusionTool(common);
   if (result?.ok === true) {
@@ -99,6 +121,7 @@ async function onUnload() {
     registered = false;
     registeredToolNames = [];
     tokenManager = null;
+    recordRegistry = null;
     activeSemanticElementId = null;
     implementations = null;
   }

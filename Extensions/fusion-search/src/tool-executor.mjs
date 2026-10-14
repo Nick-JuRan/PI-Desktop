@@ -1,6 +1,7 @@
 import { executeSemanticBaseline } from "./semantic-baseline.mjs";
 import { executeBooleanSearch, validateBooleanSearchInput } from "./boolean-search.mjs";
 import { executeSemanticResultPage, validateSemanticResultPageInput } from "./semantic-result-page.mjs";
+import { executeFullText, validateFullTextInput } from "./full-text.mjs";
 
 const ACTIONS = new Set(["prepare", "update_terms"]);
 
@@ -96,6 +97,7 @@ export async function executeFusionResultPageTool({
   signal,
   tokenManager,
   fetchImpl,
+  registry,
   executeResultPage = executeSemanticResultPage,
 } = {}) {
   const invalid = validateSemanticResultPageInput(args);
@@ -105,6 +107,26 @@ export async function executeFusionResultPageTool({
     tokenManager,
     retryAfterRefresh: true,
     refreshMessage: "Authentication was refreshed, but the result-page read still failed. Retry the same session_id/page request.",
-    invoke: (authorization) => executeResultPage({ args, authorization, signal, fetchImpl }),
+    invoke: (authorization) => executeResultPage({ args, authorization, signal, fetchImpl, registry }),
+  });
+}
+
+/** Execute one idempotent full-text read with a single auth-refresh retry. */
+export async function executeFusionFullTextTool({
+  args,
+  signal,
+  tokenManager,
+  fetchImpl,
+  registry,
+  executeFullTextImpl = executeFullText,
+} = {}) {
+  const invalid = validateFullTextInput(args);
+  if (invalid) return invalid;
+  return executeWithTokenRecovery({
+    signal,
+    tokenManager,
+    retryAfterRefresh: true,
+    refreshMessage: "Authentication was refreshed, but the full-text read still failed. Retry the same pnId.",
+    invoke: (authorization) => executeFullTextImpl({ args, authorization, signal, fetchImpl, registry }),
   });
 }

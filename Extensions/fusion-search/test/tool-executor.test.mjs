@@ -5,6 +5,7 @@ import {
   executeFusionTool,
   executeFusionBooleanTool,
   executeFusionResultPageTool,
+  executeFusionFullTextTool,
 } from "../src/tool-executor.mjs";
 
 const unauthorized = {
@@ -160,4 +161,64 @@ test("invalid result-page arguments fail before reading credentials", async () =
   });
   assert.equal(result.error.code, "INVALID_INPUT");
   assert.equal(tokenManager.calls.length, 0);
+});
+
+test("full-text auth rejection refreshes and retries the idempotent read exactly once", async () => {
+  const tokenManager = managerForTests();
+  const authorizations = [];
+  let calls = 0;
+  const result = await executeFusionFullTextTool({
+    args: { pnId: "CN1A" },
+    tokenManager,
+    registry: { resolve: () => null },
+    executeFullTextImpl: async ({ authorization, args, registry }) => {
+      calls += 1;
+      authorizations.push([authorization, args, typeof registry.resolve]);
+      return calls === 1 ? unauthorized : "CN1A\n\n权利要求\n1.一种装置。\n\n说明书\n[0001] 正文。";
+    },
+  });
+  assert.equal(result, "CN1A\n\n权利要求\n1.一种装置。\n\n说明书\n[0001] 正文。");
+  assert.equal(calls, 2);
+  assert.deepEqual(authorizations, [
+    ["Bearer old-token", { pnId: "CN1A" }, "function"],
+    ["Bearer new-token", { pnId: "CN1A" }, "function"],
+  ]);
+  assert.deepEqual(tokenManager.calls.map(([kind]) => kind), ["authorization", "refresh"]);
+});
+
+test("a full-text read that stays rejected after refresh is reported without a third attempt", async () => {
+  const tokenManager = managerForTests();
+  let calls = 0;
+  const result = await executeFusionFullTextTool({
+    args: { pnId: "CN1A" },
+    tokenManager,
+    executeFullTextImpl: async () => { calls += 1; return unauthorized; },
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "REMOTE_AUTH_REJECTED_NOT_RETRIED");
+  assert.match(result.error.message, /Retry the same pnId/u);
+  assert.deepEqual(tokenManager.calls.map(([kind]) => kind), ["authorization", "refresh", "refresh"]);
+});
+
+test("invalid full-text arguments fail before reading credentials", async () => {
+  const tokenManager = managerForTests();
+  for (const args of [{ pnId: "" }, { pnId: "CN1A", database: "CNTXT" }, {}]) {
+    const result = await executeFusionFullTextTool({ args, tokenManager });
+    assert.equal(result.error.code, "INVALID_INPUT");
+  }
+  assert.equal(tokenManager.calls.length, 0);
+});
+
+test("the result-page executor forwards the registry to the page reader", async () => {
+  const tokenManager = managerForTests();
+  const registry = { rememberRecords: () => {} };
+  let seen;
+  await executeFusionResultPageTool({
+    args: { session_id: "SESSION-1", page: 1 },
+    tokenManager,
+    registry,
+    executeResultPage: async (input) => { seen = input.registry; return { ok: true, page: 1, records: [] }; },
+  });
+  assert.equal(seen, registry);
 });
