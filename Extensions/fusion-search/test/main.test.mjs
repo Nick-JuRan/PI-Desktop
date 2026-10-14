@@ -66,6 +66,8 @@ function setupPi({ token, credentials = { username: "user1", password: "pw1" }, 
                           {
                             ssId: "SEARCH-SESSION-1",
                             pnId: "CN1A",
+                            anId: "CN2022000001.1",
+                            dbName: "CNTXT",
                             ti: "Title",
                             simVal: 99,
                             semanticSort: 1,
@@ -74,6 +76,16 @@ function setupPi({ token, credentials = { username: "user1", password: "pw1" }, 
                           },
                         ],
                       } }
+                      : url.pathname.endsWith("/fastFullText/queryFullText")
+                        ? { status: 200, t: { fullTextHtml: [
+                          '<table>',
+                          '<tr><td id="claim_title">权利要求</td></tr>',
+                          '<tr><td id="claim_1">1.一种装置。</td></tr>',
+                          '<tr><td id="description_title">说明书</td></tr>',
+                          '<tr><td id="description_1">技术领域</td></tr>',
+                          '<tr><td id="description_2">本发明涉及装置。</td></tr>',
+                          '</table>',
+                        ].join("") } }
                       : { status: 404, message: "unexpected endpoint" };
         return { status: 200, bodyText: JSON.stringify(response) };
       },
@@ -168,13 +180,32 @@ test("the result-page tool accepts only session_id and page", async () => {
   }
 });
 
-test("plugin unload unregisters both tools", async () => {
+test("the full-text tool accepts only pnId and is declared low risk", async () => {
+  const { pi, getRegisteredTool } = setupPi();
+  globalThis.pi = pi;
+  const plugin = require("../main.cjs");
+  try {
+    await plugin.onLoad();
+    const tool = getRegisteredTool("fusion_full_text");
+    assert.deepEqual(tool.schema.required, ["pnId"]);
+    assert.deepEqual(Object.keys(tool.schema.properties), ["pnId"]);
+    assert.equal(tool.schema.additionalProperties, false);
+    assert.equal(tool.risk, "low");
+    assert.match(tool.description, /plain text/i);
+    assert.match(tool.description, /nothing else is needed/i);
+  } finally {
+    await plugin.onUnload();
+    delete globalThis.pi;
+  }
+});
+
+test("plugin unload unregisters every tool", async () => {
   const { pi, registeredTools } = setupPi();
   globalThis.pi = pi;
   const plugin = require("../main.cjs");
   try {
     await plugin.onLoad();
-    assert.deepEqual([...registeredTools.keys()], ["fusion_semantic_baseline", "fusion_boolean_search", "fusion_semantic_result_page"]);
+    assert.deepEqual([...registeredTools.keys()], ["fusion_semantic_baseline", "fusion_boolean_search", "fusion_semantic_result_page", "fusion_full_text"]);
     await plugin.onUnload();
     assert.equal(registeredTools.size, 0);
   } finally {
@@ -358,6 +389,86 @@ test("an expiring token with no credentials reports AUTH_CONFIG_MISSING, not a s
     assert.equal(result.error.code, "AUTH_CONFIG_MISSING");
     assert.equal(netCalls.length, 0, "no search request was sent with the expiring token");
     assert.match(result.error.message, /settings\.json/);
+  } finally {
+    await plugin.onUnload();
+    delete globalThis.pi;
+  }
+});
+
+test("a listed record is read in full with the session, database and application number the plugin remembered", async () => {
+  const token = makeFakeJwt(7200);
+  const { pi, getRegisteredTool, netCalls } = setupPi({ token });
+  globalThis.pi = pi;
+  const plugin = require("../main.cjs");
+  try {
+    await plugin.onLoad();
+    const search = await getRegisteredTool("fusion_boolean_search").execute({ database: "CNTXT", query: "A01B1/00/IC" }, {});
+    assert.equal(search.ok, true);
+    const page = await getRegisteredTool("fusion_semantic_result_page").execute({ session_id: "SEARCH-SESSION-1", page: 1 }, {});
+    assert.equal(page.ok, true);
+    assert.equal(page.records[0].anId, undefined, "the result page projection is unchanged");
+
+    const text = await getRegisteredTool("fusion_full_text").execute({ pnId: "CN1A" }, {});
+    assert.equal(text, [
+      "CN1A  Title",
+      "",
+      "权利要求",
+      "1.一种装置。",
+      "",
+      "说明书",
+      "技术领域",
+      "[0002] 本发明涉及装置。",
+    ].join("\n"));
+
+    const request = netCalls.at(-1);
+    assert.equal(request.url, "http://10.160.28.16/api/neusipo-app-view/fastFullText/queryFullText");
+    assert.equal(request.method, "POST");
+    assert.equal(request.headers.Authorization, `Bearer ${token}`);
+    assert.equal(request.headers.Referer, "http://10.160.28.16/quickView");
+    assert.equal(request.headers.ssid, "SEARCH-SESSION-1");
+    assert.deepEqual(JSON.parse(request.body), {
+      anid: "CN2022000001.1",
+      pnid: "CN1A",
+      source: "GENERAL",
+      patType: "PATENT",
+      viewDb: "CNTXT",
+    });
+  } finally {
+    await plugin.onUnload();
+    delete globalThis.pi;
+  }
+});
+
+test("a pnId the plugin never listed is requested bare and still rendered", async () => {
+  const token = makeFakeJwt(7200);
+  const { pi, getRegisteredTool, netCalls } = setupPi({ token });
+  globalThis.pi = pi;
+  const plugin = require("../main.cjs");
+  try {
+    await plugin.onLoad();
+    const text = await getRegisteredTool("fusion_full_text").execute({ pnId: "CN7Z" }, {});
+    assert.ok(text.startsWith("CN7Z\n\n权利要求\n"));
+    const request = netCalls.at(-1);
+    assert.equal(request.headers.ssid, undefined);
+    assert.deepEqual(JSON.parse(request.body), { anid: "", pnid: "CN7Z", source: "GENERAL", patType: "PATENT", viewDb: "" });
+  } finally {
+    await plugin.onUnload();
+    delete globalThis.pi;
+  }
+});
+
+test("unloading the plugin forgets listed records", async () => {
+  const token = makeFakeJwt(7200);
+  const { pi, getRegisteredTool, netCalls } = setupPi({ token });
+  globalThis.pi = pi;
+  const plugin = require("../main.cjs");
+  try {
+    await plugin.onLoad();
+    await getRegisteredTool("fusion_semantic_result_page").execute({ session_id: "SEARCH-SESSION-1", page: 1 }, {});
+    await plugin.onUnload();
+    await plugin.onLoad();
+    await getRegisteredTool("fusion_full_text").execute({ pnId: "CN1A" }, {});
+    assert.equal(netCalls.at(-1).headers.ssid, undefined);
   } finally {
     await plugin.onUnload();
     delete globalThis.pi;

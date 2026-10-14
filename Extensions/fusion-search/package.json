@@ -1,9 +1,9 @@
 {
   "name": "local-fusion-search",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
-  "description": "PI-Desktop Boolean search, semantic result-page, and semantic baseline tools for Fusion Search.",
+  "description": "PI-Desktop Boolean search, semantic result-page, patent full-text, and semantic baseline tools for Fusion Search.",
   "scripts": {
     "test": "node --test test/*.test.mjs"
   }

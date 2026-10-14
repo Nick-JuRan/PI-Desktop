@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "local.fusion-search",
   "name": "融合检索",
-  "version": "0.4.0",
-  "description": "Boolean patent search, semantic result pages, and semantic baseline tools for the remote Fusion Search service, with built-in token acquisition and refresh.",
+  "version": "0.5.0",
+  "description": "Boolean patent search, semantic result pages, patent full-text reading, and semantic baseline tools for the remote Fusion Search service, with built-in token acquisition and refresh.",
   "main": "main.cjs",
   "contributes": {
     "agentTools": [
@@ -122,6 +122,24 @@
               "minimum": 1,
               "default": 1,
               "description": "One-based page number. The page size is fixed internally at 20."
+            }
+          }
+        }
+      },
+      {
+        "name": "fusion_full_text",
+        "description": "Return the complete text of one patent as plain text for reading: all claims, then the full description with [0001]-style paragraph numbers. pnId is the value listed in a fusion_semantic_result_page record; nothing else is needed, the plugin supplies the search session and database itself. The text is not a summary or an excerpt: read it in full. Read-only and safe to retry; a record the quick-view store has not indexed is reported as FULL_TEXT_UNAVAILABLE with the provider's reason.",
+        "risk": "low",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pnId"],
+          "properties": {
+            "pnId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "pnId exactly as shown in the result page record (it may contain several publication numbers joined by ';')."
             }
           }
         }

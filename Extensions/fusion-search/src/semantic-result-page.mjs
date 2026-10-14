@@ -293,7 +293,7 @@ export function createFusionResultPageApi({
   };
 }
 
-async function readPage(api, input, signal) {
+async function readPage(api, input, signal, registry) {
   const data = await api.resultPage(input);
   const resultList = data.resultList;
   if (!Array.isArray(resultList)) {
@@ -336,6 +336,9 @@ async function readPage(api, input, signal) {
     });
   }
   if (signal?.aborted) fail("CANCELLED", "The result-page request was cancelled");
+  // The raw rows carry what fusion_full_text needs later (ssId, anId, dbName,
+  // title); remember them here so the full-text tool can take pnId alone.
+  registry?.rememberRecords(input.sessionId, resultList);
   return { ok: true, semantic_sorted: true, records, totalPage, page: input.page };
 }
 
@@ -346,11 +349,12 @@ export async function executeSemanticResultPage({
   fetchImpl,
   api,
   signal,
+  registry,
 } = {}) {
   try {
     const input = normalizeInput(args);
     const client = api ?? createFusionResultPageApi({ fetchImpl, authorization, signal });
-    return await readPage(client, input, signal);
+    return await readPage(client, input, signal, registry);
   } catch (error) {
     return toErrorResult(error);
   }
