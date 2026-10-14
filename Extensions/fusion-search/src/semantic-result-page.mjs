@@ -115,7 +115,8 @@ function decodeHtmlEntities(value) {
   return text;
 }
 
-function cleanMarkup(value) {
+/** Strip provider HTML/XML down to readable text; shared with the full-text renderer. */
+export function cleanMarkup(value) {
   if (value === null || value === undefined) return "";
   const text = decodeHtmlEntities(String(value)
     .replace(/<\?xml\b[\s\S]*?\?>/giu, "")
