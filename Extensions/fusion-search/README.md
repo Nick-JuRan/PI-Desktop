@@ -51,7 +51,60 @@ an empty string. The response also includes `totalPage`, calculated as the
 ceiling of `listCounts / 20`, and the requested `page`. The tool checks that
 every returned row carries semantic scores/ranks and belongs to the requested
 session; an ordinary, unranked, or mismatched page is reported as an error,
-never presented as a semantic list.
+never presented as a semantic list. `clms` is the provider's main-claim field;
+the complete claims and the description come from `fusion_full_text`.
+
+### `fusion_full_text`
+
+Read one patent in full for comparison work:
+
+```json
+{ "pnId": "CN115123456A" }
+```
+
+`pnId` is the only argument — the value listed in a `fusion_semantic_result_page`
+record, whole or any one of its `;`-joined members. The quick-view endpoint
+(`neusipo-app-view/fastFullText/queryFullText`) also wants the search session
+(`ssid` header), the view database and, as a fallback identity, the application
+number; the plugin supplies them from an in-process registry: the Boolean search
+remembers which database each session was run against, and the result page
+remembers the raw rows (`ssId`, `anId`, `dbName`, `ti`) behind the records it
+projects. A pnId the plugin never listed (after a restart, or typed from
+elsewhere) is requested bare and the provider decides.
+
+The result is a plain string, not JSON — the host hands strings to the model
+verbatim, so no escaping reaches the transcript:
+
+```text
+CN115123456A  一种可调节预紧力的弹簧阻尼器
+
+权利要求
+1. 一种可调节预紧力的弹簧阻尼器，其特征在于，……
+2. 根据权利要求1所述的弹簧阻尼器，其特征在于，……
+
+说明书
+技术领域
+[0002] 本发明涉及减振装置技术领域……
+背景技术
+[0004] 现有弹簧阻尼器……
+具体实施方式
+[0017] 如图1所示……〔图〕……
+```
+
+Claims keep their original numbering text. Description paragraphs carry the
+provider's `description_N` number as `[000N]`, so a second call for the same
+pnId returns the same numbers and the agent can cite `[0017]`; heading rows
+("技术领域", "背景技术", …) occupy a number in the source but are printed
+without one. `<img>` becomes `〔图〕` or `〔图：alt〕`. Nothing is paginated,
+summarized or cut: a 300,000-character safety valve ends a pathological
+response with `[全文超长，已截断于第 N 段]`, which ordinary patents never reach.
+
+Failures keep the plugin's uniform error object. A record the quick-view store
+has not indexed (HTTP 200, `t: null`) is `FULL_TEXT_UNAVAILABLE` with the
+provider's `message`; HTML without claim or description cells is
+`FULL_TEXT_UNPARSED`. The call is read-only and creates no search history, so it
+is retried once after a token refresh and is declared `risk: low`, which never
+opens an approval card.
 
 ### `fusion_semantic_baseline`
 
@@ -105,7 +158,8 @@ and a token inside the 30-minute margin triggers one single-flight re-login.
 A 401/403 triggers one forced re-login. Semantic baseline creation/update and
 Boolean searching mutate remote state, so none of these operations is
 automatically replayed after an authentication rejection. The read-only
-result-page operation is retried once after token refresh. Mutating operations
+result-page and full-text operations are retried once after token refresh.
+Mutating operations
 return `REMOTE_AUTH_REJECTED_NOT_RETRIED` after refresh; inspect remote state
 before manually retrying.
 
@@ -116,7 +170,7 @@ The current PI host `pi.net.fetch` contract does not carry an `AbortSignal`, so
 an already submitted remote request cannot be assumed to have stopped. A
 cancellation during a semantic mutation or Boolean search may leave the remote
 outcome unknown. A result-page read is safe to retry with the same
-`session_id`/`page` pair.
+`session_id`/`page` pair, and a full-text read with the same `pnId`.
 
 ## Credentials (one-time setup)
 
@@ -144,6 +198,7 @@ $env:FUSION_TEST_USERNAME = "..."; $env:FUSION_TEST_PASSWORD = "..."; node --tes
 $env:FUSION_TEST_REFERENCE_KIND = "publication_number"; $env:FUSION_TEST_REFERENCE = "..."; node --test test/live-tool.test.mjs
 $env:FUSION_TEST_SETTINGS_PATH = "..."; $env:FUSION_TEST_DATABASE = "CNTXT"; $env:FUSION_TEST_BOOLEAN_QUERY = 'A01B1/00/IC AND PD < "1900.01.01"'; node --test test/live-boolean-search.test.mjs
 $env:FUSION_TEST_SETTINGS_PATH = "..."; $env:FUSION_TEST_SESSION_ID = "..."; node --test test/live-semantic-result-page.test.mjs
+$env:FUSION_TEST_SETTINGS_PATH = "..."; $env:FUSION_TEST_SESSION_ID = "..."; $env:FUSION_TEST_PNID = "..."; node --test test/live-full-text.test.mjs
 pnpm pi-plugin check .\Extensions\fusion-search
 pnpm pi-plugin pack .\Extensions\fusion-search
 ```
