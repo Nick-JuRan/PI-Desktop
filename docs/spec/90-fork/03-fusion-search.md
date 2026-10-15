@@ -20,10 +20,16 @@ specification-level contract and the E2E scenario.
 - `fusion_full_text` reads one listed patent in full. Its only argument is the
   `pnId` shown in a result page; the plugin supplies the search session, view
   database and application number from what the Boolean search and result
-  page already passed through it. The result is plain reading text — all
-  claims, then the description with the provider's `[000N]` paragraph numbers —
-  never a summary, an excerpt or a paginated view. The call is read-only,
-  retried once after a token refresh and declared `risk: low`.
+  page already passed through it. The quick-view endpoint accepts exactly one
+  identity per request — a single application number (with the merged
+  publication list alongside), or a single publication number with no
+  application number — so a listed multi-member record is reduced to those
+  shapes: first the first application-number member with the merged
+  publication list, then the first publication member alone. The result is
+  plain reading text — all claims, then the description with the provider's
+  `[000N]` paragraph numbers — never a summary, an excerpt or a paginated
+  view. The call is read-only, retried once after a token refresh and declared
+  `risk: low`.
 
 ## 2. E2E scenarios
 
@@ -67,21 +73,28 @@ specification-level contract and the E2E scenario.
 
 - **Preconditions**: The `local.fusion-search` development plugin is loaded with
   a working account; a semantically sorted Boolean search session exists for a
-  database that carries full text (CNTXT); the quick-view host is reachable.
+  database that carries full text (CNTXT), and it lists at least one record
+  whose `pnId` and `anId` each carry several `;`-joined members; the quick-view
+  host is reachable.
 - **Steps**: 1) Read page 1 of the session with `fusion_semantic_result_page`
-  and note one record's `pnId`. 2) Call `fusion_full_text` with exactly
-  `{ "pnId": <that value> }`. 3) Call it again with one `;`-separated member of
-  a multi-number `pnId`. 4) Call it with a pnId the plugin never listed. 5) Call
-  it for a record the quick-view store has not indexed. 6) Inspect the agent
-  transcript and the tool list in Settings → Agent → Subagents.
+  and note one record's `pnId`, preferring a multi-member one. 2) Call
+  `fusion_full_text` with exactly `{ "pnId": <that value> }`. 3) Call it again
+  with one `;`-separated member of a multi-number `pnId`. 4) Call it with a
+  pnId the plugin never listed. 5) Call it for a record the quick-view store
+  has not indexed. 6) Inspect the agent transcript and the tool list in
+  Settings → Agent → Subagents.
 - **Expected**: Step 2 returns one plain string that starts with the pnId and
   title line, then `权利要求` with every claim, then `说明书` with heading rows
   unnumbered and paragraphs prefixed `[000N]`; no HTML, no JSON wrapper, no
   additional fields. The request carried the session's `ssid` header, the
-  record's `anid` and the database as `viewDb`, and no search history was
-  created. Step 3 returns the same document. Step 4 sends a bare request
-  (`anid`/`viewDb` empty, no `ssid`) and either returns the text or the
-  provider's refusal as an error object. Step 5 returns
+  first application-number member as `anid`, the merged publication list as
+  `pnid`, the database as `viewDb`, and no search history was created. Step 3
+  returns the same document; a multi-member record is requested with the first
+  application member plus the merged list, falling back to the first
+  publication member alone, never with a `;`-joined `anid` or a merged list
+  under an empty `anid`. Step 4 sends a bare request
+  (`anid`/`viewDb` empty, no `ssid`, first publication member only) and either
+  returns the text or the provider's refusal as an error object. Step 5 returns
   `{ ok: false, error: { code: "FULL_TEXT_UNAVAILABLE", message } }` with the
   provider's reason. The tool's schema lists `pnId` only, it is `risk: low`, and
   it appears as an individually selectable plugin tool for subagents.

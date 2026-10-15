@@ -59,7 +59,7 @@ function registryWithRecord() {
 
 test("only pnId is accepted and it must be a non-empty string", () => {
   assert.equal(validateFullTextInput({ pnId: "CN1A" }), null);
-  for (const args of [undefined, [], { pnId: "" }, { pnId: 12 }, { pnId: "CN1A", page: 1 }, { pnId: "x".repeat(201) }]) {
+  for (const args of [undefined, [], { pnId: "" }, { pnId: 12 }, { pnId: "CN1A", page: 1 }, { pnId: "x".repeat(1001) }]) {
     const result = validateFullTextInput(args);
     assert.equal(result.ok, false);
     assert.equal(result.error.code, "INVALID_INPUT");
@@ -144,6 +144,52 @@ test("when the application number has no full text the publication number alone 
   assert.equal(text, `CN1A;CN1B  可调鞋跟\n\n${RENDERED_BODY}`);
   assert.deepEqual(calls.map((call) => JSON.parse(call.body).anid), ["CN2022001.1", ""]);
   assert.deepEqual(calls.map((call) => call.headers.ssid), ["SESSION-1", "SESSION-1"]);
+});
+
+test("a merged identity is reduced to the members the endpoint accepts", async () => {
+  const registry = createRecordRegistry();
+  registry.rememberSession("SESSION-1", "CNTXT");
+  registry.rememberRecords("SESSION-1", [
+    { ssId: "SESSION-1", pnId: "CN1A;CN1B;CN1C", anId: "CN2022001.1;CN2022002.2", dbName: "CNTXT", ti: "可调鞋跟" },
+  ]);
+  const { calls, fetchImpl } = recordingFetch([
+    envelope(null, "未检索到收录的文献！"),
+    envelope({ fullTextHtml: FULL_TEXT_HTML }),
+  ]);
+  const text = await executeFullText({
+    args: { pnId: "CN1B" },
+    authorization: "Bearer t",
+    fetchImpl,
+    registry,
+  });
+  assert.equal(text, `CN1A;CN1B;CN1C  可调鞋跟\n\n${RENDERED_BODY}`);
+  // The endpoint rejects a `;`-joined application number, and a `;`-joined
+  // publication number when no application number is sent: the first request
+  // carries the first application member with the merged publication list
+  // (the shape the web QuickView page sends), the second the first
+  // publication member alone.
+  assert.deepEqual(calls.map((call) => JSON.parse(call.body)), [
+    { anid: "CN2022001.1", pnid: "CN1A;CN1B;CN1C", source: "GENERAL", patType: "PATENT", viewDb: "CNTXT" },
+    { anid: "", pnid: "CN1A", source: "GENERAL", patType: "PATENT", viewDb: "CNTXT" },
+  ]);
+});
+
+test("a listed record without an application number is read by its first publication member", async () => {
+  const registry = createRecordRegistry();
+  registry.rememberSession("SESSION-1", "CNTXT");
+  registry.rememberRecords("SESSION-1", [
+    { ssId: "SESSION-1", pnId: "CN1A;CN1B", dbName: "CNTXT", ti: "可调鞋跟" },
+  ]);
+  const { calls, fetchImpl } = recordingFetch([envelope({ fullTextHtml: FULL_TEXT_HTML })]);
+  const text = await executeFullText({
+    args: { pnId: "CN1B" },
+    authorization: "Bearer t",
+    fetchImpl,
+    registry,
+  });
+  assert.equal(text, `CN1A;CN1B  可调鞋跟\n\n${RENDERED_BODY}`);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(JSON.parse(calls[0].body), { anid: "", pnid: "CN1A", source: "GENERAL", patType: "PATENT", viewDb: "CNTXT" });
 });
 
 test("a record the store has not indexed is reported with the provider's reason, not as bad input", async () => {

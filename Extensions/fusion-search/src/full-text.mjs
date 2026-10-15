@@ -7,7 +7,12 @@ export const FUSION_FULL_TEXT_REFERER = "http://10.160.28.16/quickView";
 export const FUSION_FULL_TEXT_ENDPOINT = "/neusipo-app-view/fastFullText/queryFullText";
 /** Whole documents take longer than a result page; stay inside the 110 s plugin budget. */
 export const FUSION_FULL_TEXT_TIMEOUT_MS = 60_000;
-export const FUSION_FULL_TEXT_MAX_PNID_LENGTH = 200;
+/**
+ * Upper bound for the caller's pnId. The listed value is the provider's own
+ * `;`-joined family list; a 15-member family already runs ~210 characters, so
+ * the cap only stops pathological input, never a real result row.
+ */
+export const FUSION_FULL_TEXT_MAX_PNID_LENGTH = 1000;
 /**
  * Safety valve, not a reading window. Chinese patents run 5k–60k characters;
  * only a pathological response reaches this, and then the text ends with a
@@ -159,18 +164,34 @@ export function createFusionFullTextApi({
   };
 }
 
+/** First member of a provider `;`-joined identifier list. */
+function firstMember(value) {
+  return String(value ?? "").split(";")[0].trim();
+}
+
 /**
- * Identities to try, in order. The listed application number first (the
- * original SDK fell back member by member when the first had no full text),
- * then the publication number alone.
+ * Identities to try, in order, in the shapes the quick-view endpoint accepts.
+ *
+ * The endpoint resolves one identity per request: a single application number
+ * (with the merged publication list alongside), or a single publication number
+ * with no application number. A `;`-joined application number or a `;`-joined
+ * publication number with an empty application number is answered with
+ * "未检索到收录的文献！" even when the record has full text — verified live
+ * against the deployment. The web QuickView page sends the same first shape.
+ *
+ * The web app derives the application number by taking the first `;` member of
+ * the listed value, so the first candidate mirrors that. The second candidate
+ * falls back to the first publication member alone, which the endpoint also
+ * accepts; it also covers records whose stored application number is wrong or
+ * empty.
  */
 function identityCandidates(pnId, record) {
   const candidates = [];
-  const anId = record?.anId ?? "";
+  const anId = firstMember(record?.anId);
   const database = record?.database ?? "";
   const sessionId = record?.sessionId ?? "";
   if (anId) candidates.push({ pnId, anId, database, sessionId });
-  candidates.push({ pnId, anId: "", database, sessionId });
+  candidates.push({ pnId: firstMember(pnId), anId: "", database, sessionId });
   return candidates;
 }
 
