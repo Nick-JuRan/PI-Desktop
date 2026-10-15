@@ -1219,6 +1219,16 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **状态**：单元测试覆盖（`sidebar-floating-menu.test.mjs`、
   `sidebar-navigation.test.mjs`）；视口交互场景仍为草案
 
+#### E2E-021c：底部项目菜单贴近锚点显示
+
+- **先决条件**：展开的侧边栏中，最底部可见项目行下方空间不足以容纳项目菜单。
+- **步骤**：1) 右键该项目行并查看菜单。2) 关闭菜单，再打开该行的溢出按钮菜单。3) 确认所有操作都处于视口内。
+- **预期**：两种入口在下方空间不足时，都会按菜单实际高度紧贴项目行上方显示；空间足够时则显示在锚点下方。菜单不会跳到远离项目的位置或被裁切。
+- **链接规格**：`04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md`
+- **接受**：品质（侧边栏交互）
+- **里程碑**：M2
+- **状态**：自动化（`node scripts/e2e-three-column-layout.mjs --sidebar-only`、`sidebar-floating-menu.test.mjs`、`sidebar-navigation.test.mjs`）
+
 #### E2E-036：设置会话导入目的地已移除
 
 - **预期**：设置中没有会话导入选项卡或扫描面板。插件仍可通过宿主拥有的会话 API 导入会话，相关边界由 E2E-214 / E2E-215 / E2E-216 覆盖。旧本地会话扫描器只由导入器单元测试覆盖。
@@ -3729,8 +3739,9 @@ IPC 请求无法关闭。
   - 每个检查点的摘要请求都携带会话自己的对话身份：在 Responses 形状的提供商
     （`openai-responses`、`openai-codex-responses`）上，出站载荷会像会话的普通
     回合一样把会话 id 作为 `prompt_cache_key` 发出，因此对接 Codex 后端的网关会
-    接受该请求，而不是返回 400 `invalid_responses_request`。其他线协议的提供商
-    保持不变。
+    接受该请求，而不是返回 400 `invalid_responses_request`。其他线协议的提供商，
+    以及位于已发布厂商主机上的行，保持不变；未识别端点在 Chat Completions 上会补
+    上该键，理由见 `E2E-PROVIDER-custom-endpoint-session-identity`。
   - 每个 `turn_end` 在另一个提供商请求之前都会被评估，并且永远不会
     标记整体任务空闲； composer/config 控件保持阻塞状态，直到
     `agent_end`、`error` 或仅手动的 `compaction_end`。
@@ -3790,6 +3801,36 @@ IPC 请求无法关闭。
 - **状态**：部分自动化（`runtime.test.ts`，
   `context-compaction.test.mjs`、`assistant-turns.test.mjs`、host-core
   transcript/session 单元测试）；完整的 provider/UI 旅程草稿
+
+#### E2E-PROVIDER-custom-endpoint-session-identity：自建端点收到会话 id
+
+- **前提**：两个互相独立的会话，各进行若干回合，都绑定到 API 风格为
+  `chat_completions`、base URL 指向本地抓包端点（不是已发布厂商主机）的提供商行。
+  另有一行位于已发布厂商主机、一行使用 `anthropic_messages`，以及一行使用
+  `openai-responses`。
+- **步骤**：1) 在两个会话各发一个回合，抓取两次请求的完整标头与完整请求体。
+  2) 逐字段比对这两个请求。3) 在第一个会话触发一次上下文压缩摘要并抓取。
+  4) 运行一次子智能体回合与一次带会话 id 的插件一次性调用并抓取。
+  5) 在位于已发布厂商主机的那一行上重复第 1 步。6) 在 API 风格为 `opencode_go`
+  的行上重复第 1 步。
+- **预期**：
+  - 两次抓取的请求都携带稳定且逐会话不同的标识：`x-session-affinity` 与
+    `x-client-request-id`，在格式为 `openai` 时还含 `session_id`，请求体中含
+    `prompt_cache_key`，取值都是该会话自己的对话 id，并在该会话的多个回合之间保持
+    不变。
+  - 自建 Responses 请求也携带 `x-session-affinity`，同时保留适配器原有的
+    `session_id`、`x-client-request-id` 与 `prompt_cache_key`，因此丢弃下划线标头的反向
+    代理仍能路由会话。
+  - 压缩摘要、子智能体回合与一次性调用携带其所属会话的同一个 id，因此网关会把整个
+    会话固定到同一后端。
+  - 位于已发布厂商主机的行与 OpenCode 行的出网请求与改动前逐字节一致（OpenCode
+    行仍带 `x-opencode-session`）。
+  - 没有会话 id 的一次性调用不会得到 `prompt_cache_key` 或 `x-session-affinity` 标头。
+- **关联规格**：`03-runtime/02-agent-runtime.md`（§6.2、§6.3）、
+  `03-runtime/11-provider-model-system.md`、issue #1634
+- **验收**：C (chat/stream) + 质量
+- **里程碑**：M5
+- **状态**：单元测试覆盖（`session-affinity.test.ts`）；完整网关抓包旅程草稿
 
 #### E2E-AGENTS-001：项目指令链配置代理会话
 
@@ -3941,7 +3982,7 @@ IPC 请求无法关闭。
 #### E2E-196c：macOS 标签工件通过 Gatekeeper 且无需移除隔离属性
 
 - **先决条件**：推送与 `apps/desktop/package.json` 匹配的 `vX.Y.Z` 标签，或手动运行 Release 工作流并保持 `sign_macos: true`（默认）；GitHub Actions 已配置 `CSC_LINK`、`CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD` 和 `APPLE_TEAM_ID` 密钥；两个本机 macOS 运行器均可用。
-- **步骤**：1) 运行标签工作流。2) 对每个 macOS 架构检查解压后的应用，使用 `codesign -dv --verbose=4` 确认权限为 `Developer ID Application: XingYu Liu (DUV63RKYTW)`。3) 对应用运行 `codesign --verify --deep --strict --verbose=2`、`spctl --assess --type execute --verbose=4` 和 `xcrun stapler validate`，并检查 `Contents/Resources/bin/pi-desktop-host-core`。4) 确认工作流的 DMG 步骤报告 Apple 公证状态为 `Accepted`，然后对对应的 DMG 运行 `xcrun stapler validate`。5) 在干净的 macOS 配置文件中下载 DMG，将应用移到 `/Applications` 后不清除 `com.apple.quarantine` 直接打开。
+- **步骤**：1) 运行标签工作流。2) 对每个 macOS 架构检查解压后的应用，使用 `codesign -dv --verbose=4` 确认权限为 `Developer ID Application: XingYu Liu (DUV63RKYTW)`。3) 对应用运行 `codesign --verify --deep --strict --verbose=2`、`spctl --assess --type execute --verbose=4` 和 `xcrun stapler validate`，并检查 `Contents/Resources/bin/pi-desktop-host-core`。4) 确认 app stapler shim 只在 app 公证提交被接受后重试 `xcrun stapler staple`，最多六次；再确认工作流的 DMG 步骤报告 Apple 公证状态为 `Accepted`，并对对应的 DMG 运行 `xcrun stapler validate`。5) 在干净的 macOS 配置文件中下载 DMG，将应用移到 `/Applications` 后不清除 `com.apple.quarantine` 直接打开。
 - **预期**：每个 macOS 应用通过签名完整性检查，Gatekeeper 报告 `source=Notarized Developer ID`，应用和 DMG 都包含有效的装订票据。DMG 有自己的提交：从未提交过的 DMG 没有票据，装订会以 error 65 失败，因此标签构建绝不能走到该状态。应用可正常打开，无需 `xattr` 命令或“安全性与隐私”覆盖。缺少密钥、提交被拒或装订重试耗尽都会让作业失败。
 - **关联规格**：`06-delivery/06-release-runbook.md`、`05-security/01-security.md`、ADR 0289
 - **验收**：质量、安全
@@ -5648,6 +5689,7 @@ eleven-tool-round desktop paths are verified by
 | A / H / Quality — 渲染器进程崩溃恢复 | E2E-RUNTIME-renderer-crash-recovery |
 | C / F / Quality — 含聊天的项目文件夹安全分离并删除 | E2E-048c |
 | B / F / Security — 提供商复制 | E2E-PROVIDER-copy-config-without-credentials |
+| C / Quality — 自建端点收到会话 id | E2E-PROVIDER-custom-endpoint-session-identity |
 | B / F / Quality — 已选模型顺序 | E2E-MODEL-selected-order-persists |
 | E / F / Quality — MCP 服务器超时覆盖 | E2E-261 |
 | C / D / Quality — 折叠项目后重置会话历史 | E2E-263 |
@@ -5666,6 +5708,7 @@ eleven-tool-round desktop paths are verified by
 | H——诊断 | E2E-027、E2E-031、E2E-034、E2E-042、E2E-096、E2E-098、E2E-104、E2E-107、E2E-108、E2E-109、E2E-110、E2E-113、E2E-115、E2E-116、 E2E-118、E2E-121、E2E-146、E2E-194、E2E-195 |
 | 安全性 | E2E-SETTINGS-inline-capability-imports、E2E-028、E2E-029、E2E-030、E2E-024J、E2E-024K、E2E-024M、E2E-049、E2E-068、E2E-086、E2E-105、E2E-106、E2E-107、E2E-108、E2E-109、 E2E-110、E2E-112、E2E-113、E2E-115、E2E-116、E2E-117、E2E-119、E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-151、E2E-153 |
 | 品质 | E2E-SETTINGS-inline-capability-imports、E2E-CHAT-running-status-survives-output-pauses、E2E-032、E2E-033、E2E-039、E2E-043、E2E-044、E2E-045、E2E-046、E2E-047、E2E-048、E2E-048c、E2E-048A、E2E-049、E2E-050、E2E-053、E2E-055、 E2E-056、E2E-057、E2E-058、E2E-059、E2E-060、E2E-061、E2E-062、E2E-063、E2E-064、E2E-065、E2E-066、E2E-067、E2E-068、E2E-069、 E2E-070、E2E-071、E2E-072、E2E-073、E2E-074、E2E-075、E2E-076、E2E-077、E2E-078、E2E-079、E2E-080、E2E-081、E2E-082、E2E-083、 E2E-084、E2E-085、E2E-086、E2E-092、E2E-093、E2E-094、E2E-095、E2E-096、E2E-097、E2E-098、E2E-099、E2E-100、E2E-101、E2E-102、 E2E-102a、E2E-102b、E2E-103、E2E-AGENTS-001、E2E-024N、E2E-024O、E2E-059a、E2E-060b、E2E-060c、E2E-060d、E2E-061a、E2E-073a、E2E-111、 E2E-114、E2E-117、E2E-118、E2E-119、E2E-120、E2E-122、E2E-123、E2E-142、E2E-143、E2E-144、E2E-145、E2E-146、E2E-147、E2E-148、E2E-150、E2E-151、E2E-153、E2E-194、E2E-195、E2E-199、E2E-200、E2E-201、E2E-202、E2E-203、E2E-204、E2E-209、E2E-210、E2E-UPDATE-preference-and-once-only-reminder、E2E-250、E2E-PLUGIN-imported-pi-package-skills、E2E-SUBAGENT-resume-a-settled-delegation |
+| 品质（侧边栏菜单定位） | E2E-021c |
 | 品质（项目排序） | E2E-253 |
 | C — 对话和直播（输入法斜杠别名） | E2E-255 |
 | E——工具和权限（Skill 常驻） | E2E-254 |
@@ -5714,6 +5757,7 @@ eleven-tool-round desktop paths are verified by
 | MVP 后实验性交互维护 | E2E-LIVE-VOICE-four-stage-ui |
 | M1 | E2E-001、E2E-002、E2E-003、E2E-028、E2E-029 |
 | M2 | E2E-004、E2E-005、E2E-006、E2E-007、E2E-008、E2E-008d、E2E-009、E2E-010、E2E-011、E2E-011a、E2E-011b、E2E-020、E2E-021、E2E-027、E2E-031、E2E-042、E2E-087、E2E-088、E2E-088b、E2E-089、E2E-090、E2E-144、E2E-005J、E2E-201 |
+| M2（侧边栏菜单定位） | E2E-021c |
 | M3 | E2E-012、E2E-013、E2E-014、E2E-015、E2E-016、E2E-017、E2E-018、E2E-019、E2E-040 |
 | M4 | E2E-022、E2E-023、E2E-024、E2E-025、E2E-026、E2E-030、E2E-038 |
 | M5 | E2E-CHAT-running-status-survives-output-pauses、E2E-008a、E2E-032、E2E-033、E2E-034、E2E-039、E2E-043、E2E-044、E2E-045、E2E-046、E2E-047、E2E-048、E2E-048c、E2E-048A、E2E-049、E2E-050、 E2E-051、E2E-052、E2E-053、E2E-054、E2E-055、E2E-056、E2E-057、E2E-058、E2E-059、E2E-060、E2E-061、E2E-062、E2E-063、E2E-064、 E2E-065、E2E-066、E2E-067、E2E-068、E2E-069、E2E-070、E2E-071、E2E-072、E2E-073、E2E-074、E2E-075、E2E-076、E2E-077、E2E-078、 E2E-079、E2E-080、E2E-081、E2E-082、E2E-083、E2E-084、E2E-085、E2E-086、E2E-092、E2E-093、E2E-096、E2E-097、E2E-098、E2E-099、 E2E-100、E2E-101、E2E-102、E2E-102a、E2E-102b、E2E-AGENTS-001、E2E-059a、E2E-060b、E2E-060c、E2E-061a、E2E-073a、E2E-094、E2E-095、E2E-143、E2E-145、E2E-146、E2E-147、E2E-194、E2E-195、E2E-204、E2E-250 |
@@ -5736,7 +5780,7 @@ eleven-tool-round desktop paths are verified by
 | 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
 | 基线后本地自动化 | E2E-220 |
 | 基线后本地自动化（MCP `pi_session_get` 超大 compaction） | E2E-MCP-session-get-projects-large-compaction |
-| MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
+| MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232、E2E-REMOTE-HOST-settings-compact-inventory |
 | 受信任扩展（R7 v1） | E2E-DIALOG-long-text-boundaries、E2E-241、E2E-242、E2E-HOOKS-cancel-and-dispose、E2E-243、E2E-TRUSTED-EXTENSION-temporary-session-cwd-is-scratch、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | 受信任扩展（R7 v1 npm 恢复） | E2E-PLUGIN-import-extension-recovers-missing-npm |
 | Post-MVP 回归覆盖（插件工具调度） | E2E-PLUGIN-slow-tool-is-not-cut-off-by-host-dispatch |
@@ -9391,6 +9435,35 @@ Follow the [current S3 acceptance scenario](/spec/06-delivery/04-e2e-test-plan#e
   session IPC contract tests, and real-model desktop acceptance. A local model
   fixture or mocked component result is not real-model acceptance evidence.
 
+### E2E-WORKTREE-isolated-session-lifecycle
+
+- **前置条件：** 隔离的桌面配置和数据目录、git 2.29+、一个处于分支上且至少有一次提交的
+  git 项目、已配置的模型，以及可选的 `.worktreeinclude`（列出一个被忽略的文件）。
+- **步骤：** 从项目菜单创建两个隔离会话，同时在两者中运行修改文件的提示。运行打印
+  `PI_PORT` / `PI_WORKTREE_ROOT` 的 Bash 命令。把第一个会话合并到项目；在项目和第二个
+  会话中修改同一行，再合并第二个会话。在第二个会话中解决冲突后再次合并，然后在第一个会话中使用**从项目同步**。在一个隔离会话
+  中并行启动两个写文件的子代理。最后删除一个含未合并工作的隔离会话，并在会话存在时重启
+  一次应用。打开一个非 git 项目的菜单。
+- **预期：** 每个会话的修改只落在自己的 worktree 中；在合并前项目检出和 `git status`
+  保持干净，每个 worktree 中都有被 include 的忽略文件。两个会话获得不同端口。第一次合并
+  快进项目，成功提示中给出分支名。冲突的合并会列出文件、不改动项目，并把该行标为
+  `Conflict`；解决后徽标消失、合并成功。第一个会话行显示 `↓N`；从项目同步会显示新提交数并清除该标记，并把冲突解决结果带入第一个会话，不改动项目。写文件的子代理在各自的 worktree 中编辑，完成的运行合回会话。
+  删除时提示未合并工作将丢失，并删除 worktree 文件夹和 `pi-desktop/<id>` 分支，不触碰其中
+  链接指向的文件。重启后会话在其 worktree 中重新打开；被手动删除的 worktree 显示
+  `Folder missing`，且绝不回退到项目目录。在非 git 项目中 **新建隔离会话** 置灰，并在下方
+  显示原因。
+- **Windows 检查：** 含目录 junction 的 worktree 删除时不跟随 junction；超过 260 字符的深
+  路径能创建和删除；worktree 中有文件被锁定时删除会明确失败并可重试。
+- **关联规范：** `03-runtime/03-tools-and-permissions.md` §4e、§10.2；
+  `03-runtime/06-host-rpc-protocol.md`；`04-ux/01-ui-ia.md` §3.2；ADR 0329。
+- **覆盖：** host-core `session_worktrees` 测试（创建、合并、冲突、删除、链接安全、启动
+  对账、子代理）、worktree IPC 契约测试、渲染层 `worktree-ui` 测试和 agent-runtime 子代理
+  测试。Windows 检查在 Windows 主机上以 host-core 测试运行：junction 删除（`remove::tests`）、
+  根目录被替换为链接（`lifecycle::tests`），以及经 RPC 用户路径的深路径和文件占用时删除
+  （`rpc::worktree_rpc::tests`）。`pnpm test:e2e:worktree-live`
+  （`scripts/e2e-worktree-live.mjs`）在协议层用真实模型执行上述步骤，不经过渲染层。
+- **状态：** Partially automated
+
 ### E2E-HOOKS-cancel-and-dispose
 
 - **#816 扩展验收：** 命令弹窗显示期间 Stop，真实渲染层移除弹窗，后续弹窗和 exec
@@ -9573,3 +9646,16 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **步骤：**为目录发布 1M 的模型保存 500K 用户额度。打开 Composer 模型列表，然后发送一条简短消息并检查上下文用量。对目录管理的额度以及模型发现不可用的情况重复验证。
 - **预期：**用户配置的模型行和上下文检查器显示 500K；目录管理的额度跟随已发布值；没有发现信息的已配置模型仍显示保存的额度。模型选择保持不变。
 - **状态：**`apps/desktop/test/composer-models.test.mjs` 自动覆盖用户覆盖值、目录继承值及发现不可用时保留额度；完整的“保存 → 模型列表 → 发送消息 → 上下文检查器”路径仍需手动验证。
+
+### E2E-264：重新打开归档项目后恢复侧栏显示
+
+- **前提条件**：本地文件夹已有持久项目组，且可通过渲染层侧边栏偏好归档。
+- **步骤**：
+  1. 归档项目，确认它从默认侧边栏隐藏，但仍可在“设置”→“项目归档”中找到。
+  2. 点击项目归档页中的“打开”。
+  3. 再次归档，打开“添加项目”，选择同一目录并创建。
+  4. 再次归档，从项目归档页打开其会话。
+- **预期**：每次激活成功后都会清除该路径的归档展示状态、返回聊天并使项目重新显示在侧栏。仅选中详情行而不激活、普通会话刷新都不会更改归档状态。重新选择同一目录会复用现有项目组，不会复制项目或会话数据。
+- **关联规格**：`04-ux/06-settings-ia.md`、`04-ux/09-interaction-patterns.md`、ADR 0294、D659、issue #1653。
+- **验收**：仅在 Host 项目激活成功后，渲染层才恢复该规范化路径的本地归档元数据。
+- **状态**：`apps/desktop/test/app-store-sidebar.test.mjs` 与 `apps/desktop/test/project-create-dialog.test.mjs` 有源码契约覆盖；完整 UI 场景仍为草稿，仅在明确请求且环境可用时运行。

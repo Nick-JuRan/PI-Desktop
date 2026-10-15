@@ -117,7 +117,11 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   stay mounted but are hidden with `visibility: hidden` +
   `content-visibility: hidden` — never `display: none`, which would destroy the
   layout box and its scroll offset — and are `aria-hidden` and non-interactive.
-  Evicting a pane makes its session behave like a cold open on the next visit.
+  Eviction releases the DOM, not the renderer-lifetime reading bookmark. On
+  return, restore the bookmarked message and its viewport offset, loading a
+  bounded historical range when necessary without search focus/highlighting.
+  Explicit disclosure choices and the mounted-window budget survive eviction;
+  bookmarks do not persist across renderer/app restarts.
 - A pane renders the store's live `messages` while its session is the active one
   and its retained snapshot otherwise, so no pane can show another session's rows.
   While a session is running, or still holds live rows the durable page has
@@ -2213,7 +2217,8 @@ quotes and cell line breaks are escaped, and formula-leading nonnumeric cells
 are exported as text. Clipboard failures produce an error toast.
 
 The expanded view uses a modal dialog with the existing theme tokens, a scrollable
-table and opaque sticky headers, and copy/download controls. Columns retain
+table with visible scrollbars whenever either axis overflows, opaque sticky
+headers, and copy/download controls. Columns retain
 readable minimum widths; narrow previews scroll horizontally instead of crushing
 short labels. It follows streamed rows,
 contains keyboard focus, closes with Escape or Close, and restores focus to its
@@ -2421,6 +2426,12 @@ to two lines, its description is clamped to two readable lines, and its step
 summary can wrap rather than forcing the user to resize the divider. Complete
 descriptions remain available through the node's accessible name/hover title;
 the node and its live process never create horizontal overflow.
+
+An accepted steering message creates a new visual reply without ending the
+parent runtime turn. Earlier delegation cards in that running turn keep their
+live status and Stop controls across steering replies and compaction dividers.
+A new ordinary user turn, parent settlement, or history reading ends that live
+projection; terminal Task snapshots still take precedence.
 
 The lifecycle rows (`TaskWait`/`TaskList`/`TaskStop`) stay compact tool rows —
 they are not topology nodes and must not inflate the subagent counts — but they
@@ -3010,20 +3021,20 @@ reasoning-level control.
   after an app restart, when that in-memory draft is unavailable, restore the
   Host-stored content and image/file attachments without rewriting the content;
   while the input is non-empty (or holds attachments) the action is refused with
-  a toast and nothing changes. Remove drops the row immediately.
+  a toast and nothing changes. Remove drops the row after Host acknowledgement.
 - Send now: promotes the row to the end of the session's priority block, so a
   second Send now leaves behind the first instead of replacing it at the head.
-  It then requests `agent/stop`, and the promoted block is released after the
-  current reply/tool batch completes normally, before every waiting row. The
-  first promoted row starts the turn and the rest join it as adjacent user
-  messages, so the block is answered once. When idle it starts immediately.
+  The Host delivers promoted input into the current turn through steering;
+  it does not request `agent/stop`. `TaskWait` yields without canceling delegates.
+  Refused input or an input with a different effective permission mode retains
+  its durable queue entry until the next turn. When idle it starts immediately.
 - A pending queue row is locked until Host admission returns its durable id: move
   up/down, Send now, edit, and remove are disabled. All five tooltips explain
   that it is saving; Send now also displays the localized Saving label. Direct edit/remove actions leave the pending row and draft
   unchanged; after admission, ordinary waiting-row actions become available.
 - A promoted row fixes order: move up/down and edit are disabled with
   their tooltip and `aria-disabled` state intact, and the Send now button reads
-  as waiting for the current task (`chat.sendNowPending`). Remove remains
+  Waiting to send (`chat.sendNowPending`). Remove remains
   available until delivery and waits for Host acknowledgement. If delivery
   already started, show a conflict message directing the user to Stop.
   The row carries a distinct
