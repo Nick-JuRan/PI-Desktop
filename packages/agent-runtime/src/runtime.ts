@@ -255,6 +255,7 @@ import {
   openCodeEndpointFromProvider,
   withOpenCodeSessionHeaders,
 } from "./opencode-session-headers.js";
+import { withSessionAffinityOptions } from "./session-affinity.js";
 import { withCompactionRequestHeaders } from "./compaction-request.js";
 import type { CompactionRequestShape } from "./compaction-diagnostics.js";
 import {
@@ -528,6 +529,11 @@ export type DelegationStatus =
  */
 export type DelegationRecord = {
   delegationId: string;
+  /**
+   * Chain id under which host-core keeps this Write/Edit subagent's own git
+   * worktree in an isolated session (ADR 0329); absent otherwise.
+   */
+  worktreeKey?: string;
   /** Direct parent delegation; undefined means the main agent owns it. */
   parentDelegationId?: string;
   /** One-based depth in the delegation tree. */
@@ -1004,6 +1010,11 @@ export type AgentRuntimeOptions = {
   projectPath?: string;
   /** Remote tool root. Model requests and runtime state remain on this machine. */
   remoteWorkspace?: { hostKey: string; path: string };
+  /**
+   * An isolated session's git worktree (ADR 0329). Files, the extension cwd,
+   * and edit bookkeeping use it; `projectPath` stays the project identity.
+   */
+  workspaceRoot?: string;
   /** Instructions resolved from the session's workspace. */
   projectInstructions?: ProjectInstructions;
   /** Durable project context loaded from host-owned project memory. */
@@ -1075,6 +1086,7 @@ export type RuntimeMatchConfig = {
   projectPath?: string;
   /** Remote tool root. Model requests and runtime state remain on this machine. */
   remoteWorkspace?: { hostKey: string; path: string };
+  workspaceRoot?: string;
   commandShell: CommandShellOption;
   subagents?: SubagentDefinition[];
   subagentProviders?: Record<string, RuntimeProviderConfig>;
@@ -1748,6 +1760,50 @@ function estimateVisibleResponseOutputTokens(
   return Math.max(1, Math.ceil(Array.from(visible).length / 4));
 }
 
+/** host-core's `worktree.delegate.settle` result (ADR 0329). */
+export type DelegateWorktreeSettlement =
+  | { result: "none" }
+  | { result: "noChanges" }
+  | { result: "merged"; commits: number }
+  | { result: "conflict"; files: string[] }
+  | { result: "notMerged"; reason: string }
+  | { result: "kept" };
+
+/** The line appended to a delegate's report about its worktree. */
+export function delegateWorktreeNote(settlement: DelegateWorktreeSettlement, resume: string): string {
+  switch (settlement.result) {
+    case "merged":
+      return `Isolated worktree: merged ${settlement.commits} commit(s) into the session workspace.`;
+    case "noChanges":
+      return "Isolated worktree: no file changes; the worktree was removed.";
+    case "conflict":
+      return `Isolated worktree: NOT merged. These files conflict with the session workspace: ${settlement.files.join(", ")}. Continue with ${resume} to resolve them in the subagent's worktree; the merge is retried when it ends.`;
+    case "notMerged":
+      return `Isolated worktree: not merged yet (${settlement.reason}). Continue with ${resume} to retry.`;
+    case "kept":
+      return `Isolated worktree: the run did not complete, so its changes were kept unmerged. Continue with ${resume} to finish them.`;
+    default:
+      return "";
+  }
+}
+
+/**
+ * System-prompt rules for an isolated session (ADR 0329): the workspace is a
+ * separate git worktree that the user merges from the app.
+ */
+export function isolatedWorkspaceGuidance(): string {
+  return [
+    "Isolated session: the advertised workspace is a separate git worktree on its own branch; the user's main project checkout is outside it.",
+    "Edit, build, and test only inside this workspace and never change files in the main checkout.",
+    "The worktree is a fresh checkout, so install dependencies first when a build or test needs them.",
+    "Start dev servers only on the 10 ports beginning at the PI_PORT environment variable.",
+    "Do not switch branches, rebase, or reset in this worktree; the user merges its branch into the project from the app.",
+    "To resolve a merge conflict here, remove the conflict markers from text files, and stage binary or deleted files with git add or git rm.",
+    "MCP tools act on the main project, not on this workspace.",
+    "Subagents that can Write or Edit work in their own worktrees and are merged back when they finish; their report states the merge result.",
+  ].join(" ");
+}
+
 export class DesktopAgentRuntime {
   private agent: Agent;
   private models: Models;
@@ -1816,6 +1872,8 @@ export class DesktopAgentRuntime {
    * resolves the delegate's permission under it instead of the session mode.
    */
   private delegatePermissionScopes = new Map<string, SubagentPermission>();
+  /** Worktree key of the delegate executing one tool call (ADR 0329). */
+  private delegateWorktrees = new Map<string, string>();
   /** Skill ids a delegated Skill call is allowed to load, keyed by call id. */
   private delegateSkillScopes = new Map<string, Set<string>>();
   /** Serializes same-path mutations across the parent and its delegates. */
@@ -1832,6 +1890,8 @@ export class DesktopAgentRuntime {
   private scratchDir?: string;
   private projectPath?: string;
   private remoteWorkspace?: { hostKey: string; path: string };
+  /** Set only for an isolated session; see `RuntimeConfig.workspaceRoot`. */
+  private workspaceRoot?: string;
   private commandShell: CommandShellOption;
   private baseProjectInstructions?: ProjectInstructions;
   private projectInstructions?: ProjectInstructions;
@@ -2017,6 +2077,8 @@ export class DesktopAgentRuntime {
     this.remoteWorkspace = opts.remoteWorkspace;
     this.scratchDir = opts.remoteWorkspace ? undefined : opts.scratchDir;
     this.projectPath = opts.remoteWorkspace?.path ?? (opts.projectPath?.trim() || undefined);
+    // Remote workspaces are never isolated (ADR 0329).
+    this.workspaceRoot = opts.remoteWorkspace ? undefined : opts.workspaceRoot?.trim() || undefined;
     this.customSystemPrompt = opts.customSystemPrompt;
     this.baseProjectInstructions = opts.projectInstructions;
     this.projectInstructions = opts.projectInstructions;
@@ -2068,6 +2130,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             `Your scratch directory for this session is \`${formatScratchDirForShell(this.commandShell, this.scratchDir)}\` (in Bash: ${shellScratchVariable(this.commandShell)}). Store ad-hoc temporary and intermediate files there using absolute paths. Workspace writes must be task-related project files or required toolchain outputs. Scratch persists across turns and is deleted with the session.`,
           ]
         : []),
+      // Isolated session (ADR 0329).
+      ...(this.workspaceRoot ? [isolatedWorkspaceGuidance()] : []),
     ];
     // A custom SYSTEM.md replaces only the product persona line, never the
     // operational rules in the default parts: tool guidance, delegation
@@ -2149,7 +2213,15 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           ),
           m.api,
         );
-        const hookedOptions = this.withExtensionProviderHooks(requestOptions, m);
+        const hookedOptions = withSessionAffinityOptions(
+          this.withExtensionProviderHooks(requestOptions, m),
+          {
+            provider: this.provider,
+            api: m.api,
+            baseUrl: m.baseUrl,
+            sessionId: this.sessionId,
+          },
+        );
         // The watchdog must be able to *stop* what it abandons. It wraps the
         // retry adapter, so draining alone would let the adapter wake from its
         // backoff and open a second request for this turn while the runtime is
@@ -2680,6 +2752,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       (this.projectMemory ?? "") === (config.projectMemory?.trim() ?? "") &&
       (this.projectPath ?? "") === (config.remoteWorkspace?.path ?? config.projectPath?.trim() ?? "") &&
       safeJson(this.remoteWorkspace ?? null) === safeJson(config.remoteWorkspace ?? null) &&
+      (this.workspaceRoot ?? "") === (config.workspaceRoot?.trim() ?? "") &&
       // Editing `~/.agents/subagents/*.md` must reach the next prompt. Definition
       // bodies are part of the `Task` tool's behavior, so unlike skills they
       // are compared in full.
@@ -2835,7 +2908,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * path in place, because loading extensions must not fail the session.
    */
   private extensionCwd(): string {
-    if (this.projectPath) return this.projectPath;
+    const root = this.workspaceRoot ?? this.projectPath;
+    if (root) return root;
     if (!this.scratchDir) return process.cwd();
     try {
       mkdirSync(this.scratchDir, { recursive: true });
@@ -3194,7 +3268,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       if (scheduledToolDescriptions[toolName]) return scheduledToolDescriptions[toolName];
       switch (toolName) {
         case "BrowserPreview":
-          return "Open a workspace HTML file in PI-Desktop's built-in browser panel. `path` is workspace-relative (e.g. \"demo/index.html\"). The preview live-reloads on later edits to the file or its sibling assets, so call once per page.";
+          return "Open an HTML file in PI-Desktop's built-in browser panel. `path` may be relative to a project folder or this session's scratch directory, or an absolute path inside those roots. No project is required for scratch previews. The preview live-reloads on later edits to the file or its sibling assets, so call once per page.";
         case "Read":
           return (
             "Read a bounded window from an existing regular text file, never a directory. " +
@@ -3260,7 +3334,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         ),
       },
       BrowserPreview: {
-        path: pathParam("File to preview; workspace-relative."),
+        path: pathParam("File to preview inside the session's project folders or scratch directory."),
         file_path: aliasParam("path"),
       },
       Glob: {
@@ -3365,7 +3439,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         const mutationPath = PATH_MUTATING_TOOLS.has(toolName) && isRecord(params) && typeof params.path === "string"
           ? this.remoteWorkspace
             ? remoteMutationIdentity(this.remoteWorkspace, params.path)
-            : await mutationFailureKey(params.path, this.projectPath ?? this.scratchDir)
+            : await mutationFailureKey(
+                params.path,
+                this.workspaceRoot ?? this.projectPath ?? this.scratchDir,
+              )
           : undefined;
         await this.loadPathInstructions(toolName, params);
         const isBash = toolName === "Bash";
@@ -3505,6 +3582,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                 : {}),
               ...(this.delegateSkillScopes.has(toolCallId)
                 ? { allowedSkillIds: [...this.delegateSkillScopes.get(toolCallId)!] }
+                : {}),
+              // A Write/Edit delegate of an isolated session runs in its own
+              // worktree; host-core resolves the key against its registry.
+              ...(this.delegateWorktrees.has(toolCallId)
+                ? { delegationId: this.delegateWorktrees.get(toolCallId) }
                 : {}),
             });
         } catch (error) {
@@ -4845,6 +4927,30 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           );
         }
         const delegationId = randomUUID();
+        // ADR 0329: in an isolated session a delegate that can write files gets
+        // its own worktree, keyed by its chain so a resume reuses it.
+        const worktreeKey = this.delegateNeedsWorktree(declaredToolNames)
+          ? resumedChain?.delegateSessionId ?? delegationId
+          : undefined;
+        if (worktreeKey) {
+          try {
+            await this.host.call("worktree.delegate.create", {
+              sessionId: this.sessionId,
+              delegationId: worktreeKey,
+            });
+          } catch (error) {
+            return this.subagentToolError(
+              toolCallId,
+              `Could not prepare an isolated worktree for the ${definition.name} subagent: ${
+                error instanceof Error ? error.message : String(error)
+              }. No work was started.`,
+            );
+          }
+          if (this.disposed || this.runCancelled || this.turnHadError || resumeEpoch !== this.turnEpoch) {
+            void this.settleDelegateWorktree(worktreeKey, false, delegationId);
+            return this.subagentToolError(toolCallId, "The parent turn ended before delegation could start.");
+          }
+        }
         const controller = new AbortController();
         const thinkingLevel: SubagentThinkingLevel =
           definition.thinkingLevel === "omit"
@@ -4902,6 +5008,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           startedEpoch: this.turnEpoch,
           reportDelivered: false,
           delegateSessionId: chain.delegateSessionId,
+          ...(worktreeKey ? { worktreeKey } : {}),
           ...(resumedChain ? { resumedFrom: resume } : {}),
           ...(modelChangedFrom ? { modelChangedFrom } : {}),
         };
@@ -4916,7 +5023,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         try {
           const { names: resolvedToolNames, tools, skillIds } =
             this.toolsForDelegation(definition, delegateScope);
-          const scopedTools = this.scopeDelegateTools(tools, definition, delegationId, skillIds);
+          const scopedTools = this.scopeDelegateTools(tools, definition, delegationId, worktreeKey, skillIds);
           subagentRun = new SubagentRun({
             definition,
             sessionId: this.sessionId,
@@ -4974,6 +5081,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           // it terminal before returning or idle auto-resume will await a
           // completion promise for a worker that never existed.
           record.reportDelivered = true;
+          if (worktreeKey) void this.settleDelegateWorktree(worktreeKey, false, delegationId);
           this.settleDelegation(record, {
             agentName: definition.name,
             modelId: provider.modelId,
@@ -5000,9 +5108,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           runPromise = Promise.reject(error);
         }
         void runPromise
-          .then((result) => this.settleDelegation(record, result))
+          .then((result) => this.finishDelegation(record, result))
           .catch((error: unknown) => {
-            this.settleDelegation(record, {
+            void this.finishDelegation(record, {
               agentName: definition.name,
               modelId: provider.modelId,
               thinkingLevel,
@@ -5052,6 +5160,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     tools: AgentTool[],
     definition: SubagentDefinition,
     mutationOwner: string,
+    worktreeKey?: string,
     skillIds: readonly string[] = [],
   ): AgentTool[] {
     const scope = definition.permission ?? DEFAULT_SUBAGENT_PERMISSION;
@@ -5062,6 +5171,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         if (scope !== DEFAULT_SUBAGENT_PERMISSION) {
           this.delegatePermissionScopes.set(toolCallId, scope);
         }
+        if (worktreeKey) this.delegateWorktrees.set(toolCallId, worktreeKey);
         if (tool.name === SKILL_TOOL_NAME && skillIds.length > 0) {
           this.delegateSkillScopes.set(toolCallId, new Set(skillIds));
         }
@@ -5069,11 +5179,64 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           return await tool.execute(toolCallId, args, signal, onUpdate);
         } finally {
           this.delegatePermissionScopes.delete(toolCallId);
+          this.delegateWorktrees.delete(toolCallId);
           this.delegateSkillScopes.delete(toolCallId);
           this.mutationOwners.delete(toolCallId);
         }
       },
     }));
+  }
+
+  /**
+   * Only inside an isolated session, and only for delegates that can edit
+   * files (Write/Edit); Bash-only and read-only delegates share the session
+   * worktree (ADR 0329, Q11).
+   */
+  private delegateNeedsWorktree(toolNames: readonly string[]): boolean {
+    return (
+      this.workspaceRoot !== undefined &&
+      toolNames.some((name) => name === "Write" || name === "Edit")
+    );
+  }
+
+  /**
+   * Settle a delegate's worktree before its report is published: a completed
+   * run is merged back into the session worktree, anything else is kept for a
+   * resume. The outcome is appended to the report the parent reads.
+   */
+  private async finishDelegation(
+    record: DelegationRecord,
+    result: SubagentRunResult,
+  ): Promise<void> {
+    if (record.worktreeKey && record.status === "running") {
+      const note = await this.settleDelegateWorktree(
+        record.worktreeKey,
+        result.status === "completed",
+        record.delegationId,
+      );
+      if (note) result = { ...result, report: result.report ? `${result.report}\n\n${note}` : note };
+    }
+    this.settleDelegation(record, result);
+  }
+
+  /** Ask host-core to settle a delegate worktree; returns a report note. */
+  private async settleDelegateWorktree(
+    worktreeKey: string,
+    merge: boolean,
+    delegationId: string,
+  ): Promise<string> {
+    const resume = `Task(resume: "${delegationId}")`;
+    try {
+      const { settlement } = await this.host.call<{ settlement: DelegateWorktreeSettlement }>(
+        "worktree.delegate.settle",
+        { sessionId: this.sessionId, delegationId: worktreeKey, merge },
+      );
+      return delegateWorktreeNote(settlement, resume);
+    } catch (error) {
+      return `Isolated worktree: merge-back failed (${
+        error instanceof Error ? error.message : String(error)
+      }); the subagent's changes are kept. Continue with ${resume} to retry.`;
+    }
   }
 
   /** Records a settled run and wakes every TaskWait waiting on it. */
@@ -5504,7 +5667,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       name: SUBAGENT_WAIT_TOOL_NAME,
       label: "Task Wait",
       description:
-        "Wait for one or more subagents started by Task and return their reports. `delegationIds` defaults to every running subagent; use mode \"any\" with `minCompleted` to converge as soon as the first (or first N) finish. Settled delegations return immediately, so re-reading a report by id is cheap. A wait timeout is not a failure: unfinished delegates keep working and the runtime delivers their reports when they finish.",
+        "Wait for one or more subagents started by Task and return their reports. `delegationIds` defaults to every running subagent; use mode \"any\" with `minCompleted` to converge as soon as the first (or first N) finish. Settled delegations return immediately, so re-reading a report by id is cheap. New user input interrupts the wait without canceling delegates; handle it before waiting again. A wait timeout is not a failure: unfinished delegates keep working and the runtime delivers their reports when they finish.",
       parameters: Type.Object({
         delegationIds: Type.Optional(
           Type.Array(
@@ -5580,19 +5743,26 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         if (scope.ownerDelegationId === undefined) {
           this.beginDelegationWait(targets);
         }
+        const waitAbort = new AbortController();
+        this.steeringWaitAbort = waitAbort;
         let timedOut = false;
         try {
-          timedOut = await this.waitForDelegations(
-            targets,
-            targetCompleted,
-            deadline,
-            signal,
-          );
+          if (!this.pendingSteering.size) {
+            timedOut = await this.waitForDelegations(
+              targets,
+              targetCompleted,
+              deadline,
+              signal ? AbortSignal.any([signal, waitAbort.signal]) : waitAbort.signal,
+            );
+          }
         } finally {
+          if (this.steeringWaitAbort === waitAbort) this.steeringWaitAbort = undefined;
           if (scope.ownerDelegationId === undefined) {
             this.endDelegationWait();
           }
         }
+        const interrupted = this.pendingSteering.size > 0 && !signal?.aborted &&
+          !this.runCancelled && !this.disposed && !this.turnHadError;
         // A settled report included in this bounded result reached the parent;
         // the idle resume must not deliver it a second time. Omitted reports
         // stay pending so the idle resume can deliver them later. Running
@@ -5615,14 +5785,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               ? formatDelegationHeartbeat(record)
               : (record.result?.report ?? `(${record.status} without a report)`),
         }));
-        const note = timedOut
-          ? `Still running after ${timeoutSeconds}s: ${results.filter((r) => r.status !== "running").length}/${targets.length} finished. This is not a failure — unfinished delegates keep working and the runtime will deliver their reports when they finish. Call TaskStop only to cancel.\n${targets
-              .filter((record) => record.status === "running")
-              .map(formatDelegationHeartbeat)
-              .join("\n")}`
-          : mode === "any"
-            ? `Converged after ${results.filter((r) => r.status !== "running").length} of ${targets.length} finished.`
-            : undefined;
+        const note = interrupted
+          ? "Interrupted by new user input. Unfinished subagents keep working; handle the user's message before waiting again."
+          : timedOut
+            ? `Still running after ${timeoutSeconds}s: ${results.filter((r) => r.status !== "running").length}/${targets.length} finished. This is not a failure — unfinished delegates keep working and the runtime will deliver their reports when they finish. Call TaskStop only to cancel.\n${targets
+                .filter((record) => record.status === "running")
+                .map(formatDelegationHeartbeat)
+                .join("\n")}`
+            : mode === "any"
+              ? `Converged after ${results.filter((r) => r.status !== "running").length} of ${targets.length} finished.`
+              : undefined;
         const unknownNote =
           unknownIds.length > 0
             ? `Unknown delegation ids (not found in this session): ${unknownIds.join(", ")}.`
@@ -5647,7 +5819,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             },
           ],
           details: {
-            status: timedOut ? "timeout" : "completed",
+            status: interrupted ? "interrupted" : timedOut ? "timeout" : "completed",
             ...(unknownIds.length ? { unknownIds } : {}),
             delegations: results,
           },
@@ -5670,6 +5842,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const settledCount = () =>
       targets.filter((record) => record.status !== "running").length;
     if (settledCount() >= targetCompleted) return Promise.resolve(false);
+    if (signal?.aborted) return Promise.resolve(true);
     return new Promise<boolean>((resolve) => {
       let done = false;
       const finish = (timedOut: boolean) => {
