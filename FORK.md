@@ -93,6 +93,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `0433e7
 | --- | --- | --- | --- |
 | `apps/desktop/electron/main/logger.ts` | +1 −1 | hook | fix(desktop): make Windows build and test gates portable |
 | `apps/desktop/electron/main/runtime/lifecycle.ts` | +2 −0 | hook | fix(electron): keep runtime entry within architecture budget |
+| `apps/desktop/test/plugin-restore-notifies-renderer.test.mjs` | +1 −0 | hook | fix(sync): stub the fork network-notice hook in upstream's lifecycle test |
 | `apps/desktop/package.json` | +1 −1 | hook | fix(desktop): make Windows build and test gates portable |
 | `apps/desktop/test/agent-runtime-bundle-package.test.mjs` | +6 −2 | hook | fix(desktop): make Windows build and test gates portable |
 | `apps/desktop/test/chat-error-message.test.mjs` | +1 −2 | hook | fix(desktop): make Windows build and test gates portable |
@@ -130,7 +131,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `0433e7
 | --- | --- | --- | --- |
 | `apps/desktop/electron/main/voice-service.ts` | +3 −2 | hook | fix(voice): complete local dictation integration |
 
-Total upstream files touched: 94.
+Total upstream files touched: 95.
 
 Fork E2E islands (never conflict): `scripts/e2e/fork-nested-topology.tsx` + `scripts/e2e-fork-nested-topology.mjs` (run with `node scripts/e2e-fork-nested-topology.mjs`).
 
