@@ -43,6 +43,12 @@ Upstream forbids nested `Task`; this feature allows it up to a configured depth.
 - A parent must `TaskWait` for child reports before it finishes; terminal
   parent settlement aborts any remaining descendants rather than leaving an
   orphaned run.
+- Nested delegates count against the session's running-delegate cap together
+  with their parents. The fork raises `MAX_SUBAGENT_CONCURRENCY`
+  (`packages/shared/src/subagent-definition.ts`) from upstream's 10 to 50 so
+  a parent that fans one delegate per database out to nested readers is not
+  refused its next `Task`; the cap stays finite because the upstream test
+  iterates up to it.
 - Changing the setting retires the live runtime so the next prompt rebuilds
   the tool set with the new depth.
 

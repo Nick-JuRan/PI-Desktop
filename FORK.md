@@ -61,7 +61,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `0433e7
 | `packages/shared/src/index.ts` | +1 −0 | hook | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/shared/src/protocol.ts` | +1 −0 | hook | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/shared/src/subagent-definition.test.ts` | +64 −0 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
-| `packages/shared/src/subagent-definition.ts` | +64 −6 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
+| `packages/shared/src/subagent-definition.ts` | +68 −7 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules; feat(subagents): raise MAX_SUBAGENT_CONCURRENCY to 50 |
 
 ## i18n fork block (depth + tool-selection strings)
 

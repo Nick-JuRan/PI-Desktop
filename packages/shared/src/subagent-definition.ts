@@ -266,7 +266,10 @@ export const PERMISSION_DECLARING_SOURCES: ReadonlySet<SubagentSource> = new Set
 export const MAX_SUBAGENT_DEFINITIONS = 16;
 export const MAX_SUBAGENT_PROVIDERS = 8;
 /** Running delegates per session, across batches (see ADR 0089). */
-export const MAX_SUBAGENT_CONCURRENCY = 10;
+// Fork: raised from upstream's 10 so a parent can fan one delegate per
+// database out to nested readers (five libraries = ten running delegates)
+// without another delegation being refused; see docs/spec/90-fork/01-subagent-depth.md.
+export const MAX_SUBAGENT_CONCURRENCY = 50;
 /** Resumable chains kept per subagent name before the oldest is evicted
  * (ADR 0279). A chain is one delegate session across any number of `resume`s. */
 export const MAX_RESUMABLE_CHAINS_PER_AGENT = 2;
