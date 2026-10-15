@@ -72,6 +72,15 @@ remembers the raw rows (`ssId`, `anId`, `dbName`, `ti`) behind the records it
 projects. A pnId the plugin never listed (after a restart, or typed from
 elsewhere) is requested bare and the provider decides.
 
+The endpoint resolves exactly one identity per request and rejects a
+`;`-joined application number, or a `;`-joined publication number sent with no
+application number, with "未检索到收录的文献！" even when the record has full
+text. The plugin therefore reduces a listed record to the members the endpoint
+accepts: first the first application-number member with the merged publication
+list (the shape the web QuickView page sends), then the first publication
+member alone. The merged list is what the tool names in its output line, so a
+family is read once and cited by the value the result page showed.
+
 The result is a plain string, not JSON — the host hands strings to the model
 verbatim, so no escaping reaches the transcript:
 

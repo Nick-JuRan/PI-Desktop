@@ -1,6 +1,6 @@
 {
   "name": "local-fusion-search",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "type": "module",
   "description": "PI-Desktop Boolean search, semantic result-page, patent full-text, and semantic baseline tools for Fusion Search.",

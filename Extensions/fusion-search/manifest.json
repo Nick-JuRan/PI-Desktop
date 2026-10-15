@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "local.fusion-search",
   "name": "融合检索",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Boolean patent search, semantic result pages, patent full-text reading, and semantic baseline tools for the remote Fusion Search service, with built-in token acquisition and refresh.",
   "main": "main.cjs",
   "contributes": {
@@ -138,8 +138,8 @@
             "pnId": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 200,
-              "description": "pnId exactly as shown in the result page record (it may contain several publication numbers joined by ';')."
+              "maxLength": 1000,
+              "description": "pnId exactly as shown in the result page record (it may contain several publication numbers joined by ';'), or any one of its ';'-joined members."
             }
           }
         }
