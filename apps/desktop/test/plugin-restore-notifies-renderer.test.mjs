@@ -62,6 +62,7 @@ test("startup plugin restore notifies the renderer after every enabled plugin lo
       schemaTooNewOf: () => null,
     },
     "../plugin-display-locale": { syncPluginDisplayLocale: async () => {} },
+    "../network-notice": { installInsecureEndpointNotice: () => {} }, // fork hook in lifecycle.ts
     "@pi-desktop/host-runtime": {
       RuntimeSupervisor: class {
         superviseRestart() {
