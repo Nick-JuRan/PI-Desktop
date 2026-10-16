@@ -14,6 +14,7 @@ type StartOptions = {
   objective?: string;
   modelId?: string;
   modelKey?: string;
+  parentDelegationId?: string;
 };
 
 function start(
@@ -29,6 +30,9 @@ function start(
     objective: options.objective ?? "explore the parser",
     ...(options.modelId ? { latestModelId: options.modelId } : {}),
     ...(options.modelKey ? { latestModelKey: options.modelKey } : {}),
+    ...(options.parentDelegationId
+      ? { parentDelegationId: options.parentDelegationId }
+      : {}),
   });
 }
 
@@ -334,6 +338,54 @@ describe("LRU eviction", () => {
 
     expect(registry.lookup("del-e1")).toBeUndefined();
     expect(registry.lookup("del-r1")).toBeDefined();
+  });
+
+  it("bounds same-name chains per direct parent, so parallel parents never evict each other's delegate", () => {
+    // Fork: five library searchers each own one `patent-reader` chain. When
+    // the third reader settled, the first searcher's chain used to be
+    // dropped and its resume failed with an unknown-delegation error.
+    vi.useFakeTimers({ now: 1_700_000_000_000 });
+    const registry = new DelegationChainRegistry();
+    const parents = ["searcher-1", "searcher-2", "searcher-3", "searcher-4", "searcher-5"];
+    for (const [index, parentDelegationId] of parents.entries()) {
+      vi.advanceTimersByTime(1_000);
+      start(registry, {
+        delegateSessionId: `res-reader-${index + 1}`,
+        delegationId: `del-reader-${index + 1}`,
+        agentName: "patent-reader",
+        parentDelegationId,
+      });
+      registry.settle(`res-reader-${index + 1}`, "completed");
+    }
+
+    for (const [index, parentDelegationId] of parents.entries()) {
+      const resolved = registry.resolveResume({
+        resume: `del-reader-${index + 1}`,
+        agentName: "patent-reader",
+        runningDelegationIds: NONE,
+        parentDelegationId,
+      });
+      expect(resolved.ok).toBe(true);
+    }
+
+    // The bound still applies within one parent: a third settled chain of
+    // the same delegate under searcher-1 evicts that parent's oldest.
+    for (const suffix of ["b", "c"]) {
+      vi.advanceTimersByTime(1_000);
+      start(registry, {
+        delegateSessionId: `res-reader-1${suffix}`,
+        delegationId: `del-reader-1${suffix}`,
+        agentName: "patent-reader",
+        parentDelegationId: "searcher-1",
+      });
+      registry.settle(`res-reader-1${suffix}`, "completed");
+    }
+    expect(registry.lookup("del-reader-1")).toBeUndefined();
+    expect(registry.lookup("del-reader-1b")).toBeDefined();
+    expect(registry.lookup("del-reader-1c")).toBeDefined();
+    // Other parents are untouched by searcher-1's churn.
+    expect(registry.lookup("del-reader-2")).toBeDefined();
+    expect(registry.lookup("del-reader-5")).toBeDefined();
   });
 });
 
