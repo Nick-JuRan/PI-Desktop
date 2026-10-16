@@ -744,6 +744,14 @@ export const ptBR = {
     loadPlugin: "Carregar um plugin de desenvolvimento (opcional)",
     dismiss: "Dispensar"
   },
+  diagnostics: {
+    rendererCrashLoop: {
+      title: "A janela continua travando",
+      message: "O PI-Desktop recarregou esta janela várias vezes nos últimos minutos e ela parou de responder novamente a cada vez. Recarregue mais uma vez ou saia para proteger seus dados. Se isso acontece após abrir a mesma conversa, ela pode ser grande demais para ser exibida na janela; a conversa em si está intacta.",
+      reload: "Recarregar",
+      quit: "Sair",
+    },
+  },
   settings: {
     ...forkSettings,
     storage: {

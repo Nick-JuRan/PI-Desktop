@@ -332,34 +332,31 @@ test("stopping a turn undoes an unanswered prompt or settles the partial reply",
   const storeSource = await readStoreSource();
   assert.match(storeSource, /const submittedDraft = runtime\.submittedComposerDrafts\.get\(sessionId\)/);
   assert.match(storeSource, /resolveComposerSmartStop\(state\.messages, submittedDraft\)/);
-  assert.match(storeSource, /composerPrefill:\s*\{ \.\.\.fullStop\.draft, sessionId \}/);
+  assert.match(storeSource, /composerPrefill:\s*\{ \.\.\.smartStop\.draft, sessionId \}/);
   assert.match(storeSource, /submittedDraft\?\.resolveAbort\?\.\(true\)/);
   assert.match(storeSource, /submittedDraft\?\.resolveAbort\?\.\(false\)/);
   assert.match(storeSource, /submittedComposerDrafts\.delete\(sessionId\)/);
   assert.match(storeSource, /smartStop\.kind === "restore"/);
   assert.match(storeSource, /status:\s*"aborted" as const/);
-  // The undo rewrite starts from the full durable transcript merged with the
-  // live rows, never from the renderer's paged, display-capped window (D299).
+  // The undo names the unanswered prompt — the live window's own row — to the
+  // host, which deletes that user row and its turn from the durable
+  // transcript. No renderer array crosses IPC and no whole-transcript read is
+  // made: a paged, display-capped window can never become the next transcript.
   assert.match(
     storeSource,
-    /const merged = mergeLiveSessionMessages\(fullMessages, get\(\)\.messages\)/,
+    /const undone = state\.messages\[smartStop\.kept\.length\];[\s\S]*?await api\.deleteSessionMessage\(sessionId, undone\.id\)/,
   );
-  assert.match(storeSource, /resolveComposerSmartStop\(merged, submittedDraft\)/);
-  assert.match(
-    storeSource,
-    /replaceSessionMessages\(sessionId,\s*fullStop\.kept\)/,
-  );
+  assert.doesNotMatch(storeSource, /loadFullSessionMessages|replaceSessionMessages/);
   // Settling a partial reply is renderer-only: the runtime's aborted final row
   // (or its checkpoint) is the durable copy, and a rewrite from this snapshot
   // could delete it.
-  assert.doesNotMatch(storeSource, /replaceSessionMessages\(sessionId,\s*settled\)/);
-  assert.doesNotMatch(storeSource, /replaceSessionMessages\(sessionId,\s*smartStop\.kept\)/);
+  assert.doesNotMatch(storeSource, /deleteSessionMessage\(sessionId,\s*settled/);
 });
 
 test("delete remains on user turns and is removed from assistant toolbar", async () => {
   const storeSource = await readStoreSource();
   assert.match(storeSource, /deleteMessage:\s*async \(messageId\)/);
-  assert.match(storeSource, /replaceSessionMessages\(sessionId,\s*next\)/);
+  assert.match(storeSource, /api\.deleteSessionMessage\(sessionId,\s*messageId\)/);
   assert.match(transcriptSource, /deleteMessage\(message\.id\)/);
   assert.match(transcriptSource, /chat\.deleteMessage/);
   assert.match(

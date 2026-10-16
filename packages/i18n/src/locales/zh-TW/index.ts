@@ -750,6 +750,14 @@ export const zhTW = {
     loadPlugin: "載入開發外掛（可選）",
     dismiss: "關閉",
   },
+  diagnostics: {
+    rendererCrashLoop: {
+      title: "視窗持續當機",
+      message: "PI-Desktop 在過去幾分鐘內多次重新載入此視窗，但它每次都再次停止回應。可以再重新載入一次，或退出以保護資料。如果每次都是在開啟同一個對話之後發生，該對話可能過大、無法在視窗中顯示；對話記錄本身沒有損壞。",
+      reload: "重新載入",
+      quit: "退出",
+    },
+  },
   settings: {
     ...forkSettings,
     storage: {

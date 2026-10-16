@@ -17,9 +17,10 @@ test("native abort bypasses smart-stop rewrite and refreshes source detail", () 
   const abort = transcript.slice(transcript.indexOf("abort: async"));
   const native = abort.slice(abort.indexOf('source === "pi-native"'), abort.indexOf("const submittedDraft"));
   assert.match(native, /api\.abort\(sessionId\)/);
-  assert.match(native, /api\.getSession/);
+  // The settled source state is a bounded page, never the whole transcript.
+  assert.match(native, /runtime\.readSettledTail\(sessionId\)/);
   assert.match(native, /return;/);
-  assert.doesNotMatch(native, /replaceSessionMessages|resolveComposerSmartStop/);
+  assert.doesNotMatch(native, /replaceSessionMessages|resolveComposerSmartStop|deleteSessionMessage/);
 });
 
 test("native dispatch and events carry durable user acknowledgement", () => {
@@ -99,26 +100,35 @@ test("durable user acknowledgement reconciles active, cached and background rows
 
 test("native smart-stop abort keeps one durable user row and never rewrites the source", async () => {
   const id = "native-pi:fixture";
-  const state = { activeSessionId: id, sessions: [{ id, source: "pi-native" }], messages: [user("optimistic-1")], retainedTranscripts: {}, runningSessions: { [id]: true }, isRunning: true };
+  const state = { activeSessionId: id, sessions: [{ id, source: "pi-native" }], messages: [user("optimistic-1")], retainedTranscripts: {}, sessionHistory: {}, runningSessions: { [id]: true }, isRunning: true };
   const calls = [];
   const originalAbort = api.abort;
   const originalReplace = api.replaceSessionMessages;
-  const originalGet = api.getSession;
-  api.getSession = async () => { calls.push("detail"); return { session: { messages: [user("durable-1")] } }; };
+  const originalDelete = api.deleteSessionMessage;
   api.abort = async (sessionId) => { calls.push("abort"); assert.equal(sessionId, id); };
   api.replaceSessionMessages = async () => assert.fail("native abort must not rewrite transcript");
+  api.deleteSessionMessage = async () => assert.fail("native abort must not delete transcript rows");
   const runtime = {
     submittedComposerDrafts: new Map([[id, { messageCountBeforeSend: 0, draft: { text: "identical prompt", fileReferences: [] } }]]),
     cacheSessionTranscript: (_id, rows) => { runtime.cached = rows; },
+    // The settled source state is one bounded page, read after the abort.
+    readSettledTail: async (sessionId) => {
+      assert.equal(sessionId, id);
+      calls.push("detail");
+      const messages = [user("durable-1")];
+      runtime.cached = messages;
+      return { messages, window: { messageStart: 0, hasMoreBefore: false, contentLimited: true } };
+    },
   };
   try {
     await createTranscriptSlice({ ...stateHarness(state), runtime }).abort();
-    assert.equal(calls[0], "abort");
+    assert.deepEqual(calls, ["abort", "detail"]);
     assert.deepEqual(state.messages, [user("durable-1")]);
     assert.deepEqual(runtime.cached, state.messages);
+    assert.deepEqual(state.sessionHistory[id], { messageStart: 0, hasMoreBefore: false, contentLimited: true });
     assert.equal(state.isRunning, false);
     assert.equal(runtime.submittedComposerDrafts.size, 0);
-  } finally { api.abort = originalAbort; api.replaceSessionMessages = originalReplace; api.getSession = originalGet; }
+  } finally { api.abort = originalAbort; api.replaceSessionMessages = originalReplace; api.deleteSessionMessage = originalDelete; }
 });
 
 
@@ -190,6 +200,7 @@ test("unknown or delayed durable acknowledgements never insert a duplicate rende
 
 const { default: ts } = await import("typescript");
 const sharedForIpc = await import("@pi-desktop/shared");
+const sessionReadBounds = await import("../electron/main/ipc/session-read-bounds.ts");
 const { readFileSync } = await import("node:fs");
 const nodePath = await import("node:path");
 
@@ -228,6 +239,7 @@ function forkHarness({ host, sidecar, activeTurns = new Map() }) {
     "../services/session-collaboration": { readSessionCollaboration() {} },
     "../services/session-search": { searchSessionsAcrossSources },
     "../bootstrap/remote-hosts.js": { getActiveRemoteHostsBoot: () => null },
+    "./session-read-bounds": sessionReadBounds,
   });
   registerSessionIpc({
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },

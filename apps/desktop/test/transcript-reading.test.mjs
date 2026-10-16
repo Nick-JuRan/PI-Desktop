@@ -298,7 +298,7 @@ test("a session switch cannot let an old nested search open the new session's pa
   assert.equal(r.view(), undefined);
 });
 
-test("an explicit old-message action loads canonical input only when required", async () => {
+test("an explicit old-message action reads one bounded window and never the whole transcript", async () => {
   let state = {
     activeSessionId: "s",
     messages: [message("tail")],
@@ -310,26 +310,27 @@ test("an explicit old-message action loads canonical input only when required", 
       state = { ...state, ...patch };
     },
   };
-  const full = [message("old"), message("tail")];
-  let reads = 0;
+  // The host answers `messageAround` with a window centred on the target whose
+  // own text is complete; the renderer re-anchors on it.
+  const around = [message("older"), message("old", "complete original content"), message("tail")];
+  const reads = [];
   let cached;
   const runtime = {
-    loadFullSessionMessages: async (_id, cache) => {
-      assert.equal(cache, false);
-      reads += 1;
-      return full;
+    readActionWindow: async (_id, messageId) => {
+      reads.push(messageId);
+      return { id: "s", messages: around, messageStart: 7, hasMoreBefore: true };
     },
     cacheSessionTranscript: (_id, messages) => {
       cached = messages;
     },
   };
   assert.equal(await prepareTranscriptAction(access, runtime, "tail"), state);
-  assert.equal(reads, 0);
+  assert.deepEqual(reads, []);
   await prepareTranscriptAction(access, runtime, "old");
-  assert.equal(reads, 1);
-  assert.equal(state.messages, full);
-  assert.equal(cached, full);
-  assert.deepEqual(state.sessionHistory.s, { messageStart: 0, hasMoreBefore: false });
+  assert.deepEqual(reads, ["old"]);
+  assert.equal(state.messages, around);
+  assert.equal(cached, around);
+  assert.deepEqual(state.sessionHistory.s, { messageStart: 7, hasMoreBefore: true, contentLimited: true });
 });
 
 test("action preparation cannot overwrite a later navigation or newly started turn", async () => {
@@ -343,43 +344,68 @@ test("action preparation cannot overwrite a later navigation or newly started tu
     const read = prepareTranscriptAction(
       { get: () => state, set: () => assert.fail("stale action must not write") },
       {
-        loadFullSessionMessages: () => pending.promise,
+        readActionWindow: () => pending.promise,
         cacheSessionTranscript: () => assert.fail("stale action must not replace the live cache"),
       },
       "old",
     );
     state = { ...state, ...change };
-    pending.resolve([message("old")]);
+    pending.resolve({ id: "s", messages: [message("old")], messageStart: 0, hasMoreBefore: false });
     assert.equal(await read, null);
   }
 });
 
-test("a visible message still hydrates canonical input when the tail is bounded or clipped", async () => {
-  for (const history of [{ hasMoreBefore: true }, { hasMoreBefore: false, contentLimited: true }]) {
+test("a visible message still hydrates canonical input in place when the tail is bounded or clipped", async () => {
+  for (const history of [{ hasMoreBefore: true, messageStart: 40 }, { hasMoreBefore: false, contentLimited: true }]) {
     let state = {
       activeSessionId: "s",
-      messages: [message("visible", "clipped")],
+      messages: [message("earlier", "neighbour"), message("visible", "clipped")],
       sessionHistory: { s: history },
     };
-    const full = [message("earlier"), message("visible", "complete original content")];
+    const canonical = message("visible", "complete original content");
     const access = {
       get: () => state,
       set: (patch) => {
         state = { ...state, ...patch };
       },
     };
+    let cached;
     await prepareTranscriptAction(
       access,
       {
-        loadFullSessionMessages: async () => full,
-        cacheSessionTranscript: (_id, messages) => assert.equal(messages, full),
+        // The window the host returns around the target may differ from the
+        // one on screen; only the target's canonical copy is taken from it.
+        readActionWindow: async () => ({
+          id: "s",
+          messages: [message("much-older"), canonical, message("later")],
+          messageStart: 3,
+          hasMoreBefore: true,
+        }),
+        cacheSessionTranscript: (_id, messages) => {
+          cached = messages;
+        },
       },
       "visible",
     );
-    assert.equal(state.messages, full);
-    assert.equal(state.sessionHistory.s.hasMoreBefore, false);
-    assert.notEqual(state.sessionHistory.s.contentLimited, true);
+    assert.deepEqual(state.messages.map((item) => item.id), ["earlier", "visible"]);
+    assert.equal(state.messages[1], canonical);
+    assert.equal(cached, state.messages);
+    // The reading window itself is untouched: paging state stays what it was.
+    assert.deepEqual(state.sessionHistory.s, history);
   }
+});
+
+test("action preparation gives up when the host no longer has the message", async () => {
+  let state = { activeSessionId: "s", messages: [message("tail")], sessionHistory: { s: { contentLimited: true } } };
+  const result = await prepareTranscriptAction(
+    { get: () => state, set: () => assert.fail("a missing message must not write") },
+    {
+      readActionWindow: async () => ({ id: "s", messages: [message("other")], messageStart: 0, hasMoreBefore: false }),
+      cacheSessionTranscript: () => assert.fail("a missing message must not replace the cache"),
+    },
+    "tail",
+  );
+  assert.equal(result, null);
 });
 
 test("paging during an existing stream never freezes its snapshot over newer tokens or completion", async () => {

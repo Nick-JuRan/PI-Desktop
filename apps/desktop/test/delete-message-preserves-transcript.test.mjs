@@ -6,29 +6,41 @@ import { readStoreModule, readMainSource } from "./helpers/source-contracts.mjs"
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { mergeLiveSessionMessages } = await import("../src/lib/session-transcript.ts");
 
-test("deleteMessage merges the store read after the transcript reload, not a pre-await snapshot", async () => {
+test("deleteMessage names the row to the host and never rewrites the transcript from a renderer array", async () => {
   const sliceSource = await readStoreModule("slices/transcript-slice.ts");
+  const deleteSource = sliceSource.match(/deleteMessage:\s*async\s*\(messageId\)\s*=>\s*\{[\s\S]*?\n    \},\n/)?.[0];
+  assert.ok(deleteSource, "deleteMessage action must exist");
 
-  // Contract (#1614): the merge must read get().messages AFTER the
-  // loadFullSessionMessages await, so outputs that arrive during the reload
-  // survive; a pre-await capture would erase them from view and persistence.
-  assert.doesNotMatch(
-    sliceSource,
-    /deleteMessage:\s*async\s*\(messageId\)\s*=>\s*\{[\s\S]*?const\s+liveMessages\s*=\s*get\(\)\.messages;/,
-    "deleteMessage must not capture a pre-await live snapshot",
-  );
+  // The host applies the turn rule and rewrites the transcript itself. A
+  // paged, display-capped window must never become the next transcript, and
+  // the whole transcript must never be read into the renderer to delete one
+  // turn of it (a 200 MB session killed the renderer on exactly that read).
+  assert.match(deleteSource, /await\s+api\.deleteSessionMessage\(sessionId,\s*messageId\)/);
+  assert.doesNotMatch(deleteSource, /loadFullSessionMessages|replaceSessionMessages|api\.getSession\(/);
+
+  // Outputs that land during the await (#1614) are not merged from a renderer
+  // snapshot any more: the host drains the outbox before it cuts, and the
+  // renderer reconciles its window with the ids the host actually removed,
+  // after re-reading the store and re-checking the active session.
   assert.match(
-    sliceSource,
-    /deleteMessage:\s*async\s*\(messageId\)\s*=>\s*\{[\s\S]*?await\s+runtime\.loadFullSessionMessages\(sessionId\);[\s\S]*?mergeLiveSessionMessages\(fullMessages,\s*get\(\)\.messages\)/,
-    "deleteMessage must merge fullMessages with the post-await store messages",
+    deleteSource,
+    /const \{ deletedIds \} = await api\.deleteSessionMessage[\s\S]*?const current = get\(\);\s*if \(current\.activeSessionId !== sessionId\) return;[\s\S]*?mergeLiveSessionMessages\(previous, current\.messages\)\.filter\(/,
+    "deleteMessage must reconcile the post-await store with the host's deletedIds",
   );
-  // A turn that started during the reload also bails: no rewrite under a
-  // live stream.
-  assert.match(
-    sliceSource,
-    /deleteMessage:\s*async\s*\(messageId\)\s*=>\s*\{[\s\S]*?get\(\)\.activeSessionId\s*!==\s*sessionId\s*\|\|\s*get\(\)\.isRunning/,
-    "deleteMessage must re-check the session and isRunning after the await",
-  );
+  // A host refusal (a turn started meanwhile: AGENT_BUSY) restores the window.
+  assert.match(deleteSource, /catch \(error\) \{[\s\S]*?runtime\.cacheSessionTranscript\(sessionId, previous, window\)/);
+});
+
+test("the renderer never asks the host for an unbounded transcript", async () => {
+  const runtimeSource = await readStoreModule("runtime/session-runtime.ts");
+  const sliceSource = await readStoreModule("slices/transcript-slice.ts");
+  const actionSource = await readStoreModule("runtime/transcript-action.ts");
+  for (const source of [runtimeSource, sliceSource, actionSource]) {
+    assert.doesNotMatch(source, /api\.getSession\([a-zA-Z.]+\)/, "every renderer detail read passes a window");
+    assert.doesNotMatch(source, /loadFullSessionMessages/);
+  }
+  assert.match(runtimeSource, /readSettledTail[\s\S]*?messageLimit: TRANSCRIPT_PAGE_SIZE,\s*contentLimit: TRANSCRIPT_CONTENT_LIMIT/);
+  assert.match(runtimeSource, /readActionWindow[\s\S]*?messageAround: messageId,\s*messageLimit: TRANSCRIPT_PAGE_SIZE,\s*contentLimit: TRANSCRIPT_CONTENT_LIMIT/);
 });
 
 test("sessionReplaceMessages and sessionActivateRevision share one rewrite boundary with drain and guards", async () => {
@@ -59,6 +71,26 @@ test("sessionReplaceMessages and sessionActivateRevision share one rewrite bound
     /IPC\.invoke\.sessionActivateRevision[\s\S]*?runTranscriptRewrite\(\s*sessionId,\s*"revision activation"[\s\S]*?session\.activateRevision/,
     "sessionActivateRevision must go through the shared rewrite gate (it rewrites the same transcript rows)",
   );
+  assert.match(
+    sessionIpcSource,
+    /IPC\.invoke\.sessionDeleteMessage[\s\S]*?runTranscriptRewrite\(\s*sessionId,\s*"message deletion"[\s\S]*?session\.deleteMessage/,
+    "sessionDeleteMessage must go through the shared rewrite gate (the host rewrites the transcript for it)",
+  );
+  // The rewritten transcript never travels back to the renderer: activation
+  // answers with an acknowledgement and the renderer re-reads a bounded page.
+  assert.match(
+    sessionIpcSource,
+    /"revision activation"[\s\S]*?\);\s*return \{ ok: true as const \};/,
+  );
+});
+
+test("every renderer session/get is a bounded window", async () => {
+  const sessionIpcSource = await readMainSource("ipc/session-ipc.ts");
+  assert.match(
+    sessionIpcSource,
+    /IPC\.invoke\.sessionGet,[\s\S]*?const window = boundSessionRead\(request\);[\s\S]*?host\.call<\{ session\?: RuntimeSession \| null \}>\("session\.get", \{ id, \.\.\.window \}\)/,
+    "the renderer-facing session/get must pass the bounded window to the host",
+  );
 });
 
 test("mergeLiveSessionMessages preserves live AI outputs when backend disk is missing them, and only deleted turn is removed", () => {
@@ -84,7 +116,7 @@ test("mergeLiveSessionMessages preserves live AI outputs when backend disk is mi
   const merged = mergeLiveSessionMessages(durableMessages, liveMessages);
   assert.equal(merged.length, 7, "All 7 messages must be preserved after merging");
 
-  // 2. Perform the exact deletion logic as deleteMessage on turn 2 ("u2")
+  // 2. Perform the turn rule the host applies in `sessions::delete_message` on turn 2 ("u2")
   const index = merged.findIndex((m) => m.id === "u2");
   assert.equal(index, 2);
 
@@ -105,7 +137,7 @@ test("mergeLiveSessionMessages preserves live AI outputs when backend disk is mi
   assert.equal(next[3].role, "assistant");
 });
 
-test("outputs that arrive during the full-transcript reload survive the delete merge", () => {
+test("outputs that arrive during a reload survive a durable/live merge", () => {
   // Durable transcript (host has the pre-tail state); the store already saw
   // the aborted turn's final output, which lands during the reload await.
   const durableAtLoadEnd = [

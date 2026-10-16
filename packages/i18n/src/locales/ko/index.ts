@@ -754,6 +754,14 @@ export const ko = {
     loadPlugin: "개발 플러그인 불러오기 (선택 사항)",
     dismiss: "닫기",
   },
+  diagnostics: {
+    rendererCrashLoop: {
+      title: "창이 계속 충돌합니다",
+      message: "PI-Desktop이 지난 몇 분 동안 이 창을 여러 번 다시 불러왔지만 매번 다시 응답을 멈췄습니다. 한 번 더 다시 불러오거나, 데이터를 보호하기 위해 종료하세요. 같은 대화를 열 때마다 발생한다면 그 대화가 창에 표시하기에 너무 클 수 있습니다. 대화 기록 자체는 손상되지 않았습니다.",
+      reload: "다시 불러오기",
+      quit: "종료",
+    },
+  },
   settings: {
     ...forkSettings,
     storage: {

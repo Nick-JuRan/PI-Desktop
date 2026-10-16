@@ -1,5 +1,6 @@
 import type { SessionSummary } from "@pi-desktop/shared";
 import { api } from "./api";
+import { TRANSCRIPT_CONTENT_LIMIT, TRANSCRIPT_PAGE_SIZE } from "./transcript-reading";
 import { isRemoteSession, safeSessionSummary } from "./remote-session-safety";
 import { sessionIsReusableEmpty } from "./session-create";
 import { isAutomationSession } from "./session-origin";
@@ -38,7 +39,10 @@ export async function openRemoteProjectSession(
     })) {
       // RACP list summaries do not publish a durable message count. Read the
       // actual bounded history before treating a cold catalog row as empty.
-      const detail = await api.getSession(latest.id);
+      const detail = await api.getSession(latest.id, {
+        messageLimit: TRANSCRIPT_PAGE_SIZE,
+        contentLimit: TRANSCRIPT_CONTENT_LIMIT,
+      });
       if (!runtime.navigationIntentIsCurrent(intent)) return;
       const current = get();
       const candidate = current.sessions.find((session) => session.id === latest.id);

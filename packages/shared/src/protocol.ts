@@ -160,6 +160,8 @@ export const IPC = {
     modelConfigImportScan: "pi-desktop/modelConfig/importScan",
     modelConfigImportRun: "pi-desktop/modelConfig/importRun",
     sessionReplaceMessages: "pi-desktop/session/replaceMessages",
+    /** Host-side delete of one message (a user row takes its turn); returns the removed ids. */
+    sessionDeleteMessage: "pi-desktop/session/deleteMessage",
     sessionSaveRevision: "pi-desktop/session/saveRevision",
     sessionListRevisions: "pi-desktop/session/listRevisions",
     sessionActivateRevision: "pi-desktop/session/activateRevision",
