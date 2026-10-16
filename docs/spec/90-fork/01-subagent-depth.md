@@ -43,6 +43,15 @@ Upstream forbids nested `Task`; this feature allows it up to a configured depth.
 - A parent must `TaskWait` for child reports before it finishes; terminal
   parent settlement aborts any remaining descendants rather than leaving an
   orphaned run.
+- Resumable chains are bounded per **direct parent and delegate name**, not
+  per delegate name alone. Upstream keeps the two most recently settled chains
+  of each delegate name for the whole session, which is right for one parent;
+  with nested delegation several parents run the same delegate name at once
+  (one reader per library searcher), and a third parent's settled reader used
+  to evict the first parent's, so its `Task(resume)` failed with an
+  unknown-delegation error. The fork groups `evictOverflow` by
+  `agentName` + `parentDelegationId` (`packages/agent-runtime/src/delegation-chain.ts`);
+  the main agent's own chains keep upstream's bound.
 - Nested delegates count against the session's running-delegate cap together
   with their parents. The fork raises `MAX_SUBAGENT_CONCURRENCY`
   (`packages/shared/src/subagent-definition.ts`) from upstream's 10 to 50 so

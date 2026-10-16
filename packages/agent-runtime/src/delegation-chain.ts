@@ -249,9 +249,16 @@ export class DelegationChainRegistry {
   private evictOverflow(): void {
     const byAgent = new Map<string, DelegationChain[]>();
     for (const chain of this.chains.values()) {
-      const group = byAgent.get(chain.agentName) ?? [];
+      // Fork: the bound is per direct parent, not per session. With nested
+      // delegation several parents run the same delegate name at once (one
+      // reader per library searcher); counting them in one group let a third
+      // parent's settled reader evict the first parent's, so its `resume`
+      // failed with "unknown delegation" although nothing of its own had been
+      // superseded. The main agent's own chains keep the upstream behaviour.
+      const key = `${chain.agentName}\u0000${chain.parentDelegationId ?? ""}`;
+      const group = byAgent.get(key) ?? [];
       group.push(chain);
-      byAgent.set(chain.agentName, group);
+      byAgent.set(key, group);
     }
     for (const group of byAgent.values()) {
       // A working chain is never evicted: dropping it would strand the delegate

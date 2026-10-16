@@ -25,7 +25,8 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `0433e7
 | `apps/desktop/test/subagent-topology.test.mjs` | +88 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/test/subagent-transcript.test.mjs` | +17 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `crates/host-core/src/rpc/mod.rs` | +74 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
-| `packages/agent-runtime/src/delegation-chain.ts` | +13 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
+| `packages/agent-runtime/src/delegation-chain.test.ts` | +52 −0 | hook | fix(subagents): bound resumable chains per direct parent |
+| `packages/agent-runtime/src/delegation-chain.ts` | +22 −2 | integration point | feat: 引入子代理深度、子代理工具调用选择; fix(subagents): bound resumable chains per direct parent |
 | `packages/agent-runtime/src/delegation-history.ts` | +11 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/agent-runtime/src/runtime.test.ts` | +273 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/agent-runtime/src/runtime.ts` | +286 −47 | integration point | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue |
