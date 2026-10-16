@@ -25,7 +25,7 @@ reports/<发明名称>/
     ├── 特征对比表.md          全申请唯一一张总表（charter 建表头，阅读者只向末尾追加行，五库结束后 charter 整理合并）
     ├── 语义基准-权x.md        element_id，五库共用，并行前建好
     ├── 检索日志-权x-<库>.md   每库一份
-    └── 阅读日志-权x-<库>.md   每库一份
+    └── 阅读日志-权x-<库>-R<轮次>-<k>.md   每库每轮每个阅读者切片一份
 ```
 
 ## 流程
@@ -81,13 +81,14 @@ TaskWait(timeoutSeconds: 900)   # 超时不是失败；重复等待直到五份�
 数据库：<库>          ← 只此一个库，不得换库
 轮次上限：6
 已有文件：检索/特征基准.md、检索/语义基准-权x.md、检索/特征对比表.md
-要求：语义基准已存在，不得再 prepare；命中数 <400 即委派 patent-reader；按阅读者回执的 gaps 和 search_direction 多轮调整，直到阅读者 library_status=done；结束时用 <patent-searcher-result> 回执。
+要求：语义基准已存在，不得再 prepare；命中数 <400 即按页交错分片委派最多 5 个 patent-reader（每轮新开，不 resume）；汇总各切片回执的 gaps 和 search_direction 多轮调整，直到本库 done；结束时用 <patent-searcher-result> 回执。
 ```
 
 并行期间：某个库的回执先到，先按下面清单验收它，再继续等其余库；不要用 `TaskStop` 打断某个库，除非用户要求。
 
 每份 `<patent-searcher-result>` 的验收：
-- `library_status: done`；`stop_reason` 为 reader_done 或 max_rounds（max_rounds 时把 `gaps` 记下，汇总时说明）；
+- `library_status: done`；`stop_reason` 为 library_done 或 max_rounds（max_rounds 时把 `gaps` 记下，汇总时说明）；
+- 每轮的阅读日志 `阅读日志-权x-<库>-R<轮次>-<k>.md` 齐全，k 覆盖该轮的全部切片；各切片读过的页号互不重叠；
 - `特征对比表.md` 中标注该库的行：每个"公开 / 公开（公知）"单元格都带出处（权利要求N、[NNNN]、图N）；没有"部分公开"；"类型"列与单元格一致；
 - `x_list`、`y_list` 与总表"类型"列一致。
 并发期间同一公开号在表中出现多行（各库各一行）是预期行为，不算不通过；第 4c 步会合并。
@@ -138,5 +139,5 @@ Y 组合：<公开号A + 公开号B：A 公开 …，B 公开 …> 或 "无可�
 
 - Settings → Agent → Subagents：Maximum subagent depth = 2；7 个代理 `patent-splitter / patent-analyst / patent-classifier / patent-keyworder / patent-claim-charter / patent-searcher / patent-reader` 均启用。
 - `local.fusion-search` 插件 ≥0.6.0 已加载并配置凭据（0.6.0 起检索时冻结结果集，五库并行才不会串号）；`classification-queryer` 已授权。
-- PI-Desktop 已包含 PR #45（`MAX_SUBAGENT_CONCURRENCY = 50`）和 PR #47（可续链按父级限额，检索者多轮 resume 阅读者才不会失效）。
+- PI-Desktop 已包含 PR #45（`MAX_SUBAGENT_CONCURRENCY = 50`：五库并行最多 5 × (1 + 5) = 30 个运行中的子代理）和 PR #47（可续链按父级限额）。
 - 会话权限 auto（或各代理定义里的 `permission: auto`）。
