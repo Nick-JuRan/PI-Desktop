@@ -54,6 +54,12 @@ coverage/
 .pi/
 .cc-connect/
 
+# Machine-local MCP server configs. They carry per-machine credentials
+# (e.g. PLAYWRIGHT_MCP_EXTENSION_TOKEN) and absolute local paths, so they
+# must never enter this public repository. Skills and subagents under
+# `.agents/` stay tracked; only the `servers` leaf is local-only.
+.agents/servers/
+
 .playwright-mcp/
 .claude/
 .workbuddy
