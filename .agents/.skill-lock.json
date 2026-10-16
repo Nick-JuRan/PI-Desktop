@@ -1,0 +1,16 @@
+{
+  "version": 3,
+  "skills": {
+    "agently-mail": {
+      "source": "agent.qq.com",
+      "sourceType": "well-known",
+      "sourceUrl": "https://agent.qq.com/.well-known/skills/agently-mail/SKILL.md",
+      "skillFolderHash": "",
+      "sourceBaseUrl": "https://agent.qq.com",
+      "wellKnownDigest": "sha256:6edfddacd3f147ae246c30bd8deb4dd4be6e94f06c0eccb804a2d84ac4295b54",
+      "installedAt": "2026-10-12T06:43:58.880Z",
+      "updatedAt": "2026-10-12T06:43:58.880Z"
+    }
+  },
+  "dismissed": {}
+}
