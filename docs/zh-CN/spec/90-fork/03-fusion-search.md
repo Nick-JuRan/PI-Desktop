@@ -10,6 +10,7 @@ fork 功能。`Extensions/fusion-search` 是通过常规插件机制加载的 fo
 - 面向智能体的工具是 `fusion_semantic_baseline`，恰好两个动作：`prepare`（创建远端基线并返回权利要求范围的术语和权重）和 `update_terms`（修正这些列表）。两个动作都会修改远端状态，在远端结果不明确时绝不自动重放。
 - 凭据和令牌绝不出现在工具参数、结果或日志中。
 - 布尔检索与结果阅读工具与基线工具并列；其契约见 README。
+- 布尔检索会冻结本会话的结果集。服务端的语义排序结果页来自按账号共享、只保留最近一次语义检索的缓存，并行会话会互相覆盖结果页；检索后紧接着的 `forOverview` 是唯一能拿到本会话自身集合的读取。插件以整份留存集合（400 条，带摘要）请求它，逐行校验 `ssId`，并用该快照提供 `fusion_semantic_result_page`。会话创建与 overview 在一把进程内锁下执行；等待超过 60 s 时在发出任何请求之前返回 `SEARCH_BUSY`。没有快照的会话退回在线结果页读取，并保留原有一致性校验。
 - `fusion_full_text` 读取结果页中列出的一篇专利的全文。唯一参数是结果页显示的 `pnId`；检索会话、查看数据库和申请号由插件从布尔检索与结果页经手过的信息中自行补齐。快速查看端点每次只解析一个身份——单个申请号（可同时携带合并公开号列表），或无申请号时的单个公开号——因此列出的多成员记录会被归约为这两种形状：先发首个申请号成员＋合并公开号列表，再退化为仅首个公开号成员。返回的是纯阅读文本——全部权利要求，然后是带服务端 `[000N]` 段号的说明书——不是摘要、不是片段、也不分页。调用只读，令牌刷新后重试一次，声明为 `risk: low`。
 
 ## 2. E2E 场景
@@ -31,3 +32,12 @@ fork 功能。`Extensions/fusion-search` 是通过常规插件机制加载的 fo
 - **关联规格**：本页；`02-subagent-tool-selection.md`；`07-plugins/03-plugin-api.md`；`Extensions/fusion-search/README.md`
 - **验收**：单参数契约、纯文本输出的全文阅读；由插件自有记录登记表完成身份补齐
 - **状态**：`Extensions/fusion-search/test` 下有单元覆盖（`full-text*`、`record-registry`、`main`、`tool-executor`）；实测路径为 `test/live-full-text.test.mjs`，需要专用账号、一个会话 id 和可达的快速查看主机
+
+#### E2E-PLUGIN-fusion-search-parallel-sessions-page-their-own-rows
+
+- **前提**：已用可用账号加载 `local.fusion-search` 开发插件并准备好语义基准；同一数据库下有两条结果集互不重叠、命中数各小于 400 的布尔检索式。
+- **步骤**：1）先用式子 A 调用 `fusion_boolean_search`，紧接着用式子 B 再调用一次。2）以任意顺序、并发地用 `fusion_semantic_result_page` 读会话 A 和会话 B 的第 1 页。3）把两页与各自会话 `forOverview` 响应的前 20 行比对。4）不翻页，直接对 A 中列出的一条记录调用 `fusion_full_text`。5）在一条消息里同时发起六次布尔检索。6）重新加载插件后再读会话 A 的一页。
+- **预期**：每页只包含本会话的行，按 `semanticSort` 排序并带 `abview`/`clms`，与该会话的 overview 一致；冻结的会话不会产生 `fusionResult/results` 请求。服务端未打分的行排在末尾、分值为 `null`，并计入 `totalPage`。步骤 4 成功，`ssid` 和数据库由插件补齐。步骤 5 中各次检索在锁后依次完成；等待超出预算的检索返回 `SEARCH_BUSY`、不产生远端历史，重试后成功。步骤 6 重新访问服务端，若缓存已被覆盖，则按提示报告需重新检索。
+- **关联规格**：本页；`Extensions/fusion-search/README.md`
+- **验收**：结果页稳定、并行安全；工具契约不变
+- **状态**：`Extensions/fusion-search/test` 下有单元覆盖（`result-snapshot`、`boolean-search`、`tool-executor`、`main`）；`forOverview` 以 400 条带摘要一次返回的行为已在部署环境实测确认（389 命中返回 388 条，一次请求 6 s，`semanticSort` 1→388，所有行均为本会话 `ssId`）

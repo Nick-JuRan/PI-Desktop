@@ -17,6 +17,16 @@ specification-level contract and the E2E scenario.
 - Credentials and tokens never appear in tool arguments, results, or logs.
 - Boolean search and result-reading tools live beside the baseline tool; see the
   README for their contracts.
+- A Boolean search freezes its session's result set. The provider pages the
+  semantically sorted list from a per-account cache holding only the latest
+  semantic search, so parallel sessions overwrite each other's pages; the
+  `forOverview` call made right after the search is the only read that is the
+  session's own set. The plugin requests it for the whole retained set (400,
+  with abstracts), validates every row's `ssId`, and serves
+  `fusion_semantic_result_page` from that snapshot. Session creation and
+  overview run under one in-process lock; `SEARCH_BUSY` is returned before
+  anything is sent when the wait exceeds 60 s. A session without a snapshot
+  falls back to the live page read with the existing integrity check.
 - `fusion_full_text` reads one listed patent in full. Its only argument is the
   `pnId` shown in a result page; the plugin supplies the search session, view
   database and application number from what the Boolean search and result
@@ -106,3 +116,35 @@ specification-level contract and the E2E scenario.
   `record-registry`, `main`, `tool-executor`); the live path is
   `test/live-full-text.test.mjs` and needs the dedicated account, a session id
   and a reachable quick-view host
+
+#### E2E-PLUGIN-fusion-search-parallel-sessions-page-their-own-rows
+
+- **Preconditions**: The `local.fusion-search` development plugin is loaded with
+  a working account and a prepared semantic baseline; two Boolean queries with
+  disjoint result sets, each with fewer than 400 hits, are available for one
+  database.
+- **Steps**: 1) Run `fusion_boolean_search` with query A, then immediately with
+  query B. 2) Read page 1 of session A and page 1 of session B with
+  `fusion_semantic_result_page`, in either order and concurrently. 3) Compare
+  the pages with the first 20 rows of each session's own `forOverview`
+  response. 4) Read `fusion_full_text` for a record listed in A without having
+  paged A. 5) Start six Boolean searches in one message. 6) Reload the plugin
+  and page session A again.
+- **Expected**: Each page contains only its own session's rows in `semanticSort`
+  order with `abview`/`clms`, identical to that session's overview, and no
+  `fusionResult/results` request is made for a frozen session. Rows the
+  provider left unscored appear last with `null` scores and `totalPage` counts
+  them. Step 4 succeeds with the session's `ssid` and database supplied by the
+  plugin. In step 5 the searches complete one after another behind the lock; a
+  search that waited past the budget returns `SEARCH_BUSY` with no remote
+  history created and succeeds when retried. After the reload, step 6 reaches
+  the provider again and a mismatch, if the cache has moved on, is reported
+  with the hint to rerun the search.
+- **Specs linked**: this page; `Extensions/fusion-search/README.md`
+- **Acceptance**: Stable, parallel-safe result pages; no change to the tool
+  contracts
+- **Status**: Unit-covered under `Extensions/fusion-search/test`
+  (`result-snapshot`, `boolean-search`, `tool-executor`, `main`); the live
+  behaviour of `forOverview` at size 400 with abstracts was confirmed against the
+  deployment (388 of 389 hits returned in one 6 s request, `semanticSort` 1→388,
+  all rows carrying the session's `ssId`)

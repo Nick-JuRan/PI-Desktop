@@ -33,6 +33,29 @@ If search execution returned a session but its count lookup fails, the error
 also includes that `session_id` so result retrieval can resume without
 submitting a duplicate search.
 
+#### The result set is frozen at search time
+
+The provider pages the semantically sorted list (`fusionResult/results`) from a
+cache that is shared per account and holds only the most recent semantic
+search. With two sessions open, page requests for session A come back with
+rows whose `ssId` is B — the plugin used to refuse them with
+`RESULT_SESSION_MISMATCH`, which is what five parallel library searches ran
+into. Sending `semanticParam` with the page request does not make the provider
+recompute (verified live), so the only read guaranteed to be the session's own
+set is the `forOverview` call made right after the search.
+
+The plugin therefore asks that call for the whole retained set (`size` 400,
+abstracts on; about 6 s for ~390 hits), checks every row's `ssId` against the
+session, and freezes the rows in an in-process store keyed by `session_id`
+(most recent 20 sessions, roughly 1 MB each). Session creation and the overview
+run under one in-process lock so concurrent searches never interleave their
+semantic computations; a caller that waits more than 60 s receives
+`SEARCH_BUSY` before anything was sent, so it can simply retry the same search.
+The provider reports `semSortCounts` one below `hitCounts` when a row carries
+no semantic score; such rows stay at the tail of the snapshot with `null`
+`simVal`/`semanticSort`. The frozen rows also feed the full-text record
+registry, so `fusion_full_text` can open any listed record before it was paged.
+
 ### `fusion_semantic_result_page`
 
 Read one page from an existing semantically sorted session:
@@ -40,6 +63,13 @@ Read one page from an existing semantically sorted session:
 ```json
 { "session_id": "...", "page": 1 }
 ```
+
+Pages are served from the result set frozen when the session was searched, so
+any number of sessions can be read in parallel without a token or a network
+request; `totalPage` is the ceiling of the frozen row count / 20. A session the
+plugin does not hold (after a reload, or one it did not create) falls back to the
+live provider page described below, whose mismatch error now says to rerun the
+Boolean search and page the new `session_id`.
 
 The page size is fixed at 20; `start` is calculated from the one-based page.
 Each record includes `pnId`, `ti`, `simVal`, `semanticSort`, `abview`, and
