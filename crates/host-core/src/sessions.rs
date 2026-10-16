@@ -2777,6 +2777,43 @@ pub fn replace_messages(db: &Database, session_id: &str, messages: &[UiMessage])
     rewrite_transcript(db, session_id, messages, &[])
 }
 
+/// Drop one message from the live transcript on the host, and return the ids
+/// that went with it.
+///
+/// A user row takes its whole turn along: every following row up to, but not
+/// including, the next user row. Any other row is removed alone. That is the
+/// rule the renderer applied before it handed the rewritten array back over
+/// IPC; it moved here so the renderer never has to hold the full transcript
+/// to delete one turn of it, and so a paged, display-capped window can never
+/// become the next transcript (a 200 MB session had no bounded way to do
+/// this). An id the transcript does not carry removes nothing.
+pub fn delete_message(db: &Database, session_id: &str, message_id: &str) -> Result<Vec<String>> {
+    let Some(detail) = get_session(db, session_id)? else {
+        return Err(anyhow!("NOT_FOUND: session {session_id}"));
+    };
+    let messages = detail.messages;
+    let Some(index) = messages.iter().position(|message| message.id == message_id) else {
+        return Ok(Vec::new());
+    };
+    let mut end = index + 1;
+    if messages[index].role == "user" {
+        while end < messages.len() && messages[end].role != "user" {
+            end += 1;
+        }
+    }
+    let deleted: Vec<String> = messages[index..end]
+        .iter()
+        .map(|message| message.id.clone())
+        .collect();
+    let remaining: Vec<UiMessage> = messages[..index]
+        .iter()
+        .chain(messages[end..].iter())
+        .cloned()
+        .collect();
+    replace_messages(db, session_id, &remaining)?;
+    Ok(deleted)
+}
+
 /// Rewrite the transcript and reseat the index rows.
 ///
 /// `already_stored` names families the caller stored on its own way here, so
@@ -3487,14 +3524,18 @@ pub fn save_active_branch_revision(
 }
 
 /// Activate a stored revision: replace the live transcript with prefix + branch.
-/// `prefix` is every message before the root user turn, as the renderer sees
-/// it; the durable transcript wins over it whenever the family is found there.
+/// The prefix is every message before the root user turn, read from the durable
+/// transcript. A caller that still holds a complete copy of that prefix may
+/// pass it as the fallback for a root the transcript no longer carries; a
+/// caller that only has a paged or display-capped window must pass `None`, and
+/// the switch is then refused for such a root rather than rewriting the
+/// transcript from a partial prefix.
 pub fn activate_message_revision(
     db: &Database,
     session_id: &str,
     root_user_id: &str,
     revision_index: i64,
-    prefix: &[UiMessage],
+    prefix: Option<&[UiMessage]>,
 ) -> Result<Vec<UiMessage>> {
     let session_created = session_created_at(db, session_id)?;
     {
@@ -3516,9 +3557,14 @@ pub fn activate_message_revision(
         .map(|detail| detail.messages)
         .unwrap_or_default();
     let live_start = archive_live_branch(db, session_id, root_user_id, &live)?;
-    let prefix: &[UiMessage] = match live_start {
-        Some(start) => &live[..start],
-        None => prefix,
+    let prefix: &[UiMessage] = match (live_start, prefix) {
+        (Some(start), _) => &live[..start],
+        (None, Some(prefix)) => prefix,
+        (None, None) => {
+            return Err(anyhow!(
+                "NOT_FOUND: revision root {root_user_id} is not in the live transcript"
+            ));
+        }
     };
 
     let payload =
@@ -6240,6 +6286,105 @@ mod tests {
         assert_eq!(detail.messages[1].content, "next");
     }
 
+    /// Three turns: u1/a1, u2/t2/a2, u3/a3. Deleting a user row on the host
+    /// takes its whole turn and nothing else, so the renderer can delete from a
+    /// paged window without ever holding the transcript it rewrites.
+    fn seed_three_turns(db: &Database) -> String {
+        let session = create_session(db, None, None, None, None, None).unwrap();
+        let rows: [(&str, &str, &str); 7] = [
+            ("u1", "user", "first task"),
+            ("a1", "assistant", "first answer"),
+            ("u2", "user", "second task"),
+            ("t2", "tool", "tool result for second task"),
+            ("a2", "assistant", "second answer"),
+            ("u3", "user", "third task"),
+            ("a3", "assistant", "third answer"),
+        ];
+        for (seq, (id, role, content)) in rows.iter().enumerate() {
+            let mut message = user_msg(id, content, &format!("2025-05-01T00:00:0{seq}Z"));
+            message.role = (*role).into();
+            if *role == "tool" {
+                message.tool_call_id = Some((*id).into());
+                message.tool_name = Some("Read".into());
+                message.tool_status = Some("success".into());
+            }
+            append_message(db, &session.id, &message, None).unwrap();
+        }
+        session.id
+    }
+
+    #[test]
+    fn delete_message_removes_a_user_turn_through_the_next_user_row() {
+        let db = test_db();
+        let session_id = seed_three_turns(&db);
+        let deleted = delete_message(&db, &session_id, "u2").unwrap();
+        assert_eq!(deleted, vec!["u2", "t2", "a2"]);
+        let detail = get_session(&db, &session_id).unwrap().unwrap();
+        let ids: Vec<&str> = detail.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, vec!["u1", "a1", "u3", "a3"]);
+        // The index follows the transcript, so a later read sees the same rows.
+        let count: i64 = db
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE session_id = ?1",
+                params![session_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 4);
+    }
+
+    #[test]
+    fn delete_message_removes_a_non_user_row_alone_and_the_last_turn_to_the_end() {
+        let db = test_db();
+        let session_id = seed_three_turns(&db);
+        assert_eq!(delete_message(&db, &session_id, "t2").unwrap(), vec!["t2"]);
+        // The last user turn runs to the end of the transcript: this is the
+        // shape an aborted, unanswered prompt leaves behind.
+        assert_eq!(
+            delete_message(&db, &session_id, "u3").unwrap(),
+            vec!["u3", "a3"]
+        );
+        let detail = get_session(&db, &session_id).unwrap().unwrap();
+        let ids: Vec<&str> = detail.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, vec!["u1", "a1", "u2", "a2"]);
+    }
+
+    #[test]
+    fn delete_message_with_an_unknown_id_changes_nothing() {
+        let db = test_db();
+        let session_id = seed_three_turns(&db);
+        assert!(delete_message(&db, &session_id, "missing")
+            .unwrap()
+            .is_empty());
+        let detail = get_session(&db, &session_id).unwrap().unwrap();
+        assert_eq!(detail.messages.len(), 7);
+        let error = delete_message(&db, "no-such-session", "u1").unwrap_err();
+        assert!(error.to_string().starts_with("NOT_FOUND"));
+    }
+
+    #[test]
+    fn activate_message_revision_without_a_prefix_refuses_a_root_missing_from_the_transcript() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let user = user_msg("u1", "hello", "2025-05-01T00:00:00Z");
+        let mut a1 = user_msg("a1", "first", "2025-05-01T00:00:01Z");
+        a1.role = "assistant".into();
+        save_message_revision(&db, &session.id, "u1", &[user.clone(), a1.clone()], true).unwrap();
+        // The live transcript never held u1. A caller without a complete prefix
+        // must not have the transcript rewritten from an empty one.
+        let error = activate_message_revision(&db, &session.id, "u1", 1, None).unwrap_err();
+        assert!(error.to_string().starts_with("NOT_FOUND"), "{error}");
+        assert!(get_session(&db, &session.id)
+            .unwrap()
+            .unwrap()
+            .messages
+            .is_empty());
+        // A caller that vouches for its (empty) prefix still gets the switch.
+        let activated = activate_message_revision(&db, &session.id, "u1", 1, Some(&[])).unwrap();
+        assert_eq!(activated.len(), 2);
+    }
+
     #[test]
     fn fork_index_failure_removes_copied_inputs_and_transcript() {
         let db = test_db();
@@ -6938,7 +7083,7 @@ mod tests {
         assert_eq!(listed.len(), 2);
         assert!(listed.iter().any(|r| r.revision_index == 1 && !r.is_active));
         assert!(listed.iter().any(|r| r.revision_index == 2 && r.is_active));
-        let activated = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
+        let activated = activate_message_revision(&db, &session.id, "u1", 1, Some(&[])).unwrap();
         assert_eq!(activated.len(), 2);
         assert_eq!(activated[1].content, "first");
         assert_eq!(activated[0].revision_root_id.as_deref(), Some("u1"));
@@ -6950,7 +7095,7 @@ mod tests {
         assert_eq!(detail.messages[0].revision_count, Some(2));
 
         // Switching forward restores the second branch and keeps the family key.
-        let activated2 = activate_message_revision(&db, &session.id, "u1", 2, &[]).unwrap();
+        let activated2 = activate_message_revision(&db, &session.id, "u1", 2, Some(&[])).unwrap();
         assert_eq!(activated2[1].content, "second");
         assert_eq!(activated2[0].active_revision, Some(2));
         assert_eq!(activated2[0].revision_root_id.as_deref(), Some("u1"));
@@ -7210,7 +7355,7 @@ mod tests {
         );
 
         // And the restore still re-attaches every message to its turn.
-        let restored = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
+        let restored = activate_message_revision(&db, &session.id, "u1", 1, Some(&[])).unwrap();
         assert_eq!(restored.len(), 11);
         let with_turn: i64 = db
             .conn()
@@ -7384,7 +7529,7 @@ mod tests {
         ));
 
         // Variant 1 of u1 predates u2, so restoring it drops u2 entirely.
-        let restored = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
+        let restored = activate_message_revision(&db, &session.id, "u1", 1, Some(&[])).unwrap();
         assert_eq!(
             restored.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
             vec!["u1", "a1"]
@@ -7459,7 +7604,7 @@ mod tests {
 
         // Page back to the original, with a deliberately wrong renderer prefix:
         // the durable transcript decides what stays in front of the branch.
-        let back = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
+        let back = activate_message_revision(&db, &session.id, "u1", 1, Some(&[])).unwrap();
         assert_eq!(
             back.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
             vec!["u0", "u1", "a1"],
@@ -7473,7 +7618,7 @@ mod tests {
 
         // Page forward again: the whole grown branch is back, including the
         // failed turn, and the prefix kept its owning turn.
-        let forward = activate_message_revision(&db, &session.id, "u1", 2, &[]).unwrap();
+        let forward = activate_message_revision(&db, &session.id, "u1", 2, Some(&[])).unwrap();
         assert_eq!(
             forward.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
             vec!["u0", "u2", "a2", "u3", "a3"],
@@ -7535,7 +7680,7 @@ mod tests {
         failed.status = Some("error".into());
         append_message(&db, &session.id, &failed, None).unwrap();
 
-        let back = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
+        let back = activate_message_revision(&db, &session.id, "u1", 1, Some(&[])).unwrap();
         assert_eq!(
             back.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
             vec!["u1", "a1"],
@@ -7556,7 +7701,7 @@ mod tests {
             "a1",
             "variant 1 is intact"
         );
-        let forward = activate_message_revision(&db, &session.id, "u1", 2, &[]).unwrap();
+        let forward = activate_message_revision(&db, &session.id, "u1", 2, Some(&[])).unwrap();
         assert_eq!(
             forward.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
             vec!["u2", "a2"],

@@ -52,6 +52,7 @@ This log freezes previously open questions into concrete decisions.
 | D656 | Quarantine appends the host keeps refusing instead of stalling the outbox | **Amend ADR 0041 / D318 / D444 / D597: an append whose `session.appendMessage` or `session.recordUsage` call fails with an error the outbox cannot classify as a duplicate message id, a `PERMISSION_DENIED:` poison row, or a foreign-key orphan is retried on a bounded backoff (5s, doubling to a 60s cap) instead of ending the flush. The fifth consecutive failure on that head moves it into an application-owned dead-letter file, `session-message-outbox.dead-letter.json`, with its payload, session id, quarantine timestamp, and host error; only the newest 256 quarantined appends are kept, and the oldest is discarded with a warn. The flush then continues with the next entry, so one refused append can no longer hold the FIFO head, fill the 1024-entry cap, or fail every session's writes. Quarantined appends are never replayed automatically, and `session.delete` drops that session's quarantined appends too. No protocol version, storage schema, or queued-outbox format change.** | A `stream did not contain valid UTF-8` append stayed at the FIFO head for 14.8 hours while `session.persistence.outbox.is.full` fired 5990 times, so every session's appends failed until restart. Only three error classes had a drain, and every other error was treated as transient forever (#1560). |
 | D657 | Let the embedded Browser open local files outside the workspace | **Amend ADR 0170: an explicit absolute path or `file:` URL may load any existing regular local file, and a local-file page may navigate to other existing local files. Relative inputs remain workspace-rooted; HTTP(S) pages retain only the prior in-workspace file-link allowance. Missing files, directories, and remote file authorities remain blocked. `BrowserPreview` and the sidecar keep their workspace-rooted resolver. The public `pi.browser.navigate` API follows this policy under the high-risk `browser.cdp` permission. See ADR 0328, E2E-059, `04-ux/08-component-spec.md`, and `05-security/01-security.md`.** | Users need to inspect local HTML outside a project, while workspace-scoped agent file tools and remote-page navigation must retain their existing boundary (#1627). |
 | D659 | Reopen archived projects in the sidebar | **Amend D093 / D455: successful explicit project activation clears the normalized path's renderer-local archived flag and persists it, so Open from Project archive, reopening the same folder through Add project, and opening a project session reveal the project in the home sidebar. Selecting a row for inspection and ordinary session refreshes do not alter archive state. No host/project/session storage or protocol change. See ADR 0294, E2E-264, and issue #1653.** | Reopening a project changed the active workspace but left its path-keyed archived presentation flag set, hiding it from the sidebar after the user explicitly reopened it. |
+| D660 | Renderer transcript reads are bounded; transcript mutations name ids to the host | **Amend D199 / D390 / ADR 0120 / ADR 0216. Electron main fills in `messageLimit` (200) and `contentLimit` (64 KiB) for every renderer `session/get` that omits them, so the renderer never receives a whole transcript; the sidecar keeps the unbounded `session.get` through its own host proxy, so model context stays lossless. The live stream keeps only a display copy of each tool result (`tool_update` / `tool_end`), capped like a reloaded page; the transcript keeps the full payload. Message delete and the Stop undo of an unanswered prompt call the new `session.deleteMessage({ sessionId, messageId }) -> { deletedIds }` behind the shared rewrite gate; the host applies the user-turn rule and rewrites the transcript itself, and the renderer calls `session.replaceMessages` nowhere any more. `session.activateRevision` takes an optional `prefix`, refuses a root missing from the transcript when none is sent (`NOT_FOUND`), and the renderer re-reads a bounded page instead of receiving the rewritten transcript. Edit and retry hydrate the target message through one `messageAround` window; copy-conversation walks bounded pages. Renderer recovery stops auto-reloading after three reloads within five minutes, records `recovery: "crash-loop"`, and asks the user to reload or quit. Protocol version stays at 11; the new IPC channel and host method are additive.** | A delegation run that read patent full texts every few seconds grew one transcript to ~200 MB. Every unbounded renderer read of it (abort, delete, retry, edit, copy) and the full-size live `tool_end` rows pushed the renderer past the V8 heap, Electron reloaded it, and the user reopened the same session into the same death (exit code -536870904, four times in two days). Forcing a bound on reads alone would have made the renderer-side `replaceMessages` write-backs rewrite the transcript from a partial, display-capped window — a data-loss path — so the mutations had to move to the host first. |
 
 ## B. Secondary implementation defaults
 
@@ -7684,3 +7685,50 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   E2E-PROVIDER-custom-endpoint-session-identity. See issue #1634,
   `03-runtime/02-agent-runtime.md` §6.3, and
   `03-runtime/11-provider-model-system.md`.
+
+## 2026-10-16 — Renderer transcript reads are bounded; transcript mutations name ids to the host (D660)
+
+- D660 amends D199, D390, ADR 0120, and ADR 0216. A renderer `session/get`
+  that omits `messageLimit` / `contentLimit` is bounded by Electron main
+  (`ipc/session-read-bounds.ts`: 200 messages, 64 KiB per message, clamped to
+  the host's 1000-message cap). The renderer therefore never receives a whole
+  transcript in one reply. The sidecar rebuilds model context through its own
+  host proxy with the unbounded `session.get`, which this change does not
+  touch: what the model sees — in the running turn, on the next turn, and on a
+  delegate `resume` — is byte-for-byte what it saw before.
+- The live stream stores only a display copy of each tool result. `tool_end`
+  and `tool_update` go through `lib/tool-result-display.ts`, which mirrors
+  host-core's `record_to_ui_for_display` (same 64 KiB budget, same marker
+  text), so an open session no longer grows the renderer heap by every full
+  tool payload a background delegation produces. The transcript on disk and the
+  `tool_end` the main process persists are unchanged.
+- Renderer-owned transcript rewrites are gone. Message delete and the Stop undo
+  of an unanswered prompt call `session.deleteMessage({ sessionId, messageId })`,
+  which applies the user-turn rule on the host (a user row takes every
+  following row up to the next user row; any other row goes alone), rewrites
+  through the `session.replaceMessages` path, and returns `deletedIds` for the
+  renderer to reconcile its window with. `session.activateRevision` takes an
+  optional `prefix`; the renderer sends none and re-reads a bounded page, and a
+  root missing from the transcript is `NOT_FOUND` instead of a rewrite from an
+  empty or partial prefix. Edit and retry hydrate their target through one
+  `messageAround` window (the focused message keeps its complete text); copy
+  conversation walks bounded pages and copies the display form.
+- Renderer recovery gains a breaker: after three automatic reloads within five
+  minutes it stops, records `recovery: "crash-loop"` on the
+  `renderer.process.gone` entry, and the window asks the user to reload or
+  quit. Every entry now carries the `recovery` outcome.
+- Why the order matters: bounding reads first would have fed a partial,
+  display-capped window into the renderer's `replaceMessages` write-backs and
+  rewritten the transcript from it — a user-data loss. The mutations moved to
+  the host in the same change, so no renderer array crosses IPC in either
+  direction.
+- Covered by `crates/host-core/src/sessions.rs` (`delete_message_*`,
+  `activate_message_revision_without_a_prefix_*`),
+  `apps/desktop/test/session-read-bounds.test.mjs`,
+  `apps/desktop/test/tool-result-display.test.mjs`,
+  `apps/desktop/test/conversation-read.test.mjs`,
+  `apps/desktop/test/delete-message-preserves-transcript.test.mjs`,
+  `apps/desktop/test/transcript-reading.test.mjs`, and
+  `apps/desktop/test/renderer-recovery.test.mjs`. See
+  `03-runtime/01-ipc-protocol.md`, `03-runtime/06-host-rpc-protocol.md`, and
+  `03-runtime/09-logging-and-observability.md`.

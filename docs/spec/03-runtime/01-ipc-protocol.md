@@ -233,7 +233,12 @@ Regenerate history (D109) also uses session channels:
 
 Root user turns may include `revisionRootId`, `revisionCount`, and
 `activeRevision`. Activating a revision replaces the live tail with
-`prefix + archived branch` and disposes the session agent.
+`prefix + archived branch` and disposes the session agent. The prefix is read
+from the durable transcript by the host; the renderer sends only
+`{ sessionId, rootUserId, revisionIndex }`, receives `{ ok: true }` rather than
+the rewritten transcript, and re-reads a bounded newest page. A root the
+transcript no longer carries is refused (`NOT_FOUND`) instead of being rebuilt
+from a partial prefix.
 The sidecar receives only the prepared attachment subset needed for the current
 turn. On a vision runtime, persisted refs are hydrated from session-bound
 attachment/scratch/project roots. The current prompt row is excluded by message
@@ -1075,9 +1080,15 @@ Minimal interface:
   through the reviewed desktop-control path; it does not create or mutate the
   session
 - `session/fork({ sessionId, title?, throughMessageId? }) -> { session: SessionDetail }`
-- `session/get({ id, messageBefore?, messageAround?, messageLimit?, contentLimit? })` — without
-  read-window options returns the complete UI projection; with them returns a
-  bounded newest/older page plus `messageStart` and `hasMoreBefore`. The
+- `session/get({ id, messageBefore?, messageAround?, messageLimit?, contentLimit? })` —
+  always a bounded window for the renderer: Electron main fills in
+  `messageLimit` (200) and `contentLimit` (64 KiB) when the renderer omits them
+  and clamps `messageLimit` to the host's 1000-message cap
+  (`ipc/session-read-bounds.ts`). The renderer therefore never receives the
+  complete UI projection in one reply; a caller that needs more pages with
+  `messageBefore` / `messageAround`. The unbounded `session.get` stays with the
+  sidecar's own host proxy, which rebuilds model context from it. A bounded
+  read returns a newest/older page plus `messageStart` and `hasMoreBefore`. The
   content limit applies only to display values and never changes the lossless
   transcript or model context. `messageBefore` and `messageStart` are physical
   message-line positions in the transcript file, not deduplicated index counts.
@@ -1097,6 +1108,15 @@ Minimal interface:
   `session/get` and must never enter the renderer's live transcript cache.
   Both channels are explicitly included in the preload IPC allowlist.
 - `session/delete`
+- `session/deleteMessage({ sessionId, messageId }) -> { deletedIds: string[] }`
+  deletes one message on the host. A user row takes its whole turn with it
+  (every following row up to, not including, the next user row); any other row
+  is removed alone. The host rewrites the transcript itself behind the shared
+  rewrite gate, so the renderer never sends a message array — a paged,
+  display-capped window must not become the next transcript — and reconciles
+  its window with the returned ids. The chat delete action and the undo of an
+  unanswered prompt on Stop both use this channel; the renderer no longer calls
+  `session/replaceMessages` anywhere.
 - `session/rename({ id, title }) -> { ok: boolean }` trims the title and
   accepts 1–80 Unicode code points. Blank or overlong titles are rejected as
   `INVALID_PARAMS`; a successful rename changes only session metadata and does
@@ -2496,8 +2516,9 @@ projected durable `message`. The renderer replaces that submission identity in
 live/cache/retained state before normal completion refresh. Identical-text
 submissions remain distinct; SDK entry IDs are never rewritten. Desktop event
 semantics are unchanged. Native terminal completion follows SDK settlement,
-not intermediate retry/compaction loop ends. Native abort never invokes
-`replaceSessionMessages` and reloads durable detail after abort returns.
+not intermediate retry/compaction loop ends. Native abort never rewrites or
+deletes transcript rows and reloads a bounded page of durable detail after
+abort returns.
 
 ### Provider ordering
 

@@ -1,5 +1,6 @@
 import type {
   AgentEventEnvelope,
+  SessionDetail,
   SessionSummary,
   UiMessage,
 } from "@pi-desktop/shared";
@@ -23,7 +24,8 @@ import {
   sessionMatchesProject,
 } from "../../lib/sidebar-session-groups";
 import type { ComposerDraftSnapshot } from "../../lib/composer-smart-stop";
-import { formatToolValue } from "../../lib/tool-display";
+import { capToolResultForDisplay } from "../../lib/tool-result-display";
+import { TRANSCRIPT_CONTENT_LIMIT, TRANSCRIPT_PAGE_SIZE } from "../../lib/transcript-reading";
 import { recordPaneTranscript } from "../../lib/session-panes";
 import type { AppState, SessionHistoryWindow } from "../app-state";
 import type { StoreAccess } from "../slices/types";
@@ -46,6 +48,9 @@ export type SessionConfiguration = Pick<
   Partial<Pick<SessionSummary, "permissionMode">>;
 
 export type SessionSelection = { id: string; intent: number };
+
+/** The newest bounded page of a session, as it should land in the store. */
+export type SettledTailRead = { messages: UiMessage[]; window: SessionHistoryWindow };
 
 export type SessionRuntime = {
   readonly pendingNewSessionRequests: Map<string, Promise<void>>;
@@ -81,7 +86,19 @@ export type SessionRuntime = {
       contentLimit?: number;
     },
   ) => ReturnType<typeof api.getSession>;
-  loadFullSessionMessages: (id: string, cache?: boolean) => Promise<UiMessage[] | null>;
+  /**
+   * Re-read the newest page after the host settled or rewrote the transcript
+   * (abort, delete, revision switch, failed prompt). Bypasses any detail read
+   * still in flight so the caller sees the settled state, and caches it.
+   */
+  readSettledTail: (id: string) => Promise<SettledTailRead | null>;
+  /**
+   * One bounded window centred on `messageId`, whose own text the host keeps
+   * complete while its neighbours stay display-capped: the canonical input for
+   * an edit or retry of that message. Not cached — the caller decides how it
+   * lands in the store.
+   */
+  readActionWindow: (id: string, messageId: string) => Promise<SessionDetail | null>;
   insertOptimisticUserMessage: (sessionId: string, message: UiMessage) => void;
   retractOptimisticUserMessage: (sessionId: string, message: UiMessage) => void;
   cacheBackgroundTranscriptEvent: (envelope: AgentEventEnvelope) => void;
@@ -213,15 +230,35 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
       ? recordPaneTranscript(current, id, current.messages) : {});
   }
 
-  async function loadFullSessionMessages(id: string, cache = true): Promise<UiMessage[] | null> {
-    const detail = await api.getSession(id);
+  // Every durable read a renderer makes is a bounded window; no read here asks
+  // for the whole transcript any more. A long delegation run can leave hundreds
+  // of MB of tool results in one transcript, and one structured clone of that
+  // killed the renderer (OOM). Mutations that used to need the whole array
+  // (delete, undo an unanswered prompt, revision switch) now name ids to the
+  // host, which rewrites the transcript itself.
+  async function readSettledTail(id: string): Promise<SettledTailRead | null> {
+    const detail = await api.getSession(id, {
+      messageLimit: TRANSCRIPT_PAGE_SIZE,
+      contentLimit: TRANSCRIPT_CONTENT_LIMIT,
+    });
     if (!detail.session) return null;
     const messages = detail.session.messages ?? [];
-    if (cache) cacheSessionTranscript(id, messages, {
-        messageStart: 0,
-        hasMoreBefore: false,
-      });
-    return messages;
+    const window: SessionHistoryWindow = {
+      messageStart: detail.session.messageStart ?? 0,
+      hasMoreBefore: detail.session.hasMoreBefore === true,
+      contentLimited: true,
+    };
+    cacheSessionTranscript(id, messages, window);
+    return { messages, window };
+  }
+
+  async function readActionWindow(id: string, messageId: string): Promise<SessionDetail | null> {
+    const detail = await api.getSession(id, {
+      messageAround: messageId,
+      messageLimit: TRANSCRIPT_PAGE_SIZE,
+      contentLimit: TRANSCRIPT_CONTENT_LIMIT,
+    });
+    return detail.session ?? null;
   }
 
   function insertOptimisticUserMessage(sessionId: string, message: UiMessage): void {
@@ -302,26 +339,21 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
           .find((position) => current[position].toolStatus === "running");
         if (index === undefined) return current;
         const existing = current[index];
+        // Display copy only: the transcript keeps the full payload.
         next = upsertLiveSessionMessage(current, {
           ...existing,
-          content:
-            typeof event.partialResult === "string"
-              ? event.partialResult
-              : formatToolValue(event.partialResult),
-          toolResult: event.partialResult,
+          ...capToolResultForDisplay(event.partialResult),
         });
         break;
       }
       case "tool_end": {
         const toolStart = toolStartsByCallId.get(event.toolCallId);
         const completedAt = new Date(envelope.ts).toISOString();
+        const display = capToolResultForDisplay(event.result);
         const completed: UiMessage = {
           id: event.toolCallId,
           role: "tool",
-          content:
-            typeof event.result === "string"
-              ? event.result
-              : JSON.stringify(event.result, null, 2),
+          content: display.content,
           createdAt: toolStart?.createdAt ?? completedAt,
           toolCallId: event.toolCallId,
           ...(toolStart?.toolName ? { toolName: toolStart.toolName } : {}),
@@ -331,7 +363,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
             ? Math.max(0, envelope.ts - Date.parse(toolStart.createdAt))
             : 0,
           toolStatus: event.isError ? "error" : "success",
-          toolResult: event.result,
+          toolResult: display.toolResult,
           ...(event.toolUsage ? { toolUsage: event.toolUsage } : {}),
           status: "complete",
           isError: event.isError,
@@ -427,7 +459,8 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
           0,
     cacheSessionTranscript,
     loadSessionDetail,
-    loadFullSessionMessages,
+    readSettledTail,
+    readActionWindow,
     insertOptimisticUserMessage,
     retractOptimisticUserMessage,
     cacheBackgroundTranscriptEvent,

@@ -2929,6 +2929,29 @@ async fn handle_request(
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "ok": true }))
         }
+        "session.deleteMessage" => {
+            let session_id = params
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
+            let message_id = params
+                .get("messageId")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .ok_or_else(|| rpc_err(1002, "messageId required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let deleted_ids =
+                sessions::delete_message(&st.db, session_id, message_id).map_err(|e| {
+                    let message = e.to_string();
+                    if message.starts_with("NOT_FOUND") {
+                        rpc_err(1007, message, "NOT_FOUND")
+                    } else {
+                        rpc_err(1000, message, "INTERNAL")
+                    }
+                })?;
+            Ok(json!({ "deletedIds": deleted_ids }))
+        }
         "session.truncateFrom" => {
             let session_id = params
                 .get("sessionId")
@@ -3035,18 +3058,33 @@ async fn handle_request(
                 .get("revisionIndex")
                 .and_then(|v| v.as_i64())
                 .ok_or_else(|| rpc_err(1002, "revisionIndex required", "INVALID_PARAMS"))?;
-            let prefix: Vec<UiMessage> =
-                serde_json::from_value(params.get("prefix").cloned().unwrap_or_else(|| json!([])))
-                    .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            // A caller that omits `prefix` holds no complete copy of the
+            // messages before the root (a paged renderer window); the host then
+            // refuses a root missing from the transcript instead of rewriting
+            // it from a partial prefix.
+            let prefix: Option<Vec<UiMessage>> = match params.get("prefix") {
+                None | Some(Value::Null) => None,
+                Some(value) => Some(
+                    serde_json::from_value(value.clone())
+                        .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?,
+                ),
+            };
             let st = state.lock().await;
             let messages = sessions::activate_message_revision(
                 &st.db,
                 session_id,
                 root_user_id,
                 revision_index,
-                &prefix,
+                prefix.as_deref(),
             )
-            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            .map_err(|e| {
+                let message = e.to_string();
+                if message.starts_with("NOT_FOUND") {
+                    rpc_err(1007, message, "NOT_FOUND")
+                } else {
+                    rpc_err(1000, message, "INTERNAL")
+                }
+            })?;
             Ok(json!({ "messages": messages }))
         }
         "session.getScratchPath" => {

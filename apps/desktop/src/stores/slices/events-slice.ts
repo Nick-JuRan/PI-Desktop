@@ -38,7 +38,7 @@ import {
   isPendingPlan,
   mergePlanCheckpoint,
 } from "../../lib/plan-mode-state";
-import { formatToolValue } from "../../lib/tool-display";
+import { capToolResultForDisplay } from "../../lib/tool-result-display";
 import type { AppState } from "../app-state";
 import type { SessionRuntime } from "../runtime/session-runtime";
 import type { StoreAccess } from "./types";
@@ -593,12 +593,11 @@ export function createEventsSlice({
             const indices = getSessionToolMessagePositions(state.messages, event.toolCallId)
               .filter((index) => state.messages[index].toolStatus === "running");
             if (indices.length === 0) return state;
-            const content = typeof event.partialResult === "string"
-              ? event.partialResult
-              : formatToolValue(event.partialResult);
+            // Display copy only: the transcript keeps the full payload.
+            const { content, toolResult } = capToolResultForDisplay(event.partialResult);
             const messages = state.messages.slice();
             for (const index of indices) {
-              messages[index] = { ...messages[index], content, toolResult: event.partialResult };
+              messages[index] = { ...messages[index], content, toolResult };
             }
             return { messages: registerSessionMessageReplacements(state.messages, messages, indices) };
           });
@@ -611,13 +610,13 @@ export function createEventsSlice({
             const existing = state.messages.some(
               (message) => message.toolCallId === event.toolCallId,
             );
+            // The renderer keeps a display copy of the result, as a reloaded
+            // page would show it; the transcript keeps the full payload.
+            const display = capToolResultForDisplay(event.result);
             const completed = {
               id: event.toolCallId,
               role: "tool" as const,
-              content:
-                typeof event.result === "string"
-                  ? event.result
-                  : JSON.stringify(event.result, null, 2),
+              content: display.content,
               createdAt: toolStart?.createdAt ?? completedAt,
               toolCallId: event.toolCallId,
               ...(toolStart?.toolName ? { toolName: toolStart.toolName } : {}),
@@ -632,7 +631,7 @@ export function createEventsSlice({
                 ? Math.max(0, envelope.ts - Date.parse(toolStart.createdAt))
                 : 0,
               toolStatus: event.isError ? ("error" as const) : ("success" as const),
-              toolResult: event.result,
+              toolResult: display.toolResult,
               ...(event.toolUsage ? { toolUsage: event.toolUsage } : {}),
               status: "complete" as const,
               isError: event.isError,

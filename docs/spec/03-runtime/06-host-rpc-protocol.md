@@ -319,7 +319,8 @@ to later refresh and inference; the vendor picker does not collect them.
   for the derived display projection. The response includes
   `messageStart` and `hasMoreBefore` when a window is requested. Omitting all
   three options returns the complete lossless UI projection for sidecar and
-  mutation callers. Window offsets are physical transcript message-line
+  mutation callers; Electron main never forwards a renderer read without a
+  window (see the IPC protocol, `session/get`). Window offsets are physical transcript message-line
   positions, clamped against the cached transcript layout rather than the
   deduplicated session index counter, and a window is served by seeking to its
   first selected line instead of scanning the history before it.
@@ -384,15 +385,24 @@ to later refresh and inference; the vendor picker does not collect them.
   ids and non-negative `tokensBefore`; it does not insert a message/search row
   or change the visible transcript projection
 - `session.replaceMessages` — atomic transcript rewrite (temp-file rename +
-  one index transaction, D119) used by message delete and unanswered
-  renderer smart-stop undo; it preserves the
+  one index transaction, D119) used by the sidecar for compaction and by
+  `session.deleteMessage` internally; it preserves the
   newest checkpoint only while both its boundary and optional first-kept id
   remain valid in the rewritten prefix, and it carries each surviving message's
   owning `turn_id` across the rewrite. It is only safe from a caller that owns
   the whole transcript for the duration of the call: any rewrite from a snapshot
   taken outside the RPC lock can delete a message appended in between.
   Regenerating and retrying use `session.truncateFrom` instead so the kept
-  prefix never crosses the JSON-RPC pipe (ADR 0216)
+  prefix never crosses the JSON-RPC pipe (ADR 0216); message delete and the
+  unanswered-prompt undo use `session.deleteMessage` for the same reason
+- `session.deleteMessage({ sessionId, messageId }) -> { deletedIds }` — delete
+  one message from the live transcript on the host. A user row takes its whole
+  turn: every following row up to, not including, the next user row; any other
+  row is removed alone. The host reads the transcript, applies that rule and
+  rewrites through the `session.replaceMessages` path, so no message array
+  crosses JSON-RPC in either direction and a paged, display-capped renderer
+  window can never become the next transcript. An unknown `messageId` removes
+  nothing; an unknown session is `NOT_FOUND`
 - `session.truncateFrom` — host-owned suffix cut for regenerate / retry /
   edit-resend: `{ sessionId, fromMessageId?, truncateBefore? }`. Identity
   wins; an unknown `fromMessageId` is `NOT_FOUND`. Under the state lock it
@@ -425,7 +435,11 @@ to later refresh and inference; the vendor picker does not collect them.
   never-archived branch as its own variant), so nothing appended since the
   last archive is lost. When the family is present in the durable transcript,
   the prefix in front of the restored branch is taken from there rather than
-  from the caller. Surviving messages keep their owning `turn_id`
+  from the caller. `prefix` is optional: a caller that omits it holds no
+  complete copy of the messages before the root (a paged renderer window), and
+  a root the transcript does not carry is then `NOT_FOUND` instead of being
+  rebuilt from an empty or partial prefix. Surviving messages keep their owning
+  `turn_id`
 - `session.beginTurn({ sessionId, providerId?, modelId?, sessionMessageId? })` —
   starts one durable turn. When `sessionMessageId` is present, host-core
   atomically verifies that the queued collaboration delivery targets this

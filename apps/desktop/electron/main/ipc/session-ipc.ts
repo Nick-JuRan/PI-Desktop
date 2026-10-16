@@ -27,6 +27,7 @@ import type { PersistenceOutbox } from "../persistence-outbox";
 import type { PluginRuntime } from "../plugin-runtime";
 import { readSessionCollaboration } from "../services/session-collaboration";
 import { searchSessionsAcrossSources } from "../services/session-search";
+import { boundSessionRead } from "./session-read-bounds";
 import type { IpcRegistrar } from "./types";
 import { getActiveRemoteHostsBoot } from "../bootstrap/remote-hosts.js";
 
@@ -324,26 +325,15 @@ export function registerSessionIpc({
       const request = typeof input === "string" ? { id: input } : input ?? {};
       const id = String(request.id ?? "").trim();
       if (!id) throw new Error("session id required");
+      // A renderer read is always a bounded window (see session-read-bounds):
+      // the unbounded transcript belongs to the sidecar's own host proxy.
+      const window = boundSessionRead(request);
       if (id.startsWith("native-pi:")) {
         if (!sidecar) throw new Error("sidecar unavailable");
-        return sidecar.call("native.session.get", { id, ...request });
+        return sidecar.call("native.session.get", { id, ...window });
       }
       const [result, { providers, defaults }] = await Promise.all([
-        host.call<{ session?: RuntimeSession | null }>("session.get", {
-          id,
-          ...(typeof request.messageAround === "string" && request.messageAround.trim()
-            ? { messageAround: request.messageAround }
-            : {}),
-          ...(Number.isInteger(request.messageBefore) && request.messageBefore! >= 0
-            ? { messageBefore: request.messageBefore }
-            : {}),
-          ...(Number.isInteger(request.messageLimit) && request.messageLimit! > 0
-            ? { messageLimit: request.messageLimit }
-            : {}),
-          ...(Number.isInteger(request.contentLimit) && request.contentLimit! > 0
-            ? { contentLimit: request.contentLimit }
-            : {}),
-        }),
+        host.call<{ session?: RuntimeSession | null }>("session.get", { id, ...window }),
         sessionCapabilityContext(),
       ]);
       return result.session
@@ -512,6 +502,30 @@ export function registerSessionIpc({
     },
   );
   handle(
+    IPC.invoke.sessionDeleteMessage,
+    async (input: { sessionId: string; messageId: string }) => {
+      if (!host) throw new Error("host unavailable");
+      const sessionId = String(input?.sessionId || "").trim();
+      const messageId = String(input?.messageId || "").trim();
+      if (!sessionId) throw new Error("sessionId required");
+      if (!messageId) throw new Error("messageId required");
+      const currentHost = host;
+      // The host applies the turn rule and rewrites the transcript itself; the
+      // renderer only names the row, so a paged window never becomes the next
+      // transcript.
+      return runTranscriptRewrite(
+        sessionId,
+        "message deletion",
+        currentHost,
+        () =>
+          currentHost.call<{ deletedIds: string[] }>("session.deleteMessage", {
+            sessionId,
+            messageId,
+          }),
+      );
+    },
+  );
+  handle(
     IPC.invoke.sessionSaveRevision,
     async (input: {
       sessionId: string;
@@ -552,7 +566,11 @@ export function registerSessionIpc({
       const sessionId = String(input?.sessionId || "");
       if (!sessionId) throw new Error("sessionId required");
       const currentHost = host;
-      return runTranscriptRewrite(
+      // The host reads the prefix from the durable transcript; a renderer
+      // prefix is only forwarded when the caller actually sent one. The
+      // rewritten transcript does not come back over IPC: the renderer reloads
+      // a bounded window instead of receiving every message of the session.
+      await runTranscriptRewrite(
         sessionId,
         "revision activation",
         currentHost,
@@ -561,9 +579,10 @@ export function registerSessionIpc({
             sessionId,
             rootUserId: String(input?.rootUserId || ""),
             revisionIndex: Number(input?.revisionIndex || 0),
-            prefix: input?.prefix ?? [],
+            ...(Array.isArray(input?.prefix) ? { prefix: input.prefix } : {}),
           }),
       );
+      return { ok: true as const };
     },
   );
   handle(IPC.invoke.sessionGetScratchPath, async (input: { sessionId: string }) => {

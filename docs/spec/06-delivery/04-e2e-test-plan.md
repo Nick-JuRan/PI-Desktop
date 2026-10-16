@@ -16181,7 +16181,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Milestone**: Post-M6 desktop shell maintenance
 - **Status**: Automated by `pnpm test:e2e:layout` with CDP `Page.crash`; the
   deterministic `renderer-recovery.test.mjs` covers clean exit, accepted close,
-  app shutdown, stale windows, destroyed contents, and future Electron reasons.
+  app shutdown, stale windows, destroyed contents, future Electron reasons, and
+  the crash-loop breaker (no fourth automatic reload within five minutes; the
+  window hands the reload-or-quit choice to the user).
 
 #### E2E-AGENT-alt-enter-steers-active-turn: Enter follows up and Alt+Enter steers the active turn
 

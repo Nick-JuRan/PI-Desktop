@@ -1010,6 +1010,12 @@ export const api = {
     ),
   replaceSessionMessages: (sessionId: string, messages: UiMessage[]) =>
     invoke(IPC.invoke.sessionReplaceMessages, { sessionId, messages }),
+  /**
+   * Delete one message on the host. A user row takes its whole turn with it;
+   * the reply names every removed id so a paged window can drop exactly those.
+   */
+  deleteSessionMessage: (sessionId: string, messageId: string) =>
+    invoke<{ deletedIds: string[] }>(IPC.invoke.sessionDeleteMessage, { sessionId, messageId }),
   saveSessionRevision: (input: {
     sessionId: string;
     rootUserId: string;
@@ -1022,13 +1028,17 @@ export const api = {
       sessionId,
       rootUserId,
     }),
+  /**
+   * Switch a regenerate family to one of its revisions. The host reads the
+   * prefix from the durable transcript and does not hand the rewritten
+   * transcript back; reload a bounded window afterwards.
+   */
   activateSessionRevision: (input: {
     sessionId: string;
     rootUserId: string;
     revisionIndex: number;
-    prefix: UiMessage[];
   }) =>
-    invoke<{ messages: UiMessage[] }>(IPC.invoke.sessionActivateRevision, input),
+    invoke<{ ok: true }>(IPC.invoke.sessionActivateRevision, input),
   steer: (req: AgentSteerRequest) =>
     invoke<AgentPromptResponse>(IPC.invoke.agentSteer, req),
   prompt: (req: AgentPromptRequest) =>

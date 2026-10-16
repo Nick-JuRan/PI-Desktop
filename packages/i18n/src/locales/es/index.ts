@@ -745,6 +745,14 @@ export const es = {
     "loadPlugin": "Cargue un complemento de desarrollo (opcional)",
     "dismiss": "Descartar"
   },
+  "diagnostics": {
+    "rendererCrashLoop": {
+      "title": "La ventana sigue fallando",
+      "message": "PI-Desktop recargó esta ventana varias veces en los últimos minutos y volvió a dejar de responder cada vez. Recárgala una vez más o sal para proteger tus datos. Si ocurre tras abrir la misma conversación, puede que sea demasiado grande para mostrarse en la ventana; la conversación en sí está intacta.",
+      "reload": "Recargar",
+      "quit": "Salir"
+    }
+  },
   "settings": {
     ...forkSettings,
     storage: {

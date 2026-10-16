@@ -750,6 +750,14 @@ export const zhCN = {
     loadPlugin: "加载开发插件（可选）",
     dismiss: "关闭",
   },
+  diagnostics: {
+    rendererCrashLoop: {
+      title: "窗口持续崩溃",
+      message: "PI-Desktop 在过去几分钟内多次重新加载了此窗口，但它每次都再次停止响应。可以再重载一次，或退出以保护数据。如果每次都是在打开同一个对话之后发生，该对话可能过大、无法在窗口中显示；对话记录本身没有损坏。",
+      reload: "重新加载",
+      quit: "退出",
+    },
+  },
   settings: {
     ...forkSettings,
     storage: {

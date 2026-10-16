@@ -756,6 +756,14 @@ export const en = {
     loadPlugin: "Load a development plugin (optional)",
     dismiss: "Dismiss",
   },
+  diagnostics: {
+    rendererCrashLoop: {
+      title: "Window keeps crashing",
+      message: "PI-Desktop reloaded this window several times in the last few minutes, and it stopped responding again each time. Reload it once more, or quit to protect your data. If this follows opening the same conversation, that conversation may be too large for the window to display; the transcript itself is intact.",
+      reload: "Reload",
+      quit: "Quit",
+    },
+  },
   settings: {
     ...forkSettings,
     storage: {

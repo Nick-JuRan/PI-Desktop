@@ -54,6 +54,7 @@
 | D656 | 隔离宿主持续拒绝的 outbox 追加，避免整队停摆 | **修订 ADR 0041 / D318 / D444 / D597：当 `session.appendMessage` 或 `session.recordUsage` 返回的错误无法归类为重复消息 ID、`PERMISSION_DENIED:` 毒行或外键孤立行时，不再结束本次 flush，而是在同一 Host 代内按有界退避重试（5 秒起、翻倍、上限 60 秒）。同一队头连续第五次失败后，该追加被移入应用自有的死信文件 `session-message-outbox.dead-letter.json`（保留载荷、sessionId、隔离时间与宿主错误；只保留最新 256 条，超出丢弃最旧并记 warn），随后继续排空后续条目，因此单条被拒追加不再长期占用 FIFO 队头、填满 1024 条上限或导致所有会话写入失败。Host 重启属于新代，会立即重试该队头。隔离条目永不自动重放，`session.delete` 会连同该会话的隔离条目一起删除。协议版本、存储架构与队列文件格式均不变。** | 一条 `stream did not contain valid UTF-8` 追加在队头滞留 14.8 小时，期间 `session.persistence.outbox.is.full` 触发 5990 次，导致所有会话的写入直到重启前全部失败；此前只有三类错误有排空出口，其余错误被永久当作瞬时错误（#1560）。 |
 | D657 | 让内置浏览器打开工作区外的本地文件 | **修订 ADR 0170：通过绝对路径或 `file:` URL 可打开任意已存在的本地普通文件，本地文件页面也可导航到其他已存在的本地文件。相对输入仍以工作区为根；HTTP(S) 页面只保留此前工作区内文件链接的权限。缺失文件、目录与远程文件 authority 仍被阻止。`BrowserPreview` 与 sidecar 继续使用工作区根解析。公开的 `pi.browser.navigate` API 在高风险 `browser.cdp` 权限下采用相同策略。见 ADR 0328、E2E-059、`04-ux/08-component-spec.md` 与 `05-security/01-security.md`。** | 用户需要检查项目外的本地 HTML，而工作区范围内的 Agent 文件工具和远程页面导航仍须保留原有边界（#1627）。 |
 | D659 | 重新打开归档项目后恢复侧栏显示 | **修订 D093 / D455：成功明确激活项目时，清除该规范化路径的渲染层归档标记并持久化，使用户从「项目归档」点击「打开」、通过「添加项目」再次选择同一目录，或打开项目会话后，都能在主页侧边栏看到该项目。仅选择归档详情行而未激活，以及普通会话刷新，都不改变归档状态。不更改 Host/项目/会话存储或协议。见 ADR 0294、E2E-264 与 issue #1653。** | 用户明确重新打开项目后，活动工作区虽已切换，但按路径存储的归档展示标记仍在，导致项目从侧栏隐藏。 |
+| D660 | 渲染层读取对话记录一律有界；对话记录改写只向 host 传递 id | **修订 D199 / D390 / ADR 0120 / ADR 0216。渲染层发起的 `session/get` 若未带 `messageLimit` / `contentLimit`，由 Electron main 补上默认值（200 条、每条 64 KiB，并按 host 的 1000 条上限钳制），渲染层因此永远不会在一次回复里收到整份对话记录；sidecar 继续通过自己的 host 代理使用无上限的 `session.get` 重建模型上下文，模型上下文保持无损。实时流只保留每条工具结果的展示副本（`tool_update` / `tool_end`），截断规则与重新加载的页面一致；对话记录保留完整载荷。删除消息与 Stop 撤回未被回复的提问改为调用新增的 `session.deleteMessage({ sessionId, messageId }) -> { deletedIds }`，经共享的改写闸门执行；host 自行套用用户轮次规则并重写对话记录，渲染层不再在任何地方调用 `session.replaceMessages`。`session.activateRevision` 的 `prefix` 变为可选，未提供且根消息不在对话记录中时返回 `NOT_FOUND`，渲染层改为重新读取一页有界窗口而不是接收重写后的整份记录。编辑与重试通过一次 `messageAround` 窗口获取目标消息的完整文本；复制对话按有界分页遍历。渲染层恢复在五分钟内自动重载三次后停止，记录 `recovery: "crash-loop"`，并由用户选择重载或退出。协议版本保持 11；新增的 IPC 通道与 host 方法均为增量。** | 一次持续读取专利全文的委派运行把单个对话记录涨到约 200 MB。渲染层对它的每一次无上限读取（中止、删除、重试、编辑、复制）以及全尺寸的实时 `tool_end` 行把渲染进程推过 V8 堆上限，Electron 自动重载，用户再次打开同一会话又再次崩溃（退出码 -536870904，两天内四次）。若只给读取加上限，渲染层原有的 `replaceMessages` 写回会用一个分页且被展示截断的窗口重写对话记录——这是丢数据的路径——因此改写必须先搬到 host。 |
 
 ## B. 辅助实现默认值
 
@@ -5418,3 +5419,40 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
 - 由 `packages/agent-runtime/src/session-affinity.test.ts` 与
   E2E-PROVIDER-custom-endpoint-session-identity 覆盖。见 issue #1634、
   `03-runtime/02-agent-runtime.md` §6.3 与 `03-runtime/11-provider-model-system.md`。
+
+## 2026-10-16 —— 渲染层读取对话记录一律有界；对话记录改写只向 host 传递 id（D660）
+
+- D660 修订 D199、D390、ADR 0120 与 ADR 0216。渲染层发起的 `session/get` 若未带
+  `messageLimit` / `contentLimit`，由 Electron main 补上边界
+  （`ipc/session-read-bounds.ts`：200 条、每条 64 KiB，并按 host 的 1000 条上限钳制）。
+  渲染层因此永远不会在一次回复里收到整份对话记录。sidecar 通过自己的 host 代理用
+  无上限的 `session.get` 重建模型上下文，这条路径本次未改动：模型在当前轮次、下一轮
+  以及委派 `resume` 时看到的内容与此前逐字节相同。
+- 实时流只保存每条工具结果的展示副本。`tool_end` 与 `tool_update` 经过
+  `lib/tool-result-display.ts`，它镜像 host-core 的 `record_to_ui_for_display`
+  （同样的 64 KiB 预算、同样的标记文本），打开的会话不再因后台委派产出的每个完整工具
+  载荷而增长渲染层堆内存。磁盘上的对话记录以及主进程持久化的 `tool_end` 不变。
+- 渲染层拥有的对话记录重写已移除。删除消息与 Stop 撤回未被回复的提问调用
+  `session.deleteMessage({ sessionId, messageId })`：host 套用用户轮次规则（用户行带走
+  其后直到下一条用户行之前的全部行；其他行单独删除），经 `session.replaceMessages`
+  路径重写，并返回 `deletedIds` 供渲染层与其窗口对账。`session.activateRevision` 的
+  `prefix` 变为可选；渲染层不再传递它并改为重新读取一页有界窗口，根消息不在对话记录中
+  时返回 `NOT_FOUND`，而不是用空的或不完整的前缀重写。编辑与重试通过一次
+  `messageAround` 窗口获取目标消息（被聚焦的消息保留完整文本）；复制对话按有界分页
+  遍历并复制展示形式。
+- 渲染层恢复新增熔断：五分钟内自动重载三次后停止，在 `renderer.process.gone` 记录上
+  写入 `recovery: "crash-loop"`，并由窗口请用户选择重载或退出。每条记录现在都带有
+  `recovery` 结果。
+- 顺序为何重要：若先给读取加上限，渲染层的 `replaceMessages` 写回会把一个分页且被展示
+  截断的窗口重写进对话记录——这是用户数据丢失。因此改写在同一变更中搬到 host，任何
+  方向都不再有渲染层数组跨越 IPC。
+- 由 `crates/host-core/src/sessions.rs`（`delete_message_*`、
+  `activate_message_revision_without_a_prefix_*`）、
+  `apps/desktop/test/session-read-bounds.test.mjs`、
+  `apps/desktop/test/tool-result-display.test.mjs`、
+  `apps/desktop/test/conversation-read.test.mjs`、
+  `apps/desktop/test/delete-message-preserves-transcript.test.mjs`、
+  `apps/desktop/test/transcript-reading.test.mjs` 与
+  `apps/desktop/test/renderer-recovery.test.mjs` 覆盖。见
+  `03-runtime/01-ipc-protocol.md`、`03-runtime/06-host-rpc-protocol.md` 与
+  `03-runtime/09-logging-and-observability.md`。

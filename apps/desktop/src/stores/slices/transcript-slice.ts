@@ -113,7 +113,12 @@ export function createTranscriptSlice({
         }
       }
       if (userIndex < 0) return;
-      const root = state.messages[userIndex];
+      const rootId = state.messages[userIndex].id;
+      // The window's copy of the root may be display-capped; the retry sends
+      // the prompt text, so it has to be the canonical one.
+      const rootPrepared = await prepareTranscriptAction({ get, set }, runtime, rootId);
+      const root = rootPrepared?.messages.find((message) => message.id === rootId);
+      if (!rootPrepared || !root || rootPrepared.activeSessionId !== state.activeSessionId) return;
       await get().editUserMessage(root.id, root.content, root.attachments);
     },
 
@@ -188,12 +193,15 @@ export function createTranscriptSlice({
         return true;
       } catch (error) {
         try {
-          const detail = await api.getSession(sessionId);
+          const settled = await runtime.readSettledTail(sessionId);
           set((current) => ({
             messages:
               current.activeSessionId === sessionId
-                ? detail.session?.messages ?? kept
+                ? settled?.messages ?? kept
                 : current.messages,
+            ...(settled && current.activeSessionId === sessionId
+              ? { sessionHistory: { ...current.sessionHistory, [sessionId]: settled.window } }
+              : {}),
             isRunning:
               current.activeSessionId === sessionId ? false : current.isRunning,
             runningSessions: { ...current.runningSessions, [sessionId]: false },
@@ -302,50 +310,31 @@ export function createTranscriptSlice({
 
     activateMessageRevision: async (rootUserId, revisionIndex) => {
       if (!canEdit()) return;
-      let state = get();
+      const state = get();
       if (state.isRunning) return;
       const sessionId = state.activeSessionId;
       if (!sessionId) return;
-      if (state.sessionHistory[sessionId]?.hasMoreBefore) {
-        const fullMessages = await runtime.loadFullSessionMessages(sessionId);
-        if (!fullMessages || get().activeSessionId !== sessionId) return;
-        set((current) =>
-          current.activeSessionId === sessionId
-            ? {
-                messages: fullMessages,
-                sessionHistory: {
-                  ...current.sessionHistory,
-                  [sessionId]: { messageStart: 0, hasMoreBefore: false },
-                },
-              }
-            : {},
-        );
-        state = get();
-      }
-      const rootIndex = state.messages.findIndex((message) => message.id === rootUserId);
-      if (rootIndex < 0) return;
-      const root = state.messages[rootIndex];
+      const root = state.messages.find((message) => message.id === rootUserId);
+      if (!root) return;
       const revisionFamilyId = root.revisionRootId || root.id;
-      const prefix = state.messages.slice(0, rootIndex);
       try {
-        const result = await api.activateSessionRevision({
+        // The host reads the prefix from the durable transcript and rewrites it
+        // there; the renderer names the family and then re-reads the newest
+        // page, so neither the prefix nor the rewritten transcript crosses IPC.
+        await api.activateSessionRevision({
           sessionId,
           rootUserId: revisionFamilyId,
           revisionIndex,
-          prefix,
         });
+        if (get().activeSessionId !== sessionId) return;
+        const settled = await runtime.readSettledTail(sessionId);
         set((current) => ({
-          messages:
-            current.activeSessionId === sessionId
-              ? result.messages ?? prefix
-              : current.messages,
-          sessionHistory:
-            current.activeSessionId === sessionId
-              ? {
-                  ...current.sessionHistory,
-                  [sessionId]: { messageStart: 0, hasMoreBefore: false },
-                }
-              : current.sessionHistory,
+          ...(settled && current.activeSessionId === sessionId
+            ? {
+                messages: settled.messages,
+                sessionHistory: { ...current.sessionHistory, [sessionId]: settled.window },
+              }
+            : {}),
           error: null,
           errorCode: null,
         }));
@@ -359,61 +348,46 @@ export function createTranscriptSlice({
 
     deleteMessage: async (messageId) => {
       if (!canEdit()) return;
-      const sessionId = get().activeSessionId;
-      if (!sessionId || get().isRunning) return;
-      const fullMessages = await runtime.loadFullSessionMessages(sessionId);
-      // Re-read the store after the reload: writes that landed during the
-      // await (an aborted turn's final message_end, a late tool_end) exist
-      // only here, so merging the pre-await snapshot would erase them
-      // (#1614) — the same post-await read abort() below relies on. A turn
-      // that started during the reload also bails: no rewrite under a live
-      // stream.
-      if (
-        !fullMessages ||
-        get().activeSessionId !== sessionId ||
-        get().isRunning
-      ) {
-        return;
+      const state = get();
+      const sessionId = state.activeSessionId;
+      if (!sessionId || state.isRunning) return;
+      const previous = state.messages;
+      const index = previous.findIndex((message) => message.id === messageId);
+      if (index < 0) return;
+      // Optimistic view: the same turn rule the host applies, on the window the
+      // user is looking at. A user row takes its turn, any other row goes alone.
+      let end = index + 1;
+      if (previous[index].role === "user") {
+        while (end < previous.length && previous[end].role !== "user") end += 1;
       }
-      const merged = mergeLiveSessionMessages(fullMessages, get().messages);
+      const window = state.sessionHistory[sessionId];
+      const optimistic = [...previous.slice(0, index), ...previous.slice(end)];
+      runtime.cacheSessionTranscript(sessionId, optimistic, window);
       set((current) =>
         current.activeSessionId === sessionId
-          ? {
-              messages: merged,
-              sessionHistory: {
-                ...current.sessionHistory,
-                [sessionId]: { messageStart: 0, hasMoreBefore: false },
-              },
-            }
-          : {},
+          ? { messages: optimistic, error: null, errorCode: null }
+          : { error: null, errorCode: null },
       );
-      const state = get();
-      const index = state.messages.findIndex((message) => message.id === messageId);
-      if (index < 0) return;
-      const target = state.messages[index];
-      let end = index + 1;
-      if (target.role === "user") {
-        while (
-          end < state.messages.length &&
-          state.messages[end].role !== "user"
-        ) {
-          end += 1;
-        }
-      }
-      const previous = state.messages;
-      const next = [...previous.slice(0, index), ...previous.slice(end)];
-      const fullWindow = { messageStart: 0, hasMoreBefore: false };
-      runtime.cacheSessionTranscript(sessionId, next, fullWindow);
-      set((current) => ({
-        messages: next,
-        sessionHistory: { ...current.sessionHistory, [sessionId]: fullWindow },
-        error: null,
-        errorCode: null,
-      }));
       try {
-        await api.replaceSessionMessages(sessionId, next);
+        // The host finds the row in the durable transcript, applies the turn
+        // rule there and rewrites the transcript itself. The renderer only names
+        // the row: a paged, display-capped window must never become the next
+        // transcript, and rows that land during this await (a late tool_end)
+        // are drained into the host before it cuts, instead of being merged
+        // from a renderer snapshot (#1614).
+        const { deletedIds } = await api.deleteSessionMessage(sessionId, messageId);
+        const removed = new Set(deletedIds);
+        const current = get();
+        if (current.activeSessionId !== sessionId) return;
+        // Reconcile with what the host actually removed: a row the window did
+        // not show is dropped, a row the host kept comes back.
+        const messages = mergeLiveSessionMessages(previous, current.messages).filter(
+          (message) => !removed.has(message.id),
+        );
+        runtime.cacheSessionTranscript(sessionId, messages, current.sessionHistory[sessionId]);
+        set({ messages });
       } catch (error) {
-        runtime.cacheSessionTranscript(sessionId, previous, fullWindow);
+        runtime.cacheSessionTranscript(sessionId, previous, window);
         set((current) => ({
           messages:
             current.activeSessionId === sessionId ? previous : current.messages,
@@ -474,12 +448,12 @@ export function createTranscriptSlice({
         await api.abort(sessionId);
         runtime.submittedComposerDrafts.delete(sessionId);
         // Bypass in-flight pre-abort detail reads; request settled source state.
-        const detail = await api.getSession(sessionId);
-        const messages = detail.session?.messages;
-        if (messages) runtime.cacheSessionTranscript(sessionId, messages);
+        const settled = await runtime.readSettledTail(sessionId);
+        const messages = settled?.messages;
         set((current) => ({
           runningSessions: { ...current.runningSessions, [sessionId]: false },
           ...(messages ? { retainedTranscripts: { ...current.retainedTranscripts, [sessionId]: messages } } : {}),
+          ...(settled ? { sessionHistory: { ...current.sessionHistory, [sessionId]: settled.window } } : {}),
           ...(current.activeSessionId === sessionId ? { isRunning: false, ...(messages ? { messages } : {}) } : {}),
         }));
         return;
@@ -526,47 +500,30 @@ export function createTranscriptSlice({
         ? { kind: "settle" as const }
         : resolveComposerSmartStop(state.messages, submittedDraft);
       if (smartStop.kind === "restore") {
-        const fullMessages = await runtime.loadFullSessionMessages(sessionId);
-        if (!fullMessages || get().activeSessionId !== sessionId) {
-          submittedDraft?.resolveAbort?.(false);
-          runtime.submittedComposerDrafts.delete(sessionId);
-          return;
-        }
-        const merged = mergeLiveSessionMessages(fullMessages, get().messages);
-        const fullStop = resolveComposerSmartStop(merged, submittedDraft);
-        if (fullStop.kind === "restore") {
-          runtime.submittedComposerDrafts.delete(sessionId);
-          submittedDraft?.resolveAbort?.(true);
-          const fullWindow = { messageStart: 0, hasMoreBefore: false };
-          runtime.cacheSessionTranscript(sessionId, fullStop.kept, fullWindow);
-          set((current) => ({
-            messages: fullStop.kept,
-            sessionHistory: { ...current.sessionHistory, [sessionId]: fullWindow },
-            composerPrefill: { ...fullStop.draft, sessionId },
-            isRunning: false,
-            runningSessions: { ...current.runningSessions, [sessionId]: false },
-          }));
-          if (fullStop.kept.length < merged.length) {
-            try {
-              await api.replaceSessionMessages(sessionId, fullStop.kept);
-            } catch {
-              // Best effort — the local transcript already reflects the undo.
-            }
+        // The unanswered prompt is the first row the undo removes; it is the
+        // live window's own row (the composer just inserted it), so the window
+        // is enough to name it. The host deletes that user row with the turn
+        // behind it from the durable transcript — no renderer array crosses
+        // IPC, and no whole-transcript read is needed to undo one prompt.
+        const undone = state.messages[smartStop.kept.length];
+        runtime.submittedComposerDrafts.delete(sessionId);
+        submittedDraft?.resolveAbort?.(true);
+        runtime.cacheSessionTranscript(sessionId, smartStop.kept, state.sessionHistory[sessionId]);
+        set((current) => ({
+          messages: smartStop.kept,
+          composerPrefill: { ...smartStop.draft, sessionId },
+          isRunning: false,
+          runningSessions: { ...current.runningSessions, [sessionId]: false },
+        }));
+        if (undone) {
+          try {
+            await api.deleteSessionMessage(sessionId, undone.id);
+          } catch {
+            // Best effort — the local transcript already reflects the undo.
           }
-          void flushPendingSessionConfiguration(sessionId);
-          return;
         }
-        set((current) =>
-          current.activeSessionId === sessionId
-            ? {
-                messages: merged,
-                sessionHistory: {
-                  ...current.sessionHistory,
-                  [sessionId]: { messageStart: 0, hasMoreBefore: false },
-                },
-              }
-            : {},
-        );
+        void flushPendingSessionConfiguration(sessionId);
+        return;
       }
       submittedDraft?.resolveAbort?.(false);
       runtime.submittedComposerDrafts.delete(sessionId);

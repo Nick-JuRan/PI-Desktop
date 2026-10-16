@@ -24,6 +24,7 @@ import type { RestoreTranscriptReading } from "../../../hooks/use-transcript-rea
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 import { DisclosureAnchorContext } from "../../../lib/disclosure-anchor-context";
 import { api } from "../../../lib/api";
+import { readConversationPages } from "../../../lib/conversation-read";
 import { mergeLiveSessionMessages } from "../../../lib/session-transcript";
 import { conversationPlainText } from "../../../lib/chat-transcript-text";
 import {
@@ -201,11 +202,12 @@ function TranscriptBody({
   const copyConversation = async () => {
     if (!sessionId) return;
     try {
-      // Explicit copy reads the full session without changing the reading window.
-      const { session } = await api.getSession(sessionId);
-      if (!session) throw new Error("Session unavailable");
+      // Explicit copy walks the whole session as bounded pages without changing
+      // the reading window; every message is its display copy.
+      const durable = await readConversationPages((options) => api.getSession(sessionId, options));
+      if (!durable) throw new Error("Session unavailable");
       await copyText(conversationPlainText(
-        mergeLiveSessionMessages(session.messages ?? [], messages),
+        mergeLiveSessionMessages(durable, messages),
         { user: t("chat.speakerYou"), assistant: t("chat.speakerAssistant") },
       ));
     } catch {
