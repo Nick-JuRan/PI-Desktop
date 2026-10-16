@@ -5,6 +5,8 @@ let registeredToolNames = [];
 let activeSemanticElementId = null;
 let tokenManager = null;
 let recordRegistry = null;
+let resultSnapshots = null;
+let searchLock = null;
 let implementations = null;
 let toErrorResult = (error) => ({
   ok: false,
@@ -19,12 +21,13 @@ function getContribution(name) {
 
 async function loadImplementations() {
   if (!implementations) {
-    const [toolExecutor, tokenManagerModule, recordRegistryModule] = await Promise.all([
+    const [toolExecutor, tokenManagerModule, recordRegistryModule, resultSnapshotModule] = await Promise.all([
       import("./src/tool-executor.mjs"),
       import("./src/token-manager.mjs"),
       import("./src/record-registry.mjs"),
+      import("./src/result-snapshot.mjs"),
     ]);
-    implementations = { toolExecutor, tokenManagerModule, recordRegistryModule };
+    implementations = { toolExecutor, tokenManagerModule, recordRegistryModule, resultSnapshotModule };
   }
   return implementations;
 }
@@ -43,6 +46,22 @@ function getRecordRegistry() {
   return recordRegistry;
 }
 
+/** Result sets frozen at search time; the only consistent source for result pages. */
+function getResultSnapshots() {
+  if (!resultSnapshots) {
+    resultSnapshots = implementations.resultSnapshotModule.createResultSnapshotStore();
+  }
+  return resultSnapshots;
+}
+
+/** Serializes session creation + overview across concurrent Boolean searches. */
+function getSearchLock() {
+  if (!searchLock) {
+    searchLock = implementations.resultSnapshotModule.createSearchLock();
+  }
+  return searchLock;
+}
+
 async function onToolExecute(name, args, context) {
   const common = {
     args,
@@ -51,19 +70,19 @@ async function onToolExecute(name, args, context) {
     fetchImpl: (input) => pi.net.fetch(input),
   };
   if (name === "fusion_boolean_search") {
-    const result = await implementations.toolExecutor.executeFusionBooleanTool({
+    return implementations.toolExecutor.executeFusionBooleanTool({
       ...common,
       ...(activeSemanticElementId ? { semanticElementId: activeSemanticElementId } : {}),
+      searchLock: getSearchLock(),
+      snapshots: getResultSnapshots(),
+      registry: getRecordRegistry(),
     });
-    if (result?.ok === true) {
-      getRecordRegistry().rememberSession(result.session_id, result.database);
-    }
-    return result;
   }
   if (name === "fusion_semantic_result_page") {
     return implementations.toolExecutor.executeFusionResultPageTool({
       ...common,
       registry: getRecordRegistry(),
+      snapshots: getResultSnapshots(),
     });
   }
   if (name === "fusion_full_text") {
@@ -122,6 +141,8 @@ async function onUnload() {
     registeredToolNames = [];
     tokenManager = null;
     recordRegistry = null;
+    resultSnapshots = null;
+    searchLock = null;
     activeSemanticElementId = null;
     implementations = null;
   }

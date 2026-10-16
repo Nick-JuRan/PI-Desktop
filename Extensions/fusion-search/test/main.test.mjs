@@ -14,6 +14,34 @@ function setupPi({ token, credentials = { username: "user1", password: "pw1" }, 
   let settingsReads = 0;
   const settings = { ...credentials, ...(token ? { token } : {}) };
   const netCalls = [];
+  // Two fixture sessions. The live results endpoint below behaves like the
+  // provider: it serves whichever session was created last, whatever ssId is
+  // asked for, echoing the requested ssId at the top level.
+  const sessionRows = {
+    "SEARCH-SESSION-1": [{
+      ssId: "SEARCH-SESSION-1",
+      pnId: "CN1A",
+      anId: "CN2022000001.1",
+      dbName: "CNTXT",
+      ti: "Title",
+      simVal: 99,
+      semanticSort: 1,
+      abview: [{ indexCnName: "摘要", indexEnName: "AB", value: "<p>Abstract &amp; details</p>" }],
+      clms: [{ indexEnName: "CLMFIR", value: "<result>Claim text</result>" }],
+    }],
+    "SEARCH-SESSION-2": [{
+      ssId: "SEARCH-SESSION-2",
+      pnId: "CN2B",
+      anId: "CN2022000002.2",
+      dbName: "ENTXT",
+      ti: "Second title",
+      simVal: 61,
+      semanticSort: 1,
+      abview: [{ indexCnName: "摘要", value: "Second abstract" }],
+      clms: [{ indexCnName: "主权利要求说明", value: "Second claim" }],
+    }],
+  };
+  let lastCreatedSession = "SEARCH-SESSION-1";
   const pi = {
     plugin: {
       getSettings: async () => {
@@ -27,6 +55,7 @@ function setupPi({ token, credentials = { username: "user1", password: "pw1" }, 
       fetch: async (input) => {
         netCalls.push(input);
         const url = new URL(input.url);
+        const body = input.body ? JSON.parse(input.body) : {};
         const isCreate = url.pathname.endsWith("/neusipo-app-search/element/addElement");
         const response = isCreate
           ? { status: 200, t: "ELEMENT-1", message: "SUCCESS" }
@@ -47,34 +76,25 @@ function setupPi({ token, credentials = { username: "user1", password: "pw1" }, 
               : url.pathname.endsWith("/element/selectElement")
                 ? { status: 200, t: { id: "SEMANTIC-ELEMENT-1" } }
                 : url.pathname.endsWith("/fusionSearch/new/action/executeSearch")
-                  ? { status: 200, t: "SEARCH-SESSION-1" }
+                  ? (() => {
+                    lastCreatedSession = String(body.semanticParam?.boolterm ?? "").includes("SECOND") ? "SEARCH-SESSION-2" : "SEARCH-SESSION-1";
+                    return { status: 200, t: lastCreatedSession };
+                  })()
                   : url.pathname.endsWith("/fusionSearch/new/forOverview")
                     ? { status: 200, t: {
-                      ssId: "SEARCH-SESSION-1",
+                      ssId: body.ssId,
                       hitCounts: 123,
                       listCounts: 1,
                       semSortCounts: 1,
                       fromSource: "boolean-semantic",
-                      resultList: [{ pnId: "CN1A", ti: "Title", simVal: 99, semanticSort: 1 }],
+                      resultList: sessionRows[body.ssId] ?? [],
                     } }
                     : url.pathname.endsWith("/fusionResult/results")
                       ? { status: 200, t: {
-                        ssId: "SEARCH-SESSION-1",
+                        ssId: body.ssId,
                         listCounts: 51,
                         page: 1,
-                        resultList: [
-                          {
-                            ssId: "SEARCH-SESSION-1",
-                            pnId: "CN1A",
-                            anId: "CN2022000001.1",
-                            dbName: "CNTXT",
-                            ti: "Title",
-                            simVal: 99,
-                            semanticSort: 1,
-                            abview: [{ indexCnName: "摘要", indexEnName: "AB", value: "<p>Abstract &amp; details</p>" }],
-                            clms: [{ indexEnName: "CLMFIR", value: "<result>Claim text</result>" }],
-                          },
-                        ],
+                        resultList: sessionRows[lastCreatedSession],
                       } }
                       : url.pathname.endsWith("/fastFullText/queryFullText")
                         ? { status: 200, t: { fullTextHtml: [
@@ -258,7 +278,8 @@ test("Boolean search resolves dbId from the live catalog and returns only count 
     assert.equal(requests[3].body.semanticParam.eid, "SEMANTIC-ELEMENT-1");
     assert.deepEqual(requests[4].body.dbs, ["DB201"]);
     assert.equal(requests[4].body.ssId, "SEARCH-SESSION-1");
-    assert.equal(requests[4].body.size, 20);
+    assert.equal(requests[4].body.size, 400, "the overview is the session snapshot");
+    assert.equal(requests[4].body.showAbsFlag, "1");
     assert.equal(requests[4].body.searchType, "boolean-semantic");
     assert.equal(requests[4].body.semanticParam.boolterm, "A01B1/00/IC");
     assert.ok(!JSON.stringify(result).includes("DB201"));
@@ -469,6 +490,66 @@ test("unloading the plugin forgets listed records", async () => {
     await plugin.onLoad();
     await getRegisteredTool("fusion_full_text").execute({ pnId: "CN1A" }, {});
     assert.equal(netCalls.at(-1).headers.ssid, undefined);
+  } finally {
+    await plugin.onUnload();
+    delete globalThis.pi;
+  }
+});
+
+test("two sessions searched back to back each page their own frozen rows, with no network read", async () => {
+  const token = makeFakeJwt(7200);
+  const { pi, getRegisteredTool, netCalls } = setupPi({ token });
+  globalThis.pi = pi;
+  const plugin = require("../main.cjs");
+  try {
+    await plugin.onLoad();
+    const search = getRegisteredTool("fusion_boolean_search");
+    const first = await search.execute({ database: "CNTXT", query: "A01B1/00/IC" }, {});
+    const second = await search.execute({ database: "CNTXT", query: "SECOND/BA" }, {});
+    assert.equal(first.session_id, "SEARCH-SESSION-1");
+    assert.equal(second.session_id, "SEARCH-SESSION-2");
+    const requestsBefore = netCalls.length;
+
+    const page = getRegisteredTool("fusion_semantic_result_page");
+    const pageOne = await page.execute({ session_id: "SEARCH-SESSION-1", page: 1 }, {});
+    const pageTwo = await page.execute({ session_id: "SEARCH-SESSION-2", page: 1 }, {});
+    assert.deepEqual(pageOne, {
+      ok: true,
+      semantic_sorted: true,
+      records: [{ pnId: "CN1A", ti: "Title", simVal: 99, semanticSort: 1, abview: "Abstract & details", clms: "Claim text" }],
+      totalPage: 1,
+      page: 1,
+    });
+    assert.equal(pageTwo.records[0].pnId, "CN2B");
+    assert.equal(netCalls.length, requestsBefore, "frozen sessions are paged without a network request");
+
+    // The live endpoint would have served session 2's rows for session 1 here.
+    const text = await getRegisteredTool("fusion_full_text").execute({ pnId: "CN1A" }, {});
+    const request = netCalls.at(-1);
+    assert.equal(request.headers.ssid, "SEARCH-SESSION-1");
+    assert.equal(JSON.parse(request.body).viewDb, "CNTXT");
+    assert.ok(text.startsWith("CN1A  Title"));
+  } finally {
+    await plugin.onUnload();
+    delete globalThis.pi;
+  }
+});
+
+test("a session the plugin never froze is still read live, and reloading the plugin forgets snapshots", async () => {
+  const token = makeFakeJwt(7200);
+  const { pi, getRegisteredTool, netCalls } = setupPi({ token });
+  globalThis.pi = pi;
+  const plugin = require("../main.cjs");
+  try {
+    await plugin.onLoad();
+    await getRegisteredTool("fusion_boolean_search").execute({ database: "CNTXT", query: "A01B1/00/IC" }, {});
+    await plugin.onUnload();
+    await plugin.onLoad();
+    const before = netCalls.length;
+    const result = await getRegisteredTool("fusion_semantic_result_page").execute({ session_id: "SEARCH-SESSION-1", page: 1 }, {});
+    assert.equal(result.ok, true);
+    assert.equal(netCalls.length, before + 1, "after a reload the page is fetched from the provider");
+    assert.equal(netCalls.at(-1).url, "http://10.160.28.16/api/neusipo-app-search/fusionResult/results");
   } finally {
     await plugin.onUnload();
     delete globalThis.pi;

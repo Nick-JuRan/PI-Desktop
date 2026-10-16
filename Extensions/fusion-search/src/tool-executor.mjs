@@ -1,7 +1,12 @@
 import { executeSemanticBaseline } from "./semantic-baseline.mjs";
 import { executeBooleanSearch, validateBooleanSearchInput } from "./boolean-search.mjs";
-import { executeSemanticResultPage, validateSemanticResultPageInput } from "./semantic-result-page.mjs";
+import {
+  executeSemanticResultPage,
+  normalizeSemanticResultPageInput,
+  validateSemanticResultPageInput,
+} from "./semantic-result-page.mjs";
 import { executeFullText, validateFullTextInput } from "./full-text.mjs";
+import { pageResultSnapshot } from "./result-snapshot.mjs";
 
 const ACTIONS = new Set(["prepare", "update_terms"]);
 
@@ -72,13 +77,20 @@ export async function executeFusionTool({
   });
 }
 
-/** Execute a saved-history Boolean search without replaying an uncertain request. */
+/**
+ * Execute a saved-history Boolean search without replaying an uncertain request.
+ * With `snapshots` the session's full result set is frozen at search time so
+ * result pages never depend on the provider's per-account semantic cache.
+ */
 export async function executeFusionBooleanTool({
   args,
   signal,
   tokenManager,
   fetchImpl,
   semanticElementId,
+  searchLock,
+  snapshots,
+  registry,
   executeBoolean = executeBooleanSearch,
 } = {}) {
   const invalid = validateBooleanSearchInput(args);
@@ -87,21 +99,39 @@ export async function executeFusionBooleanTool({
     signal,
     tokenManager,
     refreshMessage: "Authentication was refreshed, but the Boolean search was not replayed. Check search history before submitting the query again.",
-    invoke: (authorization) => executeBoolean({ args, authorization, signal, fetchImpl, semanticElementId }),
+    invoke: (authorization) => executeBoolean({
+      args,
+      authorization,
+      signal,
+      fetchImpl,
+      semanticElementId,
+      searchLock,
+      snapshots,
+      registry,
+    }),
   });
 }
 
-/** Execute one idempotent result-page read with a single auth-refresh retry. */
+/**
+ * Serve one result page. A session frozen at search time is paged locally —
+ * no token, no network — so parallel sessions never read each other's rows.
+ * A session without a snapshot falls back to the live read with one
+ * auth-refresh retry.
+ */
 export async function executeFusionResultPageTool({
   args,
   signal,
   tokenManager,
   fetchImpl,
   registry,
+  snapshots,
   executeResultPage = executeSemanticResultPage,
 } = {}) {
   const invalid = validateSemanticResultPageInput(args);
   if (invalid) return invalid;
+  const input = normalizeSemanticResultPageInput(args);
+  const snapshot = snapshots?.get(input.sessionId) ?? null;
+  if (snapshot) return pageResultSnapshot(snapshot, input.page);
   return executeWithTokenRecovery({
     signal,
     tokenManager,

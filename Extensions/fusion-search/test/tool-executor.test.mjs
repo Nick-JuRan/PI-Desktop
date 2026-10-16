@@ -222,3 +222,56 @@ test("the result-page executor forwards the registry to the page reader", async 
   });
   assert.equal(seen, registry);
 });
+
+test("a result page of a frozen session is served locally without touching credentials or the network", async () => {
+  const tokenManager = managerForTests();
+  const snapshot = {
+    sessionId: "SESSION-1",
+    records: Array.from({ length: 25 }, (_, index) => ({ pnId: `CN${index + 1}`, ti: "T", simVal: 50 - index, semanticSort: index + 1, abview: "", clms: "" })),
+    unrankedCount: 0,
+    frozenAt: 0,
+  };
+  const snapshots = { get: (id) => (id === "SESSION-1" ? snapshot : null) };
+  let liveReads = 0;
+  const page = await executeFusionResultPageTool({
+    args: { session_id: "SESSION-1", page: 2 },
+    tokenManager,
+    snapshots,
+    executeResultPage: async () => { liveReads += 1; return { ok: true, page: 2, records: [] }; },
+  });
+  assert.equal(page.ok, true);
+  assert.equal(page.page, 2);
+  assert.equal(page.totalPage, 2);
+  assert.deepEqual(page.records.map((record) => record.pnId), ["CN21", "CN22", "CN23", "CN24", "CN25"]);
+  assert.equal(liveReads, 0);
+  assert.equal(tokenManager.calls.length, 0, "no token is needed for a local page");
+
+  const fallback = await executeFusionResultPageTool({
+    args: { session_id: "SESSION-UNKNOWN", page: 1 },
+    tokenManager,
+    snapshots,
+    executeResultPage: async () => { liveReads += 1; return { ok: true, page: 1, records: [] }; },
+  });
+  assert.equal(fallback.ok, true);
+  assert.equal(liveReads, 1, "an unknown session falls back to the live read");
+  assert.deepEqual(tokenManager.calls.map(([kind]) => kind), ["authorization"]);
+});
+
+test("the Boolean executor hands the lock, snapshot store and registry to the search", async () => {
+  const tokenManager = managerForTests();
+  const searchLock = { acquire: async () => () => {} };
+  const snapshots = { freeze: () => {}, get: () => null };
+  const registry = { rememberSession: () => {}, rememberRecords: () => {} };
+  let seen;
+  await executeFusionBooleanTool({
+    args: { database: "CNTXT", query: "A01B1/00/IC" },
+    tokenManager,
+    searchLock,
+    snapshots,
+    registry,
+    executeBoolean: async (input) => { seen = input; return { ok: true, database: "CNTXT", total_hits: 1, session_id: "S" }; },
+  });
+  assert.equal(seen.searchLock, searchLock);
+  assert.equal(seen.snapshots, snapshots);
+  assert.equal(seen.registry, registry);
+});

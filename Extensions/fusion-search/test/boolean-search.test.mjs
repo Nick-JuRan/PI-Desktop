@@ -8,11 +8,15 @@ import {
   FUSION_BOOLEAN_SEARCH_RESULT_LIMIT,
 } from "../src/boolean-search.mjs";
 import { FUSION_RESULT_PAGE_SIZE } from "../src/semantic-result-page.mjs";
+import { createRecordRegistry } from "../src/record-registry.mjs";
+import { createResultSnapshotStore } from "../src/result-snapshot.mjs";
 
 const API_ROOT = "/api";
 const args = { database: "CNTXT", query: "A01B1/00/IC" };
 
-function makeFetch({ totalHits = 17, sessionId = "SESSION-1", onExecute, onOverview } = {}) {
+const DEFAULT_OVERVIEW_ROWS = [{ pnId: "CN1A", ti: "title", simVal: 99, semanticSort: 1 }];
+
+function makeFetch({ totalHits = 17, sessionId = "SESSION-1", onExecute, onOverview, overviewRows = DEFAULT_OVERVIEW_ROWS } = {}) {
   const calls = [];
   const fetchImpl = async (input) => {
     const path = new URL(input.url).pathname;
@@ -41,7 +45,7 @@ function makeFetch({ totalHits = 17, sessionId = "SESSION-1", onExecute, onOverv
           listCounts: 1,
           semSortCounts: 1,
           fromSource: "boolean-semantic",
-          resultList: [{ pnId: "CN1A", ti: "title", simVal: 99, semanticSort: 1 }],
+          resultList: overviewRows,
         } }),
       };
     }
@@ -69,7 +73,9 @@ test("Boolean search resolves the displayed code and returns the count with opaq
   assert.equal(calls[4].path, `${API_ROOT}/neusipo-app-search/fusionSearch/new/forOverview`);
   assert.equal(calls[4].body.ssId, "SESSION-1");
   assert.equal(calls[4].body.searchType, "boolean-semantic");
-  assert.equal(calls[4].body.size, FUSION_RESULT_PAGE_SIZE);
+  assert.equal(calls[4].body.size, FUSION_BOOLEAN_SEARCH_RESULT_LIMIT, "the overview asks for the whole retained set");
+  assert.equal(calls[4].body.showAbsFlag, "1", "the overview carries abstracts for the snapshot");
+  assert.equal(calls[3].body.showAbsFlag, "0", "search creation stays as before");
   assert.equal(calls[4].body.semanticParam.eid, "SEMANTIC-ELEMENT-1");
   assert.equal(calls[4].body.semanticParam.boolterm, args.query);
   assert.equal(result.records, undefined);
@@ -225,4 +231,98 @@ test("endpoints are pinned to the inspected Fusion Search contract", () => {
     execute: "/neusipo-app-search/fusionSearch/new/action/executeSearch",
     overview: "/neusipo-app-search/fusionSearch/new/forOverview",
   });
+});
+
+function overviewRow(pnId, extra = {}) {
+  return {
+    ssId: "SESSION-1",
+    pnId,
+    anId: `AN-${pnId}`,
+    dbName: "CNTXT",
+    ti: `Title ${pnId}`,
+    abview: [{ indexCnName: "摘要", value: `<p>Abstract ${pnId}</p>` }],
+    clms: [{ indexCnName: "主权利要求说明", value: `Claim ${pnId}` }],
+    ...extra,
+  };
+}
+
+test("a search freezes its overview as the session snapshot and registers the rows for full text", async () => {
+  const snapshots = createResultSnapshotStore();
+  const registry = createRecordRegistry();
+  const { calls, fetchImpl } = makeFetch({
+    totalHits: 3,
+    overviewRows: [
+      overviewRow("CN2A", { simVal: 80, semanticSort: 2 }),
+      overviewRow("CN9A", { simVal: undefined, semanticSort: undefined }),
+      overviewRow("CN1A", { simVal: 95, semanticSort: 1 }),
+    ],
+  });
+  const result = await executeBooleanSearch({ args, authorization: "Bearer TOKEN", fetchImpl, snapshots, registry });
+  assert.deepEqual(result, { ok: true, database: "CNTXT", total_hits: 3, session_id: "SESSION-1" });
+  assert.equal(calls.length, 5, "no extra request beyond the existing overview");
+  const snapshot = snapshots.get("SESSION-1");
+  assert.deepEqual(snapshot.records.map((record) => [record.pnId, record.semanticSort]), [["CN1A", 1], ["CN2A", 2], ["CN9A", null]]);
+  assert.equal(snapshot.records[0].abview, "Abstract CN1A");
+  assert.equal(snapshot.records[0].clms, "Claim CN1A");
+  assert.equal(snapshot.unrankedCount, 1);
+  assert.deepEqual(registry.resolve("CN2A"), { pnId: "CN2A", anId: "AN-CN2A", database: "CNTXT", sessionId: "SESSION-1", title: "Title CN2A" });
+  assert.equal(registry.databaseForSession("SESSION-1"), "CNTXT");
+});
+
+test("an overview row from another session is refused and the created session is reported", async () => {
+  const snapshots = createResultSnapshotStore();
+  const { fetchImpl } = makeFetch({
+    overviewRows: [overviewRow("CN1A", { simVal: 1, semanticSort: 1 }), overviewRow("CN2A", { simVal: 1, semanticSort: 2, ssId: "SESSION-OTHER" })],
+  });
+  const result = await executeBooleanSearch({ args, authorization: "Bearer TOKEN", fetchImpl, snapshots });
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "RESULT_SESSION_MISMATCH");
+  assert.equal(result.error.session_id, "SESSION-1");
+  assert.equal(snapshots.has("SESSION-1"), false);
+});
+
+test("without a snapshot store the search behaves exactly as before", async () => {
+  const { fetchImpl } = makeFetch();
+  const result = await executeBooleanSearch({ args, authorization: "Bearer TOKEN", fetchImpl });
+  assert.deepEqual(result, { ok: true, database: "CNTXT", total_hits: 17, session_id: "SESSION-1" });
+});
+
+test("session creation and overview run under the search lock, which is released afterwards", async () => {
+  const events = [];
+  const searchLock = {
+    acquire: async () => { events.push("acquire"); return () => events.push("release"); },
+  };
+  const { fetchImpl } = makeFetch({
+    onExecute: async () => events.push("execute"),
+    onOverview: async () => events.push("overview"),
+  });
+  const result = await executeBooleanSearch({ args, authorization: "Bearer TOKEN", fetchImpl, searchLock, snapshots: createResultSnapshotStore() });
+  assert.equal(result.ok, true);
+  assert.deepEqual(events, ["acquire", "execute", "overview", "release"]);
+});
+
+test("a busy search lock fails before any search is submitted", async () => {
+  const searchLock = {
+    acquire: async () => {
+      const error = new Error("Another Boolean search is still being frozen for this account. Nothing was sent; retry this exact search shortly.");
+      error.code = "SEARCH_BUSY";
+      throw error;
+    },
+  };
+  const { calls, fetchImpl } = makeFetch();
+  const result = await executeBooleanSearch({ args, authorization: "Bearer TOKEN", fetchImpl, searchLock, snapshots: createResultSnapshotStore() });
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "SEARCH_BUSY");
+  assert.equal(result.error.session_id, undefined);
+  assert.ok(!calls.some((call) => call.path.endsWith("/action/executeSearch")), "nothing was submitted");
+});
+
+test("the lock is released when the search fails after submission", async () => {
+  const events = [];
+  const searchLock = { acquire: async () => { events.push("acquire"); return () => events.push("release"); } };
+  const { fetchImpl } = makeFetch({ onOverview: async () => { throw new Error("socket closed"); } });
+  const result = await executeBooleanSearch({ args, authorization: "Bearer TOKEN", fetchImpl, searchLock, snapshots: createResultSnapshotStore() });
+  assert.equal(result.ok, false);
+  assert.equal(result.error.session_id, "SESSION-1");
+  assert.deepEqual(events, ["acquire", "release"]);
 });
