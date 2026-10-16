@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "local.fusion-search",
   "name": "融合检索",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Boolean patent search, semantic result pages, patent full-text reading, and semantic baseline tools for the remote Fusion Search service, with built-in token acquisition and refresh.",
   "main": "main.cjs",
   "contributes": {
@@ -81,7 +81,7 @@
       },
       {
         "name": "fusion_boolean_search",
-        "description": "Execute one Boolean patent search against a single database using the active semantic baseline. Inputs are the displayed database code and Boolean query; the service catalog resolves the provider's internal database ID and the current semantic element is resolved from a prepared baseline or the account's selected baseline. Returns only total_hits and the opaque semantically sorted session_id needed to retrieve result pages. Keeps up to 400 candidates. Searching creates remote search history and is never automatically replayed after an uncertain outcome. Uses the same private token settings and automatic refresh as fusion_semantic_baseline.",
+        "description": "Execute one Boolean patent search against a single database using the active semantic baseline. Inputs are the displayed database code and Boolean query; the service catalog resolves the provider's internal database ID and the current semantic element is resolved from a prepared baseline or the account's selected baseline. Returns only total_hits and the opaque semantically sorted session_id needed to retrieve result pages. Keeps up to 400 candidates, frozen at search time so pages of this session stay stable while other sessions are searched. Searching creates remote search history and is never automatically replayed after an uncertain outcome; SEARCH_BUSY means nothing was sent and the same search can simply be retried. Uses the same private token settings and automatic refresh as fusion_semantic_baseline.",
         "risk": "high",
         "schema": {
           "type": "object",
@@ -104,7 +104,7 @@
       },
       {
         "name": "fusion_semantic_result_page",
-        "description": "Read one page from an existing Fusion Search session using the opaque session_id. The page size is fixed at 20, abstracts are requested, and start is calculated from page. Returns only results carrying simVal and semanticSort in semantic-rank order. Abstract and main-claim fields are plain text with HTML/XML markup and provider labels removed. Sessions without semantic-sort metadata are rejected rather than presented as ranked. Does not rerun or modify the search.",
+        "description": "Read one page from an existing Fusion Search session using the opaque session_id. Pages come from the result set frozen when the session was searched, so several sessions can be read in parallel. The page size is fixed at 20, abstracts are included, and start is calculated from page. Returns only results carrying simVal and semanticSort in semantic-rank order. Abstract and main-claim fields are plain text with HTML/XML markup and provider labels removed. Sessions without semantic-sort metadata are rejected rather than presented as ranked. Does not rerun or modify the search.",
         "risk": "high",
         "schema": {
           "type": "object",

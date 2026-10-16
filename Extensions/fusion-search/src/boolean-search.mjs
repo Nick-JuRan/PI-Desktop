@@ -1,5 +1,5 @@
 import { fail, toErrorResult } from "./errors.mjs";
-import { FUSION_RESULT_PAGE_SIZE } from "./semantic-result-page.mjs";
+import { buildResultSnapshot } from "./result-snapshot.mjs";
 
 export const FUSION_BOOLEAN_SEARCH_BASE_URL = "http://10.160.28.16/api";
 export const FUSION_BOOLEAN_SEARCH_TIMEOUT_MS = 25_000;
@@ -198,7 +198,7 @@ function readInteger(value) {
   return null;
 }
 
-function requestPayload({ databaseId, query, sessionId = "", semanticElementId, size = 1 }) {
+function requestPayload({ databaseId, query, sessionId = "", semanticElementId, size = 1, showAbstracts = false }) {
   const shared = {
     dbs: [databaseId],
     start: 0,
@@ -206,7 +206,7 @@ function requestPayload({ databaseId, query, sessionId = "", semanticElementId, 
     viewMode: "1",
     hitCounts: 0,
     ssId: sessionId,
-    showAbsFlag: "0",
+    showAbsFlag: showAbstracts ? "1" : "0",
     showDescImageFlag: "0",
     rdiDate: "",
     complexChinese: true,
@@ -302,7 +302,11 @@ export function createFusionBooleanSearchApi({
   };
 }
 
-async function executeSearch(api, input, signal, onSessionCreated, preferredSemanticElementId) {
+async function executeSearch(api, input, signal, onSessionCreated, preferredSemanticElementId, {
+  searchLock,
+  snapshots,
+  registry,
+} = {}) {
   if (signal?.aborted) fail("CANCELLED", "Fusion Search request was cancelled");
   const catalog = await api.post(ENDPOINTS.databases, {});
   const databaseId = resolveDatabaseId(catalog, input.database);
@@ -332,6 +336,18 @@ async function executeSearch(api, input, signal, onSessionCreated, preferredSema
   }
 
   if (signal?.aborted) fail("CANCELLED", "Fusion Search request was cancelled");
+  // The session and its overview are created under one in-process lock so two
+  // concurrent searches never interleave their semantic computations. Nothing
+  // has been sent when the lock times out, so SEARCH_BUSY is safe to retry.
+  const releaseLock = searchLock ? await searchLock.acquire({ signal }) : () => {};
+  try {
+    return await executeAndFreeze(api, input, signal, onSessionCreated, databaseId, semanticElementId, { snapshots, registry });
+  } finally {
+    releaseLock();
+  }
+}
+
+async function executeAndFreeze(api, input, signal, onSessionCreated, databaseId, semanticElementId, { snapshots, registry }) {
   const executed = await api.post(
     ENDPOINTS.execute,
     requestPayload({ databaseId, query: input.query, semanticElementId }),
@@ -357,7 +373,10 @@ async function executeSearch(api, input, signal, onSessionCreated, preferredSema
         query: input.query,
         sessionId,
         semanticElementId,
-        size: FUSION_RESULT_PAGE_SIZE,
+        // The overview is the only read guaranteed to be this session's own set,
+        // so ask for every retained candidate with abstracts and freeze it.
+        size: FUSION_BOOLEAN_SEARCH_RESULT_LIMIT,
+        showAbstracts: true,
       }),
     );
   } catch (error) {
@@ -402,6 +421,20 @@ async function executeSearch(api, input, signal, onSessionCreated, preferredSema
       session_id: sessionId,
     });
   }
+  if (snapshots) {
+    let snapshot;
+    try {
+      snapshot = buildResultSnapshot({ sessionId, rows: overview.resultList ?? [], endpoint: ENDPOINTS.overview });
+    } catch (error) {
+      if (error?.code) error.session_id = sessionId;
+      throw error;
+    }
+    snapshots.freeze(snapshot);
+    // The raw rows carry what fusion_full_text needs (ssId, anId, dbName, ti);
+    // registering them here lets a reader open any listed record without paging.
+    registry?.rememberSession(sessionId, input.database);
+    registry?.rememberRecords(sessionId, overview.resultList ?? []);
+  }
   return { ok: true, database: input.database, total_hits: totalHits, session_id: sessionId };
 }
 
@@ -413,6 +446,9 @@ export async function executeBooleanSearch({
   api,
   signal,
   semanticElementId,
+  searchLock,
+  snapshots,
+  registry,
 } = {}) {
   let sessionId = "";
   try {
@@ -424,6 +460,7 @@ export async function executeBooleanSearch({
       signal,
       (createdSessionId) => { sessionId = createdSessionId; },
       semanticElementId,
+      { searchLock, snapshots, registry },
     );
   } catch (error) {
     const result = toErrorResult(error);

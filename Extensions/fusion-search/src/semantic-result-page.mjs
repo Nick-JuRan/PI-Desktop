@@ -6,6 +6,14 @@ export const FUSION_RESULT_PAGE_SIZE = 20;
 export const FUSION_RESULT_PAGE_MAX_SESSION_ID_LENGTH = 256;
 
 export const FUSION_RESULT_PAGE_ENDPOINT = "/neusipo-app-search/fusionResult/results";
+/**
+ * The provider pages the semantic list from a per-account cache that holds
+ * only the latest semantic search, so a live read is reliable only while no
+ * other session has been created. Sessions searched through this plugin are
+ * frozen at search time and paged locally; this path is the fallback for a
+ * session the plugin no longer holds (for example after a restart).
+ */
+const SNAPSHOT_HINT = "This session has no local snapshot; rerun the Boolean search and page the new session_id.";
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -27,6 +35,11 @@ function normalizeInput(args) {
   const start = (args.page - 1) * FUSION_RESULT_PAGE_SIZE;
   if (!Number.isSafeInteger(start)) fail("INVALID_INPUT", "page is too large");
   return { sessionId, page: args.page, start };
+}
+
+/** Normalized `{ sessionId, page, start }` of a result-page request, or a thrown INVALID_INPUT. */
+export function normalizeSemanticResultPageInput(args) {
+  return normalizeInput(args);
 }
 
 export function validateSemanticResultPageInput(args) {
@@ -135,7 +148,8 @@ export function cleanMarkup(value) {
   return text;
 }
 
-function firstDetailText(value) {
+/** First non-empty text of a provider detail field; shared with the result snapshot. */
+export function firstDetailText(value) {
   const entries = Array.isArray(value) ? value : [value];
   for (const entry of entries) {
     if (typeof entry === "string" || typeof entry === "number") {
@@ -159,7 +173,7 @@ function projectRecord(value, sessionId) {
   }
   const recordSessionId = String(value.ssId ?? "").trim();
   if (recordSessionId && recordSessionId !== sessionId) {
-    fail("RESULT_SESSION_MISMATCH", "A result row belongs to a different session", {
+    fail("RESULT_SESSION_MISMATCH", `A result row belongs to a different session. ${SNAPSHOT_HINT}`, {
       endpoint: FUSION_RESULT_PAGE_ENDPOINT,
     });
   }
@@ -312,7 +326,7 @@ async function readPage(api, input, signal, registry) {
     });
   }
   if (data.ssId && String(data.ssId) !== input.sessionId) {
-    fail("RESULT_SESSION_MISMATCH", "The result page belongs to a different session", {
+    fail("RESULT_SESSION_MISMATCH", `The result page belongs to a different session. ${SNAPSHOT_HINT}`, {
       endpoint: FUSION_RESULT_PAGE_ENDPOINT,
     });
   }
