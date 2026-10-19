@@ -90,6 +90,7 @@ export function createTranscriptReadingRuntime({ get, set }: StoreAccess, read: 
           messageBefore: TRANSCRIPT_PAGE_SIZE,
           messageLimit: TRANSCRIPT_PAGE_SIZE,
           contentLimit: TRANSCRIPT_CONTENT_LIMIT,
+          topLevelOnly: true,
         });
         if (get().transcriptViews[sessionId] !== pending) return;
         if (get().activeSessionId !== sessionId) {
@@ -123,10 +124,13 @@ export function createTranscriptReadingRuntime({ get, set }: StoreAccess, read: 
       publish(sessionId, pending);
       signal.addEventListener("abort", rollback, { once: true });
       try {
+        // A reading position is a top-level row; it is restored in the
+        // top-level space the ordinary history reads.
         const { session } = await read(sessionId, {
           messageAround: position.messageId,
           messageLimit: TRANSCRIPT_SEARCH_PAGE_SIZE,
           contentLimit: TRANSCRIPT_CONTENT_LIMIT,
+          topLevelOnly: true,
         });
         if (signal.aborted || get().transcriptViews[sessionId] !== pending) return false;
         if (get().activeSessionId !== sessionId) {
@@ -200,11 +204,14 @@ export function createTranscriptReadingRuntime({ get, set }: StoreAccess, read: 
       const pending: TranscriptView = { ...view, loading: direction };
       publish(sessionId, pending);
       try {
+        // A search window pages every physical row around its hit; every other
+        // window pages the top-level rows, in the coordinates it was opened with.
         const { session } = await read(sessionId, {
           messageBefore:
             direction === "before" ? view.messageStart : (view.messageEnd ?? 0) + limit,
           messageLimit: limit,
           contentLimit: TRANSCRIPT_CONTENT_LIMIT,
+          ...(view.focus ? {} : { topLevelOnly: true }),
         });
         if (get().transcriptViews[sessionId] !== pending) return;
         if (!session) throw new Error("Conversation no longer exists.");

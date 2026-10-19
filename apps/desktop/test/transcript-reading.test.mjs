@@ -420,11 +420,13 @@ test("opening the conversation start reads one first page as a historical window
     return page([message("third")], { messageStart: 2, messageEnd: 3, hasMoreBefore: false, hasMoreAfter: true });
   });
   await r.openTranscriptStart("s");
-  // One bounded request for the first page: offset 0 .. PAGE_SIZE, display-capped.
+  // One bounded request for the first page: offset 0 .. PAGE_SIZE of the
+  // top-level rows, display-capped.
   assert.deepEqual(calls, [{
     messageBefore: TRANSCRIPT_PAGE_SIZE,
     messageLimit: TRANSCRIPT_PAGE_SIZE,
     contentLimit: TRANSCRIPT_CONTENT_LIMIT,
+    topLevelOnly: true,
   }]);
   const view = r.view();
   assert.equal(view.restored, true, "the start is a historical reading window");
@@ -435,12 +437,13 @@ test("opening the conversation start reads one first page as a historical window
   assert.equal(view.hasMoreAfter, true);
   // A historical window shows its own snapshot, never merged with the live tail.
   assert.deepEqual(r.visible().map((item) => item.id), ["first", "second"]);
-  // Forward paging continues from the window's end.
+  // Forward paging continues from the window's end, in the same space.
   await r.loadTranscriptPage("s", "after");
   assert.deepEqual(calls.at(-1), {
     messageBefore: 2 + TRANSCRIPT_PAGE_SIZE,
     messageLimit: TRANSCRIPT_PAGE_SIZE,
     contentLimit: TRANSCRIPT_CONTENT_LIMIT,
+    topLevelOnly: true,
   });
   assert.deepEqual(r.visible().map((item) => item.id), ["first", "second", "third"]);
   // Returning to the latest turn releases the window and shows the live tail again.
@@ -592,7 +595,9 @@ test("an evicted reading position loads its message without search focus or live
   const r = reader(async (...args) => { calls.push(args); return page([message("old")]); });
   const live = r.get().messages;
   assert.equal(await r.restoreTranscriptReading("s", bookmark, new AbortController().signal), true);
-  assert.deepEqual(calls, [["s", { messageAround: "old", messageLimit: 60, contentLimit: 65536 }]]);
+  // A reading position is a top-level row, restored in the top-level space;
+  // a search jump (above) keeps every physical row around its hit.
+  assert.deepEqual(calls, [["s", { messageAround: "old", messageLimit: 60, contentLimit: 65536, topLevelOnly: true }]]);
   assert.equal(r.view().focus, null);
   assert.equal(r.view().restored, true);
   assert.deepEqual(r.visible().map((row) => row.id), ["old"]);

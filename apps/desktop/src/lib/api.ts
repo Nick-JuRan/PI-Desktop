@@ -422,6 +422,15 @@ export type SessionHistoryReadOptions = {
   messageLimit?: number;
   /** Maximum characters per displayed message/value field. */
   contentLimit?: number;
+  /**
+   * Count and return only top-level rows (no delegate parent); every window
+   * coordinate then indexes the top-level rows. The main transcript reads this
+   * way: a delegation run's rows are 99% of a long session's bytes and are
+   * shown under their Task on demand through `delegateOf`.
+   */
+  topLevelOnly?: boolean;
+  /** Return only the rows produced under these delegate `Task` call ids. */
+  delegateOf?: string[];
 };
 
 export function normalizeSettings(settings: AppSettings): AppSettings {

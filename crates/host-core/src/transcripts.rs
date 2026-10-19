@@ -871,13 +871,44 @@ pub fn read_transcript_window_with_layout(
     message_start: usize,
     message_limit: Option<usize>,
 ) -> Result<TranscriptRead> {
-    let path = transcript_path(data_dir, session_id)?;
-    let mut out = TranscriptRead::default();
     let total = layout.message_count();
     let start = message_start.min(total);
     let end = message_limit
         .map(|limit| start.saturating_add(limit).min(total))
         .unwrap_or(total);
+    let positions: Vec<usize> = (start..end).collect();
+    read_transcript_lines_with_layout(
+        data_dir,
+        session_id,
+        layout,
+        &positions,
+        message_limit.is_some(),
+    )
+}
+
+/// Read the message lines at `positions` (ascending physical positions into the
+/// layout) plus the compaction dividers a renderer window needs. A window over
+/// the top-level rows, or over one delegate's rows, selects its positions from
+/// the layout's parent index and lands here, so the rows it leaves out are never
+/// read or deserialized.
+pub fn read_transcript_lines_with_layout(
+    data_dir: &Path,
+    session_id: &str,
+    layout: &TranscriptLayout,
+    positions: &[usize],
+    windowed: bool,
+) -> Result<TranscriptRead> {
+    let path = transcript_path(data_dir, session_id)?;
+    let mut out = TranscriptRead::default();
+    let total = layout.message_count();
+    let first = positions
+        .first()
+        .copied()
+        .filter(|position| *position < total);
+    let last = positions
+        .last()
+        .copied()
+        .filter(|position| *position < total);
 
     // Compaction lines are merged in full only for a read with no message window:
     // the model context needs the whole chain, while a renderer window needs the
@@ -887,9 +918,10 @@ pub fn read_transcript_window_with_layout(
     // falsified it: 44 compactions, 2.0 MB. A window that asked for one message
     // returned 2014 KB, of which 2012 KB was that chain -- parsed and
     // re-serialized per window read, 85-103 ms of the read path, for one message.
-    let active_compactions: Vec<u64> = if message_limit.is_some() {
+    let active_compactions: Vec<u64> = if windowed {
         let mut picked = Vec::new();
-        if let Some(&window_start) = layout.message_offsets.get(start) {
+        if let (Some(first), Some(last)) = (first, last) {
+            let window_start = layout.message_offsets[first];
             if let Some(active) = layout
                 .compaction_offsets
                 .iter()
@@ -899,11 +931,7 @@ pub fn read_transcript_window_with_layout(
             {
                 picked.push(active);
             }
-            let window_end = layout
-                .message_offsets
-                .get(end.saturating_sub(1))
-                .copied()
-                .unwrap_or(window_start);
+            let window_end = layout.message_offsets[last];
             picked.extend(
                 layout
                     .compaction_offsets
@@ -919,11 +947,12 @@ pub fn read_transcript_window_with_layout(
     // Every offset that has to be visited, in ascending file order, so one
     // forward-only reader can serve both kinds without seeking backwards.
     let mut wanted: Vec<(u64, bool)> =
-        Vec::with_capacity(end.saturating_sub(start) + active_compactions.len());
+        Vec::with_capacity(positions.len() + active_compactions.len());
     wanted.extend(
-        layout.message_offsets[start..end]
+        positions
             .iter()
-            .map(|offset| (*offset, true)),
+            .filter(|position| **position < total)
+            .map(|position| (layout.message_offsets[*position], true)),
     );
     wanted.extend(active_compactions.iter().map(|offset| (*offset, false)));
     if wanted.is_empty() {

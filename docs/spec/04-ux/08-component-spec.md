@@ -2231,6 +2231,16 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   return. A long session is reached in one request instead of one older page at
   a time. Remote sessions, whose history offers cursors rather than offsets, do
   not get the control.
+- **History pages are top-level; a delegation's rows arrive when it is opened**
+  (D668): every read behind the main transcript asks the host for the rows
+  without a delegate parent, so a long delegation run — 96% of its lines and
+  99% of its bytes under `Task` calls — opens and pages at the cost of its own
+  turns. Opening a delegation in the work-panel tab, or expanding its `Task` row
+  inline, reads the rows produced under the chain's calls that have none loaded
+  yet (`loadDelegateRows`, one bounded read per set of calls, up to 1000 rows)
+  and merges them under their `Task`; a call whose delegate produced nothing is
+  asked once. While a delegate runs, its rows still arrive live. A search hit
+  inside a delegation keeps reading every physical row around it.
 - **An explicit older-page press stays at the top** (D667): the control releases
   follow and holds `scrollTop` at 0 while the page lands and the mounted window
   grows over it, instead of anchoring the viewport to the row the reader was

@@ -1091,7 +1091,16 @@ Minimal interface:
   read returns a newest/older page plus `messageStart` and `hasMoreBefore`. The
   content limit applies only to display values and never changes the lossless
   transcript or model context. `messageBefore` and `messageStart` are physical
-  message-line positions in the transcript file, not deduplicated index counts.
+  message-line positions in the transcript file, not deduplicated index counts —
+  unless the read names a row space: `topLevelOnly: true` pages the rows without
+  a delegate parent and indexes them, `delegateOf: [callId, …]` pages the rows
+  produced under those `Task` calls (D668). The main transcript reads top-level
+  only (open, prefetch, settled refresh, edit/retry hydration, reading-position
+  restore, start-of-conversation, copy); a search jump and the paging of its
+  window keep every physical row, because a hit inside a delegation needs its
+  rows. A delegation's rows reach the renderer through `delegateOf` when its run
+  is opened — the work-panel tab, or a `Task` row expanded inline — one bounded
+  read of up to 1000 rows per set of calls, merged under their `Task`.
   `messageAround` centers a bounded read on a stable message ID; it requires
   `messageLimit` and cannot accompany `messageBefore`. A missing target returns
   no session. Only the selected user/assistant text bypasses the display cap.

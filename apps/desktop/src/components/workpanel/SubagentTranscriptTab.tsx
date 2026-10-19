@@ -1,7 +1,7 @@
 import { toolResultPayload } from "../../lib/tool-presentation";
 import { SubagentStopButton } from "../../features/chat/transcript/SubagentStopButton";
 import { collectDelegationStatuses, subagentOutcome } from "../../lib/subagent-topology";
-import { Fragment, useLayoutEffect, useMemo } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../stores/app-store";
 import { useFollowScroll } from "../../hooks/use-follow-scroll";
@@ -83,6 +83,19 @@ function SubagentTranscriptSurface({ delegationId }: { delegationId: string }) {
     () => buildSubagentTranscript(messages, delegationId),
     [messages, delegationId],
   );
+  // History pages carry top-level rows only, so a reopened session shows a
+  // delegation's turns without the rows the delegate produced. Opening the
+  // tab reads them for every call of the chain that has none yet; a call whose
+  // delegate produced nothing settles that read once and is not asked again.
+  const loadDelegateRows = useAppStore((state) => state.loadDelegateRows);
+  const missingCalls = useMemo(
+    () => (transcriptResult?.turns ?? []).filter((turn) => turn.rows.length === 0).map((turn) => turn.callId),
+    [transcriptResult],
+  );
+  useEffect(() => {
+    if (!activeSessionId || missingCalls.length === 0) return;
+    void loadDelegateRows(activeSessionId, missingCalls);
+  }, [activeSessionId, loadDelegateRows, missingCalls]);
   const {
     scrollRef,
     contentRef,

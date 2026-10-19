@@ -23,10 +23,12 @@ test("a whole conversation is read as bounded pages, newest page first, and retu
   };
   const messages = await readConversationPages(read, { pageSize: 3, contentLimit: 64 });
   assert.deepEqual(messages.map((item) => item.id), all.map((item) => item.id));
+  // Every page reads the top-level rows: a delegate's rows are not part of the
+  // copied conversation and are the bulk of a long session's bytes.
   assert.deepEqual(reads, [
-    { messageLimit: 3, contentLimit: 64 },
-    { messageBefore: 4, messageLimit: 3, contentLimit: 64 },
-    { messageBefore: 1, messageLimit: 3, contentLimit: 64 },
+    { messageLimit: 3, contentLimit: 64, topLevelOnly: true },
+    { messageBefore: 4, messageLimit: 3, contentLimit: 64, topLevelOnly: true },
+    { messageBefore: 1, messageLimit: 3, contentLimit: 64, topLevelOnly: true },
   ]);
 });
 
@@ -36,7 +38,7 @@ test("the defaults are the host's page cap and the transcript display cap", asyn
     seen = options;
     return { session: { id: "s", messages: [message("only")], messageStart: 0, hasMoreBefore: false } };
   });
-  assert.deepEqual(seen, { messageLimit: CONVERSATION_READ_PAGE_SIZE, contentLimit: TRANSCRIPT_CONTENT_LIMIT });
+  assert.deepEqual(seen, { messageLimit: CONVERSATION_READ_PAGE_SIZE, contentLimit: TRANSCRIPT_CONTENT_LIMIT, topLevelOnly: true });
   assert.equal(CONVERSATION_READ_PAGE_SIZE, 1000);
 });
 
