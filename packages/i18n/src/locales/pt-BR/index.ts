@@ -431,6 +431,7 @@ export const ptBR = {
     pasteInProgress: "O conteúdo colado ainda está sendo salvo. Tente novamente em instantes.",
     loadingEarlierMessages: "Carregando mensagens anteriores…",
     loadLaterMessages: "Carregar mensagens posteriores",
+    loadEarlierMessages: "Carregar mensagens anteriores",
     showEarlierMessages: "Mostrar mensagens anteriores",
     copy: "Copiar",
     copied: "Copiado",

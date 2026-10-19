@@ -19,6 +19,28 @@ export const TRANSCRIPT_SCROLL_ROUNDING_TOLERANCE_PX = 1;
  */
 export const HISTORY_REVEAL_THRESHOLD_PX = 120;
 
+/**
+ * Rows the renderer fetches on its own before history progression stops
+ * asking for older pages.
+ *
+ * D269 keeps advancing while the history boundary stays in the near-top band.
+ * A transcript whose rows are mostly collapsed delegate tool rows never fills
+ * the viewport, so that progression walked a 300 MB session page by page into
+ * the renderer until V8 ran out of memory. Past this many loaded rows only a
+ * reader gesture — a scroll to the top, the minimap control, or the explicit
+ * button the transcript shows — fetches the next page. Growing the mounted
+ * window over rows that are already loaded is not budgeted; it adds no data.
+ */
+export const TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET = 600;
+
+/** Whether automatic (gesture-less) history progression may fetch another page. */
+export function autoHistoryFetchAllowed(
+  loadedRows: number,
+  budget: number = TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET,
+): boolean {
+  return loadedRows < budget;
+}
+
 export type TranscriptScrollerGeometry = {
   scrollTop: number;
   scrollHeight: number;

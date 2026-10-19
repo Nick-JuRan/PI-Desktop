@@ -26,6 +26,7 @@ import {
 import type { ComposerDraftSnapshot } from "../../lib/composer-smart-stop";
 import { capToolResultForDisplay } from "../../lib/tool-result-display";
 import { TRANSCRIPT_CONTENT_LIMIT, TRANSCRIPT_PAGE_SIZE } from "../../lib/transcript-reading";
+import { trimLiveTranscriptTail } from "../../lib/transcript-row-cap";
 import { recordPaneTranscript } from "../../lib/session-panes";
 import type { AppState, SessionHistoryWindow } from "../app-state";
 import type { StoreAccess } from "../slices/types";
@@ -399,10 +400,15 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
     const next = projectTranscriptEvent(current, envelope);
     if (next === current) return;
     liveSessionTranscripts.add(sessionId);
+    const window = sessionHistoryCache.get(sessionId) ?? state.sessionHistory[sessionId];
+    // A background session has no reader, so its cache releases the oldest rows
+    // of a tail that outgrew the row cap right here; the active session does the
+    // same through `releaseLiveTranscriptHead` once its reader follows the tail.
+    const trimmed = trimLiveTranscriptTail(next, current, window);
     cacheSessionTranscript(
       sessionId,
-      next,
-      sessionHistoryCache.get(sessionId) ?? state.sessionHistory[sessionId],
+      trimmed ? trimmed.messages : next,
+      trimmed ? trimmed.window : window,
     );
   }
 

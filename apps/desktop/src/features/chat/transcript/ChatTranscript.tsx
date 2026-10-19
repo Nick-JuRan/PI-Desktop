@@ -40,6 +40,8 @@ type ChatTranscriptProps = {
   messages: UiMessage[];
   hasMoreBefore?: boolean;
   onLoadOlder?: () => Promise<void>;
+  /** Release the oldest live rows once the tail outgrows the renderer row cap. */
+  onReleaseOlder?: () => void;
   isRunning: boolean;
   pendingPermission?: PendingPermission;
   /** Requests waiting behind this one, from other delegates (ADR 0062). */
@@ -81,6 +83,7 @@ function TranscriptBody({
   messages,
   hasMoreBefore = false,
   onLoadOlder,
+  onReleaseOlder,
   isRunning,
   pendingPermission,
   queuedPermissions = 0,
@@ -134,11 +137,13 @@ function TranscriptBody({
     tailEntry,
     minimapMessages,
     hasEarlierHistory,
+    historyFetchPaused,
     hydrationBounded,
     veilCovering,
     veilPhase,
     handleScroll,
     revealEarlierHistory,
+    loadEarlierHistory,
     releaseFollow,
     jumpToLatest,
     disclosureAnchorNotifier,
@@ -148,6 +153,7 @@ function TranscriptBody({
     compactions,
     hasMoreBefore,
     onLoadOlder,
+    onReleaseOlder,
     isRunning: transcriptRunning,
     pendingPermission,
     askPending,
@@ -279,6 +285,17 @@ function TranscriptBody({
           >
             {loadingOlder ? t("chat.loadingEarlierMessages") : null}
           </div>
+          {historyFetchPaused && !loadingOlder ? (
+            // Automatic history progression stopped at its row budget; the
+            // reader fetches the next page explicitly, one page per press.
+            <button
+              type="button"
+              className="transcript-load-later transcript-load-earlier"
+              onClick={loadEarlierHistory}
+            >
+              {t("chat.loadEarlierMessages")}
+            </button>
+          ) : null}
           {hydrationBounded ? (
             // One viewport of slack, not a per-entry estimate. The spacer exists
             // so the bounded commit can still scroll to its bottom; sizing it

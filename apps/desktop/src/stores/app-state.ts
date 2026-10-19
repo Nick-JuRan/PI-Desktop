@@ -268,6 +268,11 @@ export type AppState = {
   dismissAssistantErrorMessage: (messageId: string) => void;
   activateMessageRevision: (rootUserId: string, revisionIndex: number) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
+  /**
+   * Release the oldest rows of the active session's live transcript once it
+   * outgrew the renderer row cap; they stay one `hasMoreBefore` page away.
+   */
+  releaseLiveTranscriptHead: (sessionId: string) => void;
   rollbackWorkspaceChange: (
     messageId: string,
     snapshotId: string,

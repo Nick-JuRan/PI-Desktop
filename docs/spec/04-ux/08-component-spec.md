@@ -2215,6 +2215,23 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   scroll-only trigger could never fire again. A collapsed scroller and a pinned
   overflowing transcript whose `scrollTop` has been reset to 0 are not treated as
   "at the top", so opening or revealing a session cannot page back to the start.
+- **Automatic progression is budgeted** (D666): boundary-driven advancement
+  fetches older pages only while fewer than `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET`
+  (600) rows are loaded. A transcript whose rows are mostly collapsed delegate
+  tool rows never fills the viewport, and unbudgeted progression walked a
+  300 MB session page by page into the renderer until it ran out of memory.
+  Past the budget the top boundary shows a `chat.loadEarlierMessages` button;
+  that button, a scroll gesture that reaches the top, and the minimap
+  continuation control are reader gestures and fetch one page per use. Growing
+  the mounted window over rows that are already loaded is never budgeted.
+- **The live tail is bounded** (D666): once a followed live transcript exceeds
+  `TRANSCRIPT_LIVE_ROW_CAP` (800) rows, the pane releases its oldest rows back
+  to the host down to the auto-history budget, moves `messageStart` forward and
+  turns `hasMoreBefore` on, so the rows are one older-page fetch away. The
+  release runs only while the reader is pinned to the bottom of a visible,
+  non-historical pane; a reader who scrolled up keeps every row under their
+  viewport until they return to the latest turn. A background session's cache is
+  bounded the same way as it streams. The transcript on disk is unchanged.
 - **Minimap hover cost**: dash magnification is applied by writing a custom
   property per dash, and dash centers are measured in a separate read-only pass.
   Reading a dash's geometry inside the same loop that writes to it forces one

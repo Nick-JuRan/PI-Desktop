@@ -432,6 +432,7 @@ export const es = {
     "pasteInProgress": "Todavía guardando el contenido pegado. Inténtalo de nuevo en un momento.",
     "loadingEarlierMessages": "Cargando mensajes anteriores…",
     loadLaterMessages: "Cargar mensajes posteriores",
+    loadEarlierMessages: "Cargar mensajes anteriores",
     "showEarlierMessages": "Mostrar mensajes anteriores",
     "copy": "Copiar",
     "copied": "Copiado",

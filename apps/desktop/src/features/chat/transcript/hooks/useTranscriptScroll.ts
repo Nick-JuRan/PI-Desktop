@@ -27,6 +27,7 @@ import {
   TRANSCRIPT_WINDOW_MIN,
 } from "../../../../lib/transcript-window";
 import {
+  autoHistoryFetchAllowed,
   HISTORY_REVEAL_THRESHOLD_PX,
   isHistoryRevealPosition,
   isRecentScrollGesture,
@@ -37,6 +38,7 @@ import {
   type ScrollInputType,
 } from "../../../../lib/transcript-scroll";
 import { readScrollInputContext } from "../../../../lib/scroll-input";
+import { TRANSCRIPT_LIVE_ROW_CAP } from "../../../../lib/transcript-row-cap";
 import { useDisclosureAnchor } from "../../../../hooks/use-disclosure-anchor";
 import type { TranscriptSearchTarget } from "../../../../lib/transcript-reading";
 import { useTranscriptSearchFocus } from "../../../../hooks/use-transcript-search-focus";
@@ -49,6 +51,7 @@ type UseTranscriptScrollOptions = {
   compactions?: ContextCompactionMark[];
   hasMoreBefore: boolean;
   onLoadOlder?: () => Promise<void>;
+  onReleaseOlder?: () => void;
   isRunning: boolean;
   pendingPermission?: PendingPermission;
   askPending: boolean;
@@ -66,6 +69,7 @@ export function useTranscriptScroll({
   compactions,
   hasMoreBefore,
   onLoadOlder,
+  onReleaseOlder,
   isRunning,
   pendingPermission,
   askPending,
@@ -297,27 +301,36 @@ export function useTranscriptScroll({
 
   useEffect(() => cancelFollowScroll, [cancelFollowScroll]);
 
-  const loadOlder = useCallback(() => {
+  // Automatic progression (the history-boundary observer, D269) stops asking
+  // for older pages once this many rows are loaded; a reader gesture still
+  // fetches. Without the budget an underfilled transcript — one whose rows are
+  // mostly collapsed delegate tool rows — walked its whole history into the
+  // renderer.
+  const historyFetchPaused = hasMoreBefore && !autoHistoryFetchAllowed(messages.length);
+
+  const loadOlder = useCallback((source: "auto" | "gesture") => {
     const el = scrollRef.current;
     // Paging is a reading gesture, so a hidden pane never initiates one.
     if (!paneVisibleRef.current) return;
     if (!el || !hasMoreBefore || loadingOlder || !onLoadOlder) {
       return;
     }
+    if (source === "auto" && !autoHistoryFetchAllowed(messages.length)) return;
     // Prepending rows changes scrollHeight. Capture the old height so the
     // user's viewport stays anchored to the same message after the page lands.
     prependHeightRef.current = el.scrollHeight;
     setLoadingOlder(true);
     void onLoadOlder().finally(() => setLoadingOlder(false));
-  }, [hasMoreBefore, loadingOlder, onLoadOlder]);
+  }, [hasMoreBefore, loadingOlder, messages.length, onLoadOlder]);
 
   /**
    * Reaching the top escalates in two stages (D261): mount more of what is
    * already loaded, and only fetch an older page once the window covers all of
    * it. Both stages anchor the viewport the same way, because both change
-   * scrollHeight above the rows the user is reading.
+   * scrollHeight above the rows the user is reading. Mounting is never
+   * budgeted — it adds no data — while the fetch is, for automatic progression.
    */
-  const reachTop = useCallback(() => {
+  const reachTop = useCallback((source: "auto" | "gesture") => {
     const el = scrollRef.current;
     if (!el) return;
     const grown = growTranscriptWindow(windowSize, historyLengthRef.current);
@@ -328,8 +341,23 @@ export function useTranscriptScroll({
       setWindowSize(grown);
       return;
     }
-    loadOlder();
+    loadOlder(source);
   }, [loadOlder, windowSize]);
+
+  /** The explicit control shown once automatic progression has stopped. */
+  const loadEarlierHistory = useCallback(() => {
+    loadOlder("gesture");
+  }, [loadOlder]);
+
+  // A live tail that outgrows the row cap releases its oldest rows while the
+  // reader follows the stream. A reader who scrolled up keeps every row they
+  // are looking at; the release waits until they return to the latest turn.
+  // Historical reading windows hold their own snapshot and are not trimmed.
+  useEffect(() => {
+    if (!paneVisible || readingWindow || !onReleaseOlder) return;
+    if (!pinnedRef.current || messages.length <= TRANSCRIPT_LIVE_ROW_CAP) return;
+    onReleaseOlder();
+  }, [messages.length, onReleaseOlder, paneVisible, readingWindow]);
 
   // Anchors the viewport whenever rows appear above it — a fetched older page
   // (`messages.length`) or a grown mounted window (`windowSize`, D261). Both add
@@ -376,7 +404,9 @@ export function useTranscriptScroll({
       paneVisibleRef.current &&
       isHistoryRevealPosition(el, pinnedRef.current && !gesturing)
     ) {
-      reachTop();
+      // A scroll event the reader produced is a gesture; one no input produced
+      // (a collapsed box, a programmatic correction) is automatic progression.
+      reachTop(gesturing ? "gesture" : "auto");
     }
     if (readingWindow) {
       pinnedRef.current = false;
@@ -671,7 +701,7 @@ export function useTranscriptScroll({
     const el = scrollRef.current;
     if (!el) return;
     if (isHistoryRevealPosition(el)) {
-      reachTop();
+      reachTop("gesture");
       return;
     }
     releaseDisclosureAnchor();
@@ -724,7 +754,7 @@ export function useTranscriptScroll({
         ) {
           return;
         }
-        reachTop();
+        reachTop("auto");
       });
     };
 
@@ -778,11 +808,13 @@ export function useTranscriptScroll({
     tailEntry,
     minimapMessages,
     hasEarlierHistory,
+    historyFetchPaused,
     hydrationBounded,
     veilCovering,
     veilPhase,
     handleScroll,
     revealEarlierHistory,
+    loadEarlierHistory,
     scrollToBottom,
     jumpToLatest,
     releaseFollow,
