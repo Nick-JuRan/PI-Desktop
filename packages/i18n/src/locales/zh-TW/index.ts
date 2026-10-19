@@ -435,6 +435,7 @@ export const zhTW = {
     loadingEarlierMessages: "正在載入更早的訊息…",
     loadLaterMessages: "載入後續訊息",
     loadEarlierMessages: "載入更早的訊息",
+    openConversationStart: "回到對話開頭",
     showEarlierMessages: "顯示更早的訊息",
     copy: "複製",
     copied: "已複製",

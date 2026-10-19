@@ -433,6 +433,7 @@ export const de = {
     "loadingEarlierMessages": "Frühere Nachrichten laden…",
     loadLaterMessages: "Spätere Nachrichten laden",
     loadEarlierMessages: "Frühere Nachrichten laden",
+    openConversationStart: "Zum Anfang der Unterhaltung",
     "showEarlierMessages": "Frühere Nachrichten anzeigen",
     "copy": "Kopieren",
     "copied": "Kopiert",

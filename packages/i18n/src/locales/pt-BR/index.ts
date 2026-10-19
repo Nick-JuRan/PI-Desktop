@@ -432,6 +432,7 @@ export const ptBR = {
     loadingEarlierMessages: "Carregando mensagens anteriores…",
     loadLaterMessages: "Carregar mensagens posteriores",
     loadEarlierMessages: "Carregar mensagens anteriores",
+    openConversationStart: "Ir para o início da conversa",
     showEarlierMessages: "Mostrar mensagens anteriores",
     copy: "Copiar",
     copied: "Copiado",

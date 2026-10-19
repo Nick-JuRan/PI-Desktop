@@ -56,6 +56,7 @@ This log freezes previously open questions into concrete decisions.
 | D662 | Open scoped HTML files in the work-panel Browser from plugins | **Add `pi.fs.openInBrowser(pathFromRoot)` under `fs.read`. The host applies the plugin's normal read containment, protected-path, credential deny-list, declared scope, and registered project-folder checks; only existing `.html`, `.htm`, and `.xhtml` files qualify. After validation, Main asks the renderer to create a Browser resource tab for the active local session. The Browser plugin must be enabled. This grants no `browser.cdp`, changes no BrowserPreview or local-file navigation policy, and adds no host-core protocol or persisted-state change. See ADR 0330, `07-plugins/03-plugin-api.md`, `07-plugins/13-plugin-permissions-matrix.md`, `04-ux/08-component-spec.md`, and E2E-153.** | The File Manager needs an in-app HTML preview, while granting its plugin `browser.cdp` would also expose unrelated page inspection and control. |
 | D665 | Renderer transcript reads are bounded; transcript mutations name ids to the host | **Amend D199 / D390 / ADR 0120 / ADR 0216. Electron main fills in `messageLimit` (200) and `contentLimit` (64 KiB) for every renderer `session/get` that omits them, so the renderer never receives a whole transcript; the sidecar keeps the unbounded `session.get` through its own host proxy, so model context stays lossless. The live stream keeps only a display copy of each tool result (`tool_update` / `tool_end`), capped like a reloaded page; the transcript keeps the full payload. Message delete and the Stop undo of an unanswered prompt call the new `session.deleteMessage({ sessionId, messageId }) -> { deletedIds }` behind the shared rewrite gate; the host applies the user-turn rule and rewrites the transcript itself, and the renderer calls `session.replaceMessages` nowhere any more. `session.activateRevision` takes an optional `prefix`, refuses a root missing from the transcript when none is sent (`NOT_FOUND`), and the renderer re-reads a bounded page instead of receiving the rewritten transcript. Edit and retry hydrate the target message through one `messageAround` window; copy-conversation walks bounded pages. Renderer recovery stops auto-reloading after three reloads within five minutes, records `recovery: "crash-loop"`, and asks the user to reload or quit. Protocol version stays at 11; the new IPC channel and host method are additive.** | A delegation run that read patent full texts every few seconds grew one transcript to ~200 MB. Every unbounded renderer read of it (abort, delete, retry, edit, copy) and the full-size live `tool_end` rows pushed the renderer past the V8 heap, Electron reloaded it, and the user reopened the same session into the same death (exit code -536870904, four times in two days). Forcing a bound on reads alone would have made the renderer-side `replaceMessages` write-backs rewrite the transcript from a partial, display-capped window — a data-loss path — so the mutations had to move to the host first. |
 | D666 | Automatic history progression is budgeted | **Amend D269 / D665. Automatic history progression (the history-boundary observer) fetches older pages only while fewer than `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET` (600) rows are loaded; past that the transcript shows a `chat.loadEarlierMessages` button at the boundary, and only reader gestures — that button, a scroll that reaches the top, the minimap continuation — fetch further, one page per use. Growing the mounted window over already-loaded rows is never budgeted. Display truncation scans at most `limit` code points instead of materializing a multi-MB payload. A loaded canonical history stays loaded (the long-history E2E invariant is unchanged); bounding the live tail's row count is deferred to a decision of its own. The transcript on disk, persistence, and model context are unchanged.** | D665 bounded how large one row the renderer holds may be, not how many. A delegation run that read one patent full text every few seconds grew a session to 331 MB in 42 minutes; its rows are collapsed delegate tool rows that never fill the viewport, so D269 progression fetched the whole history page by page on every open ("Loading earlier messages…" never ending) until the renderer ran out of memory again (exit code -536870904) the day after D665 landed. |
+| D667 | The history boundary opens the conversation start; an explicit older-page press stays at the top | **Amend D269 / D666. Once automatic progression has paused, the boundary offers `chat.openConversationStart` beside `chat.loadEarlierMessages`: one bounded read of the first page (`messageBefore: TRANSCRIPT_PAGE_SIZE`, `messageLimit: TRANSCRIPT_PAGE_SIZE`) opens the conversation at its start as a historical reading window (`restored`), with `hasMoreAfter` forward paging and the existing latest-turn control to return. The control is absent for remote sessions, whose history exposes cursors rather than offsets. An explicit older-page press releases follow and holds the viewport at the top while the page lands and the mounted window grows over it; a scroll gesture, a jump to the latest turn, or a session change ends the hold. Scroll-driven paging keeps its anchoring. No host, protocol, or persistence change.** | With D666 in place a 3,794-row session (331 MB; 85 KB per row on average) was still 38 older pages away from its own prompt, and each press of the older-page control anchored the viewport to the row already on screen, so the fetched rows and the control itself landed out of view and the press read as a no-op. Navigating is the elegant answer; moving or trimming the rows is not — the loaded canonical history stays loaded, and the transcript, the persistence outbox and the model context are untouched. |
 
 ## B. Secondary implementation defaults
 
@@ -7855,3 +7856,33 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   provenance, truncation cost), `apps/desktop/test/transcript-window.test.mjs`,
   and `apps/desktop/test/session-switch-performance.test.mjs`. See
   `04-ux/08-component-spec.md` (Conversation minimap and transcript history).
+
+## 2026-10-19 — The history boundary opens the conversation start (D667)
+
+- D667 amends D269 and D666. With automatic progression budgeted, a 3,794-row
+  session (331 MB, 85 KB per row on average) was still 38 older pages from its
+  own prompt, and each press of `chat.loadEarlierMessages` anchored the viewport
+  to the row already on screen, so the fetched rows and the control itself
+  landed out of view: the press read as a no-op.
+- Once automatic progression has paused, the boundary offers
+  `chat.openConversationStart` beside the older-page control. One bounded read
+  of the first page (`messageBefore: TRANSCRIPT_PAGE_SIZE`,
+  `messageLimit: TRANSCRIPT_PAGE_SIZE`, display-capped) opens the conversation
+  at its start as a historical reading window (`restored`): the window holds its
+  own snapshot, `hasMoreAfter` forward paging continues from its end through the
+  existing `loadTranscriptPage("after")`, and the latest-turn control returns to
+  the live tail. Remote sessions, whose history exposes cursors rather than
+  offsets, do not get the control (`openTranscriptStart` refuses them).
+- An explicit older-page press releases follow and holds `scrollTop` at 0 while
+  the page lands and the mounted window (D261) grows over it, so the reader sees
+  the start of what they asked for and the control stays reachable. The
+  reader's next scroll gesture, a jump to the latest turn, or a session change
+  ends the hold. Scroll-driven paging keeps its row anchoring.
+- Nothing moves or shrinks: the loaded canonical history stays loaded, and the
+  transcript on disk, the persistence outbox, and the sidecar's model context are
+  untouched. No host, protocol, or storage change.
+- Covered by `apps/desktop/test/transcript-reading.test.mjs`
+  (`openTranscriptStart`: first-page read, forward paging, return, remote
+  refusal, failed-read rollback) and
+  `apps/desktop/test/transcript-row-growth.test.mjs` (boundary controls, hold at
+  top, pane wiring). See `04-ux/08-component-spec.md`.

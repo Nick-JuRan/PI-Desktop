@@ -31,12 +31,35 @@ test("the hook budgets only automatic progression and keeps every reader gesture
   assert.match(source, /reachTop\("auto"\);\s*\}\);\s*\};/, "the boundary observer advances as automatic progression");
   assert.match(source, /reachTop\(gesturing \? "gesture" : "auto"\)/);
   assert.match(source, /if \(isHistoryRevealPosition\(el\)\) \{\s*reachTop\("gesture"\);/);
-  assert.match(source, /const loadEarlierHistory = useCallback\(\(\) => \{\s*loadOlder\("gesture"\);/);
+  assert.match(source, /const loadEarlierHistory = useCallback\(\(\) => \{[\s\S]*?loadOlder\("gesture"\);/);
   assert.match(source, /if \(source === "auto" && !autoHistoryFetchAllowed\(messages\.length\)\) return;/);
   // Growing the mounted window is never budgeted: it comes before the fetch.
   assert.match(source, /const grown = growTranscriptWindow\(windowSize, historyLengthRef\.current\);[\s\S]*?setWindowSize\(grown\);\s*return;\s*\}\s*loadOlder\(source\);/);
   // The paused state is surfaced as an explicit control, one page per press.
   assert.match(source, /historyFetchPaused && !loadingOlder \? \([\s\S]*?onClick=\{loadEarlierHistory\}[\s\S]*?chat\.loadEarlierMessages/);
+});
+
+test("the paused boundary offers the conversation start, and an explicit load keeps the viewport at the top", async () => {
+  const source = await readTranscriptSource();
+  // Two controls once automatic progression paused: the next older page, and the
+  // start of the conversation in one request. The latter is absent when the
+  // source cannot seek by offset (remote history).
+  assert.match(
+    source,
+    /historyFetchPaused && !loadingOlder \? \([\s\S]*?onClick=\{loadEarlierHistory\}[\s\S]*?\{onOpenStart \? \([\s\S]*?onClick=\{onOpenStart\}[\s\S]*?chat\.openConversationStart/,
+  );
+  // The explicit press holds the viewport at the top through the page landing
+  // and the window growth, and releases follow; a reader gesture ends the hold.
+  assert.match(source, /const loadEarlierHistory = useCallback\(\(\) => \{\s*holdTopRef\.current = true;\s*releaseFollow\(\);\s*loadOlder\("gesture"\);/);
+  assert.match(source, /if \(holdTopRef\.current\) \{\s*el\.scrollTop = 0;[\s\S]*?return;\s*\}\s*const delta = el\.scrollHeight - previousHeight;/);
+  assert.match(source, /if \(gesturing\) holdTopRef\.current = false;/);
+  assert.match(source, /const jumpToLatest = useCallback\(\(\) => \{[\s\S]*?pinnedRef\.current = true;\s*holdTopRef\.current = false;/);
+});
+
+test("the session pane wires the conversation start for local sessions only", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const pane = await readFile(new URL("../src/components/SessionPane.tsx", import.meta.url), "utf8");
+  assert.match(pane, /onOpenStart=\{isRemoteSession\(\{ id: sessionId \}\) \? undefined : \(\) => void openTranscriptStart\(sessionId\)\}/);
 });
 
 test("display truncation costs O(limit) on a multi-MB payload and counts code points", () => {

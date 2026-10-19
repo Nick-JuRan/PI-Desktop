@@ -435,6 +435,7 @@ export const zhCN = {
     loadingEarlierMessages: "正在加载更早的消息…",
     loadLaterMessages: "加载后续消息",
     loadEarlierMessages: "加载更早的消息",
+    openConversationStart: "回到对话开头",
     showEarlierMessages: "显示更早的消息",
     copy: "复制",
     copied: "已复制",

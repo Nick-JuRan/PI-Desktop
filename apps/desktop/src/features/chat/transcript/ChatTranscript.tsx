@@ -40,6 +40,8 @@ type ChatTranscriptProps = {
   messages: UiMessage[];
   hasMoreBefore?: boolean;
   onLoadOlder?: () => Promise<void>;
+  /** Open the conversation at its first page; absent when the source cannot seek. */
+  onOpenStart?: () => void;
   isRunning: boolean;
   pendingPermission?: PendingPermission;
   /** Requests waiting behind this one, from other delegates (ADR 0062). */
@@ -81,6 +83,7 @@ function TranscriptBody({
   messages,
   hasMoreBefore = false,
   onLoadOlder,
+  onOpenStart,
   isRunning,
   pendingPermission,
   queuedPermissions = 0,
@@ -282,15 +285,27 @@ function TranscriptBody({
             {loadingOlder ? t("chat.loadingEarlierMessages") : null}
           </div>
           {historyFetchPaused && !loadingOlder ? (
-            // Automatic history progression stopped at its row budget; the
-            // reader fetches the next page explicitly, one page per press.
-            <button
-              type="button"
-              className="transcript-load-later transcript-load-earlier"
-              onClick={loadEarlierHistory}
-            >
-              {t("chat.loadEarlierMessages")}
-            </button>
+            // Automatic history progression stopped at its row budget. The
+            // reader either fetches the next older page explicitly, one page per
+            // press, or opens the conversation at its start in one request.
+            <div className="transcript-history-controls">
+              <button
+                type="button"
+                className="transcript-load-later transcript-load-earlier"
+                onClick={loadEarlierHistory}
+              >
+                {t("chat.loadEarlierMessages")}
+              </button>
+              {onOpenStart ? (
+                <button
+                  type="button"
+                  className="transcript-load-later transcript-open-start"
+                  onClick={onOpenStart}
+                >
+                  {t("chat.openConversationStart")}
+                </button>
+              ) : null}
+            </div>
           ) : null}
           {hydrationBounded ? (
             // One viewport of slack, not a per-entry estimate. The spacer exists

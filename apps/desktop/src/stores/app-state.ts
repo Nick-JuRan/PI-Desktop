@@ -209,6 +209,8 @@ export type AppState = {
   navigateTranscript: (target: Omit<TranscriptSearchTarget, "requestId">) => Promise<void>;
   restoreTranscriptReading: (sessionId: string, position: TranscriptReadingPosition, signal: AbortSignal) => Promise<boolean>;
   loadTranscriptPage: (sessionId: string, direction: "before" | "after") => Promise<void>;
+  /** Open the conversation at its first page as a historical reading window. */
+  openTranscriptStart: (sessionId: string) => Promise<void>;
   returnToLatestTranscript: (sessionId: string) => void;
   selectSession: (
     id: string,

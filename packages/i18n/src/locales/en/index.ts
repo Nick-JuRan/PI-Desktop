@@ -444,6 +444,7 @@ export const en = {
     loadingEarlierMessages: "Loading earlier messages…",
     loadLaterMessages: "Load later messages",
     loadEarlierMessages: "Load earlier messages",
+    openConversationStart: "Go to the beginning",
     showEarlierMessages: "Show earlier messages",
     copy: "Copy",
     copied: "Copied",
