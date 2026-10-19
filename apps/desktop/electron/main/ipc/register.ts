@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { dialog, shell, type BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from "electron";
-import { err, ErrorCodes, IPC, ok, type Result } from "@pi-desktop/shared";
+import { err, ErrorCodes, IPC, ok, type LifecycleDialogChoice, type Result } from "@pi-desktop/shared";
 import type { AgentHostBridge } from "../agent-host-bridge";
 import type { AgentSidecar } from "../agent-sidecar";
 import type { HostProcess } from "../host-process";
@@ -24,6 +24,7 @@ import { registerSessionIpc } from "./session-ipc";
 import { registerSettingsIpc } from "./settings-ipc";
 import { registerStorageIpc } from "../storage/ipc";
 import { registerConfigSyncIpc } from "./config-sync-ipc";
+import { registerBackgroundTasksIpc } from "./background-tasks-ipc";
 import { registerSkillsIpc } from "./skills-ipc";
 import { registerAgentImportIpc } from "./agent-import-ipc";
 import { registerRemoteHostIpc } from "./remote-host-ipc";
@@ -59,6 +60,10 @@ export type RegisterIpcDependencies = {
   getBackendRouter?: () => BackendRouter | null;
   getNotificationViewingSessionId: () => string | null;
   setNotificationViewingSessionId: (sessionId: string | null) => void;
+  /** The session on screen, as the shell reported it (plugin `session:activated`). */
+  setActivePluginSession: (
+    next: { sessionId: string; projectPath: string | null } | null,
+  ) => void;
   activeUserSubagentDocuments: (...args: any[]) => Promise<any>;
   disabledBuiltinSubagents: () => Promise<string[]>;
   disabledBuiltinSkills: () => Promise<string[]>;
@@ -66,6 +71,8 @@ export type RegisterIpcDependencies = {
   liveVoiceWidget?: LiveVoiceWidget;
   restartForStorage: () => void;
   mcpOAuth?: McpOAuthManager;
+  markLifecycleDialogRendererReady: (window: BrowserWindow) => boolean;
+  respondLifecycleDialog: (senderWindowId: number, requestId: unknown, choice: LifecycleDialogChoice) => boolean;
   [name: string]: any;
 };
 
@@ -91,6 +98,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getBackendRouter,
     getNotificationViewingSessionId,
     setNotificationViewingSessionId,
+    setActivePluginSession,
     getPluginLauncherWindow,
     togglePluginLauncher,
     safeOpenExternal,
@@ -140,6 +148,8 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     applyCloseBehavior,
     getCloseBehavior,
     markMenuRendererReady,
+    markLifecycleDialogRendererReady,
+    respondLifecycleDialog,
     traySessions,
     taskbarUnreadBadge,
     executeNativeMenuAction,
@@ -296,6 +306,10 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getHost,
     sendToRenderer,
   });
+  registerBackgroundTasksIpc({
+    registrar,
+    getHost,
+  });
   registerProviderIpc({
     registrar,
     getHost,
@@ -340,6 +354,8 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     applyCloseBehavior,
     getCloseBehavior,
     markMenuRendererReady,
+    markLifecycleDialogRendererReady,
+    respondLifecycleDialog,
     executeNativeMenuAction,
   });
   registerScheduledIpc({
@@ -478,7 +494,6 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     currentWorkspacePath,
   });
 
-
   registerPluginUiIpc({
     registrar,
     plugins,
@@ -489,6 +504,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     currentWorkspacePath,
     getUpdaterLocale,
     getPluginPanelTheme,
+    setActivePluginSession,
   });
 
   registerSpeechIpc({ registrar, speech });
