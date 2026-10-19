@@ -1,5 +1,4 @@
-import { app, BrowserWindow, dialog, nativeTheme, screen, type Tray } from "electron";
-import { catalogs, resolveLocale } from "@pi-desktop/i18n";
+import { app, BrowserWindow, nativeTheme, screen, type Tray } from "electron";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -43,7 +42,7 @@ import {
   usesWindows11NativeCorners,
 } from "../window-native-corners";
 import { applyMainWindowBackground, mainWindowBackgroundOptions } from "../window-background";
-import { recoverRendererAfterGone, resetRendererRecoveryHistory } from "../renderer-recovery";
+import { recoverRendererAfterGone } from "../renderer-recovery";
 
 function windowsIconPath(): string | undefined {
   if (process.platform !== "win32") return undefined;
@@ -524,7 +523,7 @@ export async function createWindow({
       windowDestroyed: window.isDestroyed(),
       webContentsDestroyed: window.webContents.isDestroyed(),
       reload: () => window.webContents.reload(),
-      log: (rendererDetails, reloaded, recovery) => {
+      log: (rendererDetails, reloaded) => {
         logger.app(
           "diagnostics",
           rendererDetails.reason === "clean-exit" ? "info" : "warn",
@@ -535,36 +534,9 @@ export async function createWindow({
               reason: rendererDetails.reason,
               exitCode: rendererDetails.exitCode,
               reloaded,
-              recovery,
             },
           },
         );
-      },
-      onCrashLoop: (rendererDetails) => {
-        // The renderer died repeatedly within minutes; reloading it into the
-        // same state again helps nobody. Leave the choice to the user.
-        if (window.isDestroyed()) return;
-        const copy = catalogs[resolveLocale(app.getLocale())].diagnostics.rendererCrashLoop;
-        void dialog
-          .showMessageBox(window, {
-            type: "error",
-            title: copy.title,
-            message: copy.message,
-            detail: `${rendererDetails.reason} (${rendererDetails.exitCode})`,
-            buttons: [copy.reload, copy.quit],
-            defaultId: 0,
-            cancelId: 1,
-          })
-          .then(({ response }) => {
-            if (window.isDestroyed()) return;
-            if (response === 0) {
-              resetRendererRecoveryHistory();
-              window.webContents.reload();
-            } else {
-              app.quit();
-            }
-          })
-          .catch(() => undefined);
       },
     });
   });

@@ -27,7 +27,6 @@ import {
   TRANSCRIPT_WINDOW_MIN,
 } from "../../../../lib/transcript-window";
 import {
-  autoHistoryFetchAllowed,
   HISTORY_REVEAL_THRESHOLD_PX,
   isHistoryRevealPosition,
   isRecentScrollGesture,
@@ -92,13 +91,6 @@ export function useTranscriptScroll({
   const wasRunningRef = useRef(isRunning);
   const followFrameRef = useRef(0);
   const prependHeightRef = useRef<number | null>(null);
-  // Set by the explicit control: the reader asked to see earlier messages, so
-  // the viewport stays at the top while the page lands and the mounted window
-  // grows over it, instead of being anchored to the row they were already
-  // reading — which left the new rows (and the control itself) out of view and
-  // made the press look like a no-op. The reader's next scroll gesture ends it.
-  const holdTopRef = useRef(false);
-
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [showJump, setShowJump] = useState(false);
 
@@ -226,7 +218,6 @@ export function useTranscriptScroll({
   useLayoutEffect(() => {
     releaseDisclosureAnchor();
     cancelFollowScroll();
-    holdTopRef.current = false;
     pinnedRef.current = savedReadingPosition?.pinned ?? true;
     setShowJump(!pinnedRef.current);
     if (pinnedRef.current) scrollToBottom();
@@ -306,36 +297,27 @@ export function useTranscriptScroll({
 
   useEffect(() => cancelFollowScroll, [cancelFollowScroll]);
 
-  // Automatic progression (the history-boundary observer, D269) stops asking
-  // for older pages once this many rows are loaded; a reader gesture still
-  // fetches. Without the budget an underfilled transcript — one whose rows are
-  // mostly collapsed delegate tool rows — walked its whole history into the
-  // renderer.
-  const historyFetchPaused = hasMoreBefore && !autoHistoryFetchAllowed(messages.length);
-
-  const loadOlder = useCallback((source: "auto" | "gesture") => {
+  const loadOlder = useCallback(() => {
     const el = scrollRef.current;
     // Paging is a reading gesture, so a hidden pane never initiates one.
     if (!paneVisibleRef.current) return;
     if (!el || !hasMoreBefore || loadingOlder || !onLoadOlder) {
       return;
     }
-    if (source === "auto" && !autoHistoryFetchAllowed(messages.length)) return;
     // Prepending rows changes scrollHeight. Capture the old height so the
     // user's viewport stays anchored to the same message after the page lands.
     prependHeightRef.current = el.scrollHeight;
     setLoadingOlder(true);
     void onLoadOlder().finally(() => setLoadingOlder(false));
-  }, [hasMoreBefore, loadingOlder, messages.length, onLoadOlder]);
+  }, [hasMoreBefore, loadingOlder, onLoadOlder]);
 
   /**
    * Reaching the top escalates in two stages (D261): mount more of what is
    * already loaded, and only fetch an older page once the window covers all of
    * it. Both stages anchor the viewport the same way, because both change
-   * scrollHeight above the rows the user is reading. Mounting is never
-   * budgeted — it adds no data — while the fetch is, for automatic progression.
+   * scrollHeight above the rows the user is reading.
    */
-  const reachTop = useCallback((source: "auto" | "gesture") => {
+  const reachTop = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
     const grown = growTranscriptWindow(windowSize, historyLengthRef.current);
@@ -346,15 +328,8 @@ export function useTranscriptScroll({
       setWindowSize(grown);
       return;
     }
-    loadOlder(source);
+    loadOlder();
   }, [loadOlder, windowSize]);
-
-  /** The explicit control shown once automatic progression has stopped. */
-  const loadEarlierHistory = useCallback(() => {
-    holdTopRef.current = true;
-    releaseFollow();
-    loadOlder("gesture");
-  }, [loadOlder, releaseFollow]);
 
   // Anchors the viewport whenever rows appear above it — a fetched older page
   // (`messages.length`) or a grown mounted window (`windowSize`, D261). Both add
@@ -365,12 +340,6 @@ export function useTranscriptScroll({
     const el = scrollRef.current;
     prependHeightRef.current = null;
     if (!el) return;
-    if (holdTopRef.current) {
-      el.scrollTop = 0;
-      lastScrollTopRef.current = 0;
-      if (transcriptHasLayout(el)) lastLaidOutScrollTopRef.current = 0;
-      return;
-    }
     const delta = el.scrollHeight - previousHeight;
     if (delta <= 0) return;
     el.scrollTop += delta;
@@ -403,14 +372,11 @@ export function useTranscriptScroll({
       performance.now(),
       lastScrollGestureAtRef.current,
     );
-    if (gesturing) holdTopRef.current = false;
     if (
       paneVisibleRef.current &&
       isHistoryRevealPosition(el, pinnedRef.current && !gesturing)
     ) {
-      // A scroll event the reader produced is a gesture; one no input produced
-      // (a collapsed box, a programmatic correction) is automatic progression.
-      reachTop(gesturing ? "gesture" : "auto");
+      reachTop();
     }
     if (readingWindow) {
       pinnedRef.current = false;
@@ -705,7 +671,7 @@ export function useTranscriptScroll({
     const el = scrollRef.current;
     if (!el) return;
     if (isHistoryRevealPosition(el)) {
-      reachTop("gesture");
+      reachTop();
       return;
     }
     releaseDisclosureAnchor();
@@ -723,7 +689,6 @@ export function useTranscriptScroll({
     cancelReadingPosition();
     releaseDisclosureAnchor();
     pinnedRef.current = true;
-    holdTopRef.current = false;
     setShowJump(false);
     scrollToBottom(
       window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -759,7 +724,7 @@ export function useTranscriptScroll({
         ) {
           return;
         }
-        reachTop("auto");
+        reachTop();
       });
     };
 
@@ -813,13 +778,11 @@ export function useTranscriptScroll({
     tailEntry,
     minimapMessages,
     hasEarlierHistory,
-    historyFetchPaused,
     hydrationBounded,
     veilCovering,
     veilPhase,
     handleScroll,
     revealEarlierHistory,
-    loadEarlierHistory,
     scrollToBottom,
     jumpToLatest,
     releaseFollow,

@@ -431,8 +431,6 @@ export const ptBR = {
     pasteInProgress: "O conteúdo colado ainda está sendo salvo. Tente novamente em instantes.",
     loadingEarlierMessages: "Carregando mensagens anteriores…",
     loadLaterMessages: "Carregar mensagens posteriores",
-    loadEarlierMessages: "Carregar mensagens anteriores",
-    openConversationStart: "Ir para o início da conversa",
     showEarlierMessages: "Mostrar mensagens anteriores",
     copy: "Copiar",
     copied: "Copiado",
@@ -773,14 +771,6 @@ export const ptBR = {
     firstPrompt: "Enviar sua primeira mensagem",
     loadPlugin: "Carregar um plugin de desenvolvimento (opcional)",
     dismiss: "Dispensar"
-  },
-  diagnostics: {
-    rendererCrashLoop: {
-      title: "A janela continua travando",
-      message: "O PI-Desktop recarregou esta janela várias vezes nos últimos minutos e ela parou de responder novamente a cada vez. Recarregue mais uma vez ou saia para proteger seus dados. Se isso acontece após abrir a mesma conversa, ela pode ser grande demais para ser exibida na janela; a conversa em si está intacta.",
-      reload: "Recarregar",
-      quit: "Sair",
-    },
   },
   settings: {
     ...forkSettings,

@@ -6,6 +6,7 @@ import { readStoreModule } from "./helpers/source-contracts.mjs";
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const {
   capToolResultForDisplay,
+  countCodePoints,
   DISPLAY_TRUNCATION_MARKER,
   LIVE_TOOL_RESULT_DISPLAY_LIMIT,
   previewValue,
@@ -64,4 +65,25 @@ test("the live stream stores only the display copy of a tool result", async () =
     assert.doesNotMatch(source, /toolResult:\s*event\.(result|partialResult)/);
     assert.doesNotMatch(source, /JSON\.stringify\(event\.result/);
   }
+});
+
+test("display truncation costs O(limit) on a multi-MB payload and counts code points", () => {
+  const huge = "x".repeat(8 * 1024 * 1024);
+  const started = performance.now();
+  const clipped = truncateDisplayText(huge, 1_000);
+  const elapsed = performance.now() - started;
+  assert.ok(clipped.endsWith(DISPLAY_TRUNCATION_MARKER));
+  assert.equal(clipped.length, 1_000);
+  assert.ok(elapsed < 200, `truncating 8 MB took ${elapsed.toFixed(1)} ms`);
+
+  // Astral characters are one code point each: six emoji (12 UTF-16 units) fit a limit of 6.
+  const emoji = "😀".repeat(6);
+  assert.equal(truncateDisplayText(emoji, 6), emoji);
+  assert.equal(countCodePoints(emoji), 6);
+  assert.equal(countCodePoints(emoji, 3), 4, "a longer string reports limit + 1");
+  // A cut never splits a surrogate pair.
+  const cut = truncateDisplayText("😀".repeat(200), DISPLAY_TRUNCATION_MARKER.length + 5);
+  assert.equal(cut, "😀".repeat(5) + DISPLAY_TRUNCATION_MARKER);
+  assert.equal(truncateDisplayText("short", 10), "short");
+  assert.equal(truncateDisplayText("abcdef", 3), DISPLAY_TRUNCATION_MARKER.slice(0, 3));
 });

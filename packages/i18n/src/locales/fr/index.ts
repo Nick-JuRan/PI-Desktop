@@ -432,8 +432,6 @@ export const fr = {
     "pasteInProgress": "Toujours enregistrer le contenu collé. Réessayez dans un instant.",
     "loadingEarlierMessages": "Chargement des messages précédents…",
     loadLaterMessages: "Charger les messages suivants",
-    loadEarlierMessages: "Charger les messages précédents",
-    openConversationStart: "Aller au début de la conversation",
     "showEarlierMessages": "Afficher les messages précédents",
     "copy": "Copier",
     "copied": "Copié",
@@ -774,14 +772,6 @@ export const fr = {
     "firstPrompt": "Envoyer votre premier message",
     "loadPlugin": "Charger un plugin de développement (facultatif)",
     "dismiss": "Ignorer"
-  },
-  "diagnostics": {
-    "rendererCrashLoop": {
-      "title": "La fenêtre plante à répétition",
-      "message": "PI-Desktop a rechargé cette fenêtre plusieurs fois ces dernières minutes, et elle a cessé de répondre à chaque fois. Rechargez-la encore une fois, ou quittez pour protéger vos données. Si cela survient après l'ouverture de la même conversation, elle est peut-être trop volumineuse pour être affichée ; la conversation elle-même est intacte.",
-      "reload": "Recharger",
-      "quit": "Quitter"
-    }
   },
   "settings": {
     ...forkSettings,

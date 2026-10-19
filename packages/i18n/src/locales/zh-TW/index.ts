@@ -434,8 +434,6 @@ export const zhTW = {
     pasteInProgress: "貼上內容仍在儲存中，請稍後再發送。",
     loadingEarlierMessages: "正在載入更早的訊息…",
     loadLaterMessages: "載入後續訊息",
-    loadEarlierMessages: "載入更早的訊息",
-    openConversationStart: "回到對話開頭",
     showEarlierMessages: "顯示更早的訊息",
     copy: "複製",
     copied: "已複製",
@@ -779,14 +777,6 @@ export const zhTW = {
     firstPrompt: "傳送第一條訊息",
     loadPlugin: "載入開發外掛（可選）",
     dismiss: "關閉",
-  },
-  diagnostics: {
-    rendererCrashLoop: {
-      title: "視窗持續當機",
-      message: "PI-Desktop 在過去幾分鐘內多次重新載入此視窗，但它每次都再次停止回應。可以再重新載入一次，或退出以保護資料。如果每次都是在開啟同一個對話之後發生，該對話可能過大、無法在視窗中顯示；對話記錄本身沒有損壞。",
-      reload: "重新載入",
-      quit: "退出",
-    },
   },
   settings: {
     ...forkSettings,

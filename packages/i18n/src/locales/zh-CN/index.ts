@@ -434,8 +434,6 @@ export const zhCN = {
     pasteInProgress: "粘贴内容仍在保存中，请稍后再发送。",
     loadingEarlierMessages: "正在加载更早的消息…",
     loadLaterMessages: "加载后续消息",
-    loadEarlierMessages: "加载更早的消息",
-    openConversationStart: "回到对话开头",
     showEarlierMessages: "显示更早的消息",
     copy: "复制",
     copied: "已复制",
@@ -779,14 +777,6 @@ export const zhCN = {
     firstPrompt: "发送第一条消息",
     loadPlugin: "加载开发插件（可选）",
     dismiss: "关闭",
-  },
-  diagnostics: {
-    rendererCrashLoop: {
-      title: "窗口持续崩溃",
-      message: "PI-Desktop 在过去几分钟内多次重新加载了此窗口，但它每次都再次停止响应。可以再重载一次，或退出以保护数据。如果每次都是在打开同一个对话之后发生，该对话可能过大、无法在窗口中显示；对话记录本身没有损坏。",
-      reload: "重新加载",
-      quit: "退出",
-    },
   },
   settings: {
     ...forkSettings,

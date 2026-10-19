@@ -1096,7 +1096,7 @@ Minimal interface:
   a delegate parent and indexes them, `delegateOf: [callId, …]` pages the rows
   produced under those `Task` calls (D668). The main transcript reads top-level
   only (open, prefetch, settled refresh, edit/retry hydration, reading-position
-  restore, start-of-conversation, copy); a search jump and the paging of its
+  restore, copy); a search jump and the paging of its
   window keep every physical row, because a hit inside a delegation needs its
   rows. A delegation's rows reach the renderer through `delegateOf` when its run
   is opened — the work-panel tab, or a `Task` row expanded inline — one bounded

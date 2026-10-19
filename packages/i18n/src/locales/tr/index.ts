@@ -441,8 +441,6 @@ export const tr = {
     pasteInProgress: "Yapıştırılan içerik hâlâ kaydediliyor. Biraz sonra yeniden deneyin.",
     loadingEarlierMessages: "Önceki iletiler yükleniyor…",
     loadLaterMessages: "Sonraki mesajları yükle",
-    loadEarlierMessages: "Önceki mesajları yükle",
-    openConversationStart: "Sohbetin başına git",
     showEarlierMessages: "Önceki iletileri göster",
     copy: "Kopyala",
     copied: "Kopyalandı",
@@ -783,14 +781,6 @@ export const tr = {
     firstPrompt: "İlk iletinizi gönderin",
     loadPlugin: "Geliştirme eklentisi yükleyin (isteğe bağlı)",
     dismiss: "Kapat",
-  },
-  diagnostics: {
-    rendererCrashLoop: {
-      title: "Pencere sürekli çöküyor",
-      message: "PI-Desktop son birkaç dakika içinde bu pencereyi birkaç kez yeniden yükledi ve pencere her seferinde yeniden yanıt vermeyi durdurdu. Bir kez daha yeniden yükleyin veya verilerinizi korumak için çıkın. Bu durum aynı sohbeti açtıktan sonra yaşanıyorsa sohbet pencerede gösterilemeyecek kadar büyük olabilir; sohbet kaydının kendisi sağlamdır.",
-      reload: "Yeniden yükle",
-      quit: "Çık",
-    },
   },
   settings: {
     ...forkSettings,

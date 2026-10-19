@@ -6,7 +6,7 @@ register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { createTranscriptReadingRuntime } = await import(
   "../src/stores/runtime/transcript-reading-runtime.ts"
 );
-const { transcriptViewMessages, transcriptViewFromSession, TRANSCRIPT_PAGE_SIZE, TRANSCRIPT_CONTENT_LIMIT } = await import("../src/lib/transcript-reading.ts");
+const { transcriptViewMessages, transcriptViewFromSession } = await import("../src/lib/transcript-reading.ts");
 const { getSessionMessageSnapshot } = await import("../src/lib/session-transcript-updates.ts");
 const { mergeLiveSessionMessages, upsertLiveSessionMessage, projectMessageEnd, removeLiveSessionMessage } = await import("../src/lib/session-transcript.ts");
 const { buildTranscriptEntries } = await import("../src/lib/assistant-turns.ts");
@@ -406,71 +406,6 @@ test("action preparation gives up when the host no longer has the message", asyn
     "tail",
   );
   assert.equal(result, null);
-});
-
-test("opening the conversation start reads one first page as a historical window and pages forward", async () => {
-  const calls = [];
-  const r = reader(async (...args) => {
-    calls.push(args[1]);
-    if (args[1].messageBefore === TRANSCRIPT_PAGE_SIZE) {
-      return page([message("first"), message("second")], {
-        messageStart: 0, messageEnd: 2, hasMoreBefore: false, hasMoreAfter: true,
-      });
-    }
-    return page([message("third")], { messageStart: 2, messageEnd: 3, hasMoreBefore: false, hasMoreAfter: true });
-  });
-  await r.openTranscriptStart("s");
-  // One bounded request for the first page: offset 0 .. PAGE_SIZE of the
-  // top-level rows, display-capped.
-  assert.deepEqual(calls, [{
-    messageBefore: TRANSCRIPT_PAGE_SIZE,
-    messageLimit: TRANSCRIPT_PAGE_SIZE,
-    contentLimit: TRANSCRIPT_CONTENT_LIMIT,
-    topLevelOnly: true,
-  }]);
-  const view = r.view();
-  assert.equal(view.restored, true, "the start is a historical reading window");
-  assert.equal(view.loading, null);
-  assert.deepEqual(view.messages.map((item) => item.id), ["first", "second"]);
-  assert.equal(view.messageStart, 0);
-  assert.equal(view.hasMoreBefore, false);
-  assert.equal(view.hasMoreAfter, true);
-  // A historical window shows its own snapshot, never merged with the live tail.
-  assert.deepEqual(r.visible().map((item) => item.id), ["first", "second"]);
-  // Forward paging continues from the window's end, in the same space.
-  await r.loadTranscriptPage("s", "after");
-  assert.deepEqual(calls.at(-1), {
-    messageBefore: 2 + TRANSCRIPT_PAGE_SIZE,
-    messageLimit: TRANSCRIPT_PAGE_SIZE,
-    contentLimit: TRANSCRIPT_CONTENT_LIMIT,
-    topLevelOnly: true,
-  });
-  assert.deepEqual(r.visible().map((item) => item.id), ["first", "second", "third"]);
-  // Returning to the latest turn releases the window and shows the live tail again.
-  r.returnToLatestTranscript("s");
-  assert.equal(r.view(), undefined);
-  assert.deepEqual(r.visible().map((item) => item.id), ["tail"]);
-  assert.deepEqual(r.errors, []);
-});
-
-test("opening the start is refused for remote sessions and rolls back on a failed read", async () => {
-  let reads = 0;
-  const remote = reader(async () => { reads += 1; return page([]); }, {
-    activeSessionId: "remote:host/1",
-    sessionHistory: { "remote:host/1": { messageStart: 7, hasMoreBefore: true } },
-  });
-  await remote.openTranscriptStart("remote:host/1");
-  assert.equal(reads, 0, "remote history has cursors, not offsets");
-
-  const failing = reader(async () => { throw new Error("host unavailable"); });
-  await failing.openTranscriptStart("s");
-  assert.equal(failing.view(), undefined, "a failed read leaves no reading window behind");
-  assert.deepEqual(failing.errors, ["host unavailable"]);
-  assert.deepEqual(failing.visible().map((item) => item.id), ["tail"]);
-
-  const other = reader(async () => page([message("first")], { messageStart: 0, hasMoreBefore: false }));
-  await other.openTranscriptStart("other-session");
-  assert.equal(other.view(), undefined, "only the active session opens its start");
 });
 
 test("paging during an existing stream never freezes its snapshot over newer tokens or completion", async () => {
