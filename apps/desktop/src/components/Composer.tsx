@@ -32,6 +32,7 @@ import { ComposerAutocomplete } from "./ComposerAutocomplete";
 import { AskToolCard } from "./AskToolCard";
 import { PlanApprovalBar } from "./PlanApprovalBar";
 import { TodoDock } from "./TodoDock";
+import { BackgroundTasksBar } from "./BackgroundTasksBar";
 import {
   COMPOSER_MAX_VISIBLE_ROWS,
   COMPOSER_MIN_HEIGHT_PX,
@@ -150,6 +151,7 @@ export function Composer({
       : EMPTY_QUEUED_PROMPTS,
   );
 
+  const [modeOpen, setModeOpen] = useState(false);
   const [permissionOpen, setPermissionOpen] = useState(false);
   const composerTransformInvalidateRef = useRef<() => void>(() => {});
   const composerShellRef = useRef<HTMLDivElement>(null);
@@ -414,6 +416,7 @@ export function Composer({
 
   useEffect(() => {
     if (!controlsBlocked) return;
+    setModeOpen(false);
     setPermissionOpen(false);
   }, [controlsBlocked]);
 
@@ -525,6 +528,7 @@ export function Composer({
     >
       <div className="composer-stack">
         {activeSessionId && localToolsAllowed ? <TodoDock sessionId={activeSessionId} /> : null}
+        <BackgroundTasksBar />
         {planCheckpoint?.status === "pending" ? (
           <PlanApprovalBar proposal={planCheckpoint} />
         ) : null}
@@ -607,6 +611,8 @@ export function Composer({
             modelId={modelId}
             thinkingLevel={thinkingLevel}
             composerPermissionMode={composerPermissionMode}
+            modeOpen={modeOpen}
+            setModeOpen={setModeOpen}
             permissionOpen={permissionOpen}
             setPermissionOpen={setPermissionOpen}
             controlsBlocked={controlsBlocked}
