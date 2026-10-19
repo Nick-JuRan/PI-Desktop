@@ -19,7 +19,6 @@ import { settleStoppedAssistantMetrics } from "../../lib/context-usage";
 import type { AppState } from "../app-state";
 import type { SessionRuntime } from "../runtime/session-runtime";
 import { prepareTranscriptAction } from "../runtime/transcript-action";
-import { trimLiveTranscriptTail } from "../../lib/transcript-row-cap";
 import type { StoreAccess } from "./types";
 
 export type TranscriptSliceDependencies = StoreAccess & {
@@ -51,7 +50,6 @@ export function createTranscriptSlice({
   | "clearError"
   | "activateMessageRevision"
   | "deleteMessage"
-  | "releaseLiveTranscriptHead"
   | "rollbackWorkspaceChange"
   | "abort"
 > {
@@ -397,25 +395,6 @@ export function createTranscriptSlice({
           errorCode: (error as { code?: string })?.code ?? null,
         }));
       }
-    },
-
-    releaseLiveTranscriptHead: (sessionId) => {
-      const state = get();
-      if (state.activeSessionId !== sessionId) return;
-      // The transcript keeps every row; only the renderer's copy is bounded.
-      // The window moves forward by the released count, so the rows come back
-      // through the ordinary older-page fetch.
-      const trimmed = trimLiveTranscriptTail(state.messages, undefined, state.sessionHistory[sessionId]);
-      if (!trimmed) return;
-      runtime.cacheSessionTranscript(sessionId, trimmed.messages, trimmed.window);
-      set((current) =>
-        current.activeSessionId === sessionId && current.messages === state.messages
-          ? {
-              messages: trimmed.messages,
-              sessionHistory: { ...current.sessionHistory, [sessionId]: trimmed.window },
-            }
-          : {},
-      );
     },
 
     rollbackWorkspaceChange: async (messageId, snapshotId) => {

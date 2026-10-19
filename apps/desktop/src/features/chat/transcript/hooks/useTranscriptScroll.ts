@@ -38,7 +38,6 @@ import {
   type ScrollInputType,
 } from "../../../../lib/transcript-scroll";
 import { readScrollInputContext } from "../../../../lib/scroll-input";
-import { TRANSCRIPT_LIVE_ROW_CAP } from "../../../../lib/transcript-row-cap";
 import { useDisclosureAnchor } from "../../../../hooks/use-disclosure-anchor";
 import type { TranscriptSearchTarget } from "../../../../lib/transcript-reading";
 import { useTranscriptSearchFocus } from "../../../../hooks/use-transcript-search-focus";
@@ -51,7 +50,6 @@ type UseTranscriptScrollOptions = {
   compactions?: ContextCompactionMark[];
   hasMoreBefore: boolean;
   onLoadOlder?: () => Promise<void>;
-  onReleaseOlder?: () => void;
   isRunning: boolean;
   pendingPermission?: PendingPermission;
   askPending: boolean;
@@ -69,7 +67,6 @@ export function useTranscriptScroll({
   compactions,
   hasMoreBefore,
   onLoadOlder,
-  onReleaseOlder,
   isRunning,
   pendingPermission,
   askPending,
@@ -348,16 +345,6 @@ export function useTranscriptScroll({
   const loadEarlierHistory = useCallback(() => {
     loadOlder("gesture");
   }, [loadOlder]);
-
-  // A live tail that outgrows the row cap releases its oldest rows while the
-  // reader follows the stream. A reader who scrolled up keeps every row they
-  // are looking at; the release waits until they return to the latest turn.
-  // Historical reading windows hold their own snapshot and are not trimmed.
-  useEffect(() => {
-    if (!paneVisible || readingWindow || !onReleaseOlder) return;
-    if (!pinnedRef.current || messages.length <= TRANSCRIPT_LIVE_ROW_CAP) return;
-    onReleaseOlder();
-  }, [messages.length, onReleaseOlder, paneVisible, readingWindow]);
 
   // Anchors the viewport whenever rows appear above it — a fetched older page
   // (`messages.length`) or a grown mounted window (`windowSize`, D261). Both add

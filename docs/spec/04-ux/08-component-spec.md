@@ -2224,14 +2224,6 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   that button, a scroll gesture that reaches the top, and the minimap
   continuation control are reader gestures and fetch one page per use. Growing
   the mounted window over rows that are already loaded is never budgeted.
-- **The live tail is bounded** (D666): once a followed live transcript exceeds
-  `TRANSCRIPT_LIVE_ROW_CAP` (800) rows, the pane releases its oldest rows back
-  to the host down to the auto-history budget, moves `messageStart` forward and
-  turns `hasMoreBefore` on, so the rows are one older-page fetch away. The
-  release runs only while the reader is pinned to the bottom of a visible,
-  non-historical pane; a reader who scrolled up keeps every row under their
-  viewport until they return to the latest turn. A background session's cache is
-  bounded the same way as it streams. The transcript on disk is unchanged.
 - **Minimap hover cost**: dash magnification is applied by writing a custom
   property per dash, and dash centers are measured in a separate read-only pass.
   Reading a dash's geometry inside the same loop that writes to it forces one

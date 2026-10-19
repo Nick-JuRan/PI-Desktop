@@ -55,7 +55,7 @@ This log freezes previously open questions into concrete decisions.
 | D661 | Segmented turn process and independent thinking preference | **Supersede the `Detailed` / `Compact` display-mode behavior and the single whole-process disclosure recorded by D633 / D651 and the `turn-process-and-thinking-display` ADR: a turn renders as chronological collapsible process segments, Bash and run aliases stay outside every folded container (the turn-level process disclosure and any ordinary activity group) and remain visible even when every group is collapsed, and process/group folding defaults are independent of the thinking preference. The preference is the optional boolean `AppSettings.showThinking`; absent or non-boolean values fall back to the legacy `thinkingDisplayMode` field (`compact` hides, `detailed`/unknown/absent shows), which is retained only for persisted-settings compatibility. `showThinking` joins the portable application fields so it synchronizes like the legacy field; no other host protocol, persistence schema, permission, or plugin contract change. See the amended ADR, `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, and E2E-CHAT-turn-process-and-thinking-display.** | One flat container left long tool/search runs hard to scan and forced reasoning visibility and process folding into the same two-valued switch; an independent boolean plus always-visible Bash rows keeps shell-heavy turns readable without hiding the answer. |
 | D662 | Open scoped HTML files in the work-panel Browser from plugins | **Add `pi.fs.openInBrowser(pathFromRoot)` under `fs.read`. The host applies the plugin's normal read containment, protected-path, credential deny-list, declared scope, and registered project-folder checks; only existing `.html`, `.htm`, and `.xhtml` files qualify. After validation, Main asks the renderer to create a Browser resource tab for the active local session. The Browser plugin must be enabled. This grants no `browser.cdp`, changes no BrowserPreview or local-file navigation policy, and adds no host-core protocol or persisted-state change. See ADR 0330, `07-plugins/03-plugin-api.md`, `07-plugins/13-plugin-permissions-matrix.md`, `04-ux/08-component-spec.md`, and E2E-153.** | The File Manager needs an in-app HTML preview, while granting its plugin `browser.cdp` would also expose unrelated page inspection and control. |
 | D665 | Renderer transcript reads are bounded; transcript mutations name ids to the host | **Amend D199 / D390 / ADR 0120 / ADR 0216. Electron main fills in `messageLimit` (200) and `contentLimit` (64 KiB) for every renderer `session/get` that omits them, so the renderer never receives a whole transcript; the sidecar keeps the unbounded `session.get` through its own host proxy, so model context stays lossless. The live stream keeps only a display copy of each tool result (`tool_update` / `tool_end`), capped like a reloaded page; the transcript keeps the full payload. Message delete and the Stop undo of an unanswered prompt call the new `session.deleteMessage({ sessionId, messageId }) -> { deletedIds }` behind the shared rewrite gate; the host applies the user-turn rule and rewrites the transcript itself, and the renderer calls `session.replaceMessages` nowhere any more. `session.activateRevision` takes an optional `prefix`, refuses a root missing from the transcript when none is sent (`NOT_FOUND`), and the renderer re-reads a bounded page instead of receiving the rewritten transcript. Edit and retry hydrate the target message through one `messageAround` window; copy-conversation walks bounded pages. Renderer recovery stops auto-reloading after three reloads within five minutes, records `recovery: "crash-loop"`, and asks the user to reload or quit. Protocol version stays at 11; the new IPC channel and host method are additive.** | A delegation run that read patent full texts every few seconds grew one transcript to ~200 MB. Every unbounded renderer read of it (abort, delete, retry, edit, copy) and the full-size live `tool_end` rows pushed the renderer past the V8 heap, Electron reloaded it, and the user reopened the same session into the same death (exit code -536870904, four times in two days). Forcing a bound on reads alone would have made the renderer-side `replaceMessages` write-backs rewrite the transcript from a partial, display-capped window — a data-loss path — so the mutations had to move to the host first. |
-| D666 | Renderer transcript row count is bounded: budgeted history progression and a released live tail | **Amend D269 / D665. Automatic history progression (the history-boundary observer) fetches older pages only while fewer than `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET` (600) rows are loaded; past that the transcript shows a `chat.loadEarlierMessages` button, and only reader gestures — that button, a scroll that reaches the top, the minimap continuation — fetch further, one page per use. Growing the mounted window over already-loaded rows is never budgeted. A followed live transcript that exceeds `TRANSCRIPT_LIVE_ROW_CAP` (800) rows releases its oldest rows back to the host down to the budget (`releaseLiveTranscriptHead`), advancing `messageStart` and turning `hasMoreBefore` on; the release runs only while the reader is pinned to the bottom of a visible, non-historical pane, and a background session's cache is bounded the same way as it streams. Display truncation scans at most `limit` code points instead of materializing a multi-MB payload. The transcript on disk, persistence, and model context are unchanged.** | D665 bounded how large one row the renderer holds may be, not how many. A delegation run that read one patent full text every few seconds grew a session to 331 MB in 42 minutes; its rows are collapsed delegate tool rows that never fill the viewport, so D269 progression fetched the whole history page by page, and the live stream appended thousands more, until the renderer ran out of memory again (exit code -536870904) on the day after D665 landed. |
+| D666 | Automatic history progression is budgeted | **Amend D269 / D665. Automatic history progression (the history-boundary observer) fetches older pages only while fewer than `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET` (600) rows are loaded; past that the transcript shows a `chat.loadEarlierMessages` button at the boundary, and only reader gestures — that button, a scroll that reaches the top, the minimap continuation — fetch further, one page per use. Growing the mounted window over already-loaded rows is never budgeted. Display truncation scans at most `limit` code points instead of materializing a multi-MB payload. A loaded canonical history stays loaded (the long-history E2E invariant is unchanged); bounding the live tail's row count is deferred to a decision of its own. The transcript on disk, persistence, and model context are unchanged.** | D665 bounded how large one row the renderer holds may be, not how many. A delegation run that read one patent full text every few seconds grew a session to 331 MB in 42 minutes; its rows are collapsed delegate tool rows that never fill the viewport, so D269 progression fetched the whole history page by page on every open ("Loading earlier messages…" never ending) until the renderer ran out of memory again (exit code -536870904) the day after D665 landed. |
 
 ## B. Secondary implementation defaults
 
@@ -7828,36 +7828,30 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `03-runtime/01-ipc-protocol.md`, `03-runtime/06-host-rpc-protocol.md`, and
   `03-runtime/09-logging-and-observability.md`.
 
-## 2026-10-19 — Renderer transcript row count is bounded (D666)
+## 2026-10-19 — Automatic history progression is budgeted (D666)
 
 - D666 amends D269 and D665. D665 bounded how large one row the renderer holds
-  may be; this bounds how many rows it holds, in both directions the count can
-  grow.
+  may be; this bounds how many rows automatic history progression loads.
 - History progression driven by the top boundary observer (D269) fetches older
   pages only while fewer than `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET` (600) rows
   are loaded. A transcript whose rows are mostly collapsed delegate tool rows
   never fills the viewport, so unbudgeted progression walked a 331 MB session
-  page by page into the renderer. Past the budget the transcript shows a
-  `chat.loadEarlierMessages` button at the boundary; that button, a scroll
-  gesture that reaches the top, and the minimap continuation control are reader
-  gestures and fetch one page per use. Mounting more of the rows that are
-  already loaded (D261) is never budgeted — it adds no data.
-- A followed live transcript that exceeds `TRANSCRIPT_LIVE_ROW_CAP` (800) rows
-  releases its oldest rows down to the budget through
-  `releaseLiveTranscriptHead`: `messageStart` advances by the released count
-  and `hasMoreBefore` turns on, so the rows are one older-page fetch away. The
-  pane asks for the release only while the reader is pinned to the bottom of a
-  visible, non-historical pane; a reader who scrolled up keeps every row under
-  their viewport until they return to the latest turn. A background session's
-  cache is bounded the same way where it streams. The store subscriber that
-  mirrors every publication does not trim.
+  page by page into the renderer on every open. Past the budget the transcript
+  shows a `chat.loadEarlierMessages` button at the boundary; that button, a
+  scroll gesture that reaches the top, and the minimap continuation control are
+  reader gestures and fetch one page per use. Mounting more of the rows that
+  are already loaded (D261) is never budgeted — it adds no data.
 - `truncateDisplayText` / `previewValue` scan at most `limit` code points and
   never materialize a character array for a multi-MB payload; a 64 KiB cap on a
   1 MB tool result is O(64 KiB).
+- A loaded canonical history stays loaded: the long-history E2E invariant
+  (selection and background deltas never discard loaded rows) is unchanged.
+  Bounding the live tail's row count — releasing the oldest rows of a followed
+  live transcript back to the host — conflicts with that invariant and is left
+  to a decision of its own.
 - The transcript on disk, the persistence outbox, and the sidecar's model
   context are untouched.
-- Covered by `apps/desktop/test/transcript-row-growth.test.mjs` (budget,
-  release, gesture provenance, truncation cost),
-  `apps/desktop/test/transcript-window.test.mjs`, and
-  `apps/desktop/test/session-switch-performance.test.mjs`. See
+- Covered by `apps/desktop/test/transcript-row-growth.test.mjs` (budget, gesture
+  provenance, truncation cost), `apps/desktop/test/transcript-window.test.mjs`,
+  and `apps/desktop/test/session-switch-performance.test.mjs`. See
   `04-ux/08-component-spec.md` (Conversation minimap and transcript history).

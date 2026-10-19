@@ -40,8 +40,6 @@ type ChatTranscriptProps = {
   messages: UiMessage[];
   hasMoreBefore?: boolean;
   onLoadOlder?: () => Promise<void>;
-  /** Release the oldest live rows once the tail outgrows the renderer row cap. */
-  onReleaseOlder?: () => void;
   isRunning: boolean;
   pendingPermission?: PendingPermission;
   /** Requests waiting behind this one, from other delegates (ADR 0062). */
@@ -83,7 +81,6 @@ function TranscriptBody({
   messages,
   hasMoreBefore = false,
   onLoadOlder,
-  onReleaseOlder,
   isRunning,
   pendingPermission,
   queuedPermissions = 0,
@@ -153,7 +150,6 @@ function TranscriptBody({
     compactions,
     hasMoreBefore,
     onLoadOlder,
-    onReleaseOlder,
     isRunning: transcriptRunning,
     pendingPermission,
     askPending,
