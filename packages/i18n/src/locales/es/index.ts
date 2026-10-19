@@ -432,8 +432,6 @@ export const es = {
     "pasteInProgress": "Todavía guardando el contenido pegado. Inténtalo de nuevo en un momento.",
     "loadingEarlierMessages": "Cargando mensajes anteriores…",
     loadLaterMessages: "Cargar mensajes posteriores",
-    loadEarlierMessages: "Cargar mensajes anteriores",
-    openConversationStart: "Ir al inicio de la conversación",
     "showEarlierMessages": "Mostrar mensajes anteriores",
     "copy": "Copiar",
     "copied": "Copiado",
@@ -774,14 +772,6 @@ export const es = {
     "firstPrompt": "Envíe su primer mensaje",
     "loadPlugin": "Cargue un complemento de desarrollo (opcional)",
     "dismiss": "Descartar"
-  },
-  "diagnostics": {
-    "rendererCrashLoop": {
-      "title": "La ventana sigue fallando",
-      "message": "PI-Desktop recargó esta ventana varias veces en los últimos minutos y volvió a dejar de responder cada vez. Recárgala una vez más o sal para proteger tus datos. Si ocurre tras abrir la misma conversación, puede que sea demasiado grande para mostrarse en la ventana; la conversación en sí está intacta.",
-      "reload": "Recargar",
-      "quit": "Salir"
-    }
   },
   "settings": {
     ...forkSettings,

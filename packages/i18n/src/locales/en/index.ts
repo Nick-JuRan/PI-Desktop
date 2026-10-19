@@ -443,8 +443,6 @@ export const en = {
     pasteInProgress: "Still saving the pasted content. Try again in a moment.",
     loadingEarlierMessages: "Loading earlier messages…",
     loadLaterMessages: "Load later messages",
-    loadEarlierMessages: "Load earlier messages",
-    openConversationStart: "Go to the beginning",
     showEarlierMessages: "Show earlier messages",
     copy: "Copy",
     copied: "Copied",
@@ -785,14 +783,6 @@ export const en = {
     firstPrompt: "Send your first message",
     loadPlugin: "Load a development plugin (optional)",
     dismiss: "Dismiss",
-  },
-  diagnostics: {
-    rendererCrashLoop: {
-      title: "Window keeps crashing",
-      message: "PI-Desktop reloaded this window several times in the last few minutes, and it stopped responding again each time. Reload it once more, or quit to protect your data. If this follows opening the same conversation, that conversation may be too large for the window to display; the transcript itself is intact.",
-      reload: "Reload",
-      quit: "Quit",
-    },
   },
   settings: {
     ...forkSettings,

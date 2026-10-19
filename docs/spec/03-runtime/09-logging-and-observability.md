@@ -87,14 +87,9 @@ The application categories are:
   is therefore not reported as the previous app run aborting. A scan failure is
   one `crashDumpReportFailed` warn and never blocks the first window (D602).
   Each renderer `render-process-gone` event records one `renderer.process.gone`
-  entry with the Electron exit `reason` and `exitCode`, whether the current
-  main window was reloaded, and the `recovery` outcome: `reloaded`, `delayed`
-  (reloaded after the 2 s cooldown), `skipped` (clean exit or a window outside
-  the live main lifecycle), or `crash-loop`. After three automatic reloads
-  within five minutes recovery stops reloading, records `crash-loop`, and the
-  window asks the user to reload or quit instead of reloading a renderer back
-  into the state that keeps killing it. Clean exits are informational;
-  unexpected exits are warnings.
+  entry with the Electron exit `reason` and `exitCode`, plus whether the current
+  main window was reloaded. Clean exits are informational; unexpected exits are
+  warnings.
 
 - `runtime` — host/sidecar lifecycle, uncategorized child output, and
   main-process `uncaughtException` / `unhandledRejection` records

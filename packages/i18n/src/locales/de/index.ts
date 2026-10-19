@@ -432,8 +432,6 @@ export const de = {
     "pasteInProgress": "Der eingefügte Inhalt wird weiterhin gespeichert. Versuchen Sie es gleich noch einmal.",
     "loadingEarlierMessages": "Frühere Nachrichten laden…",
     loadLaterMessages: "Spätere Nachrichten laden",
-    loadEarlierMessages: "Frühere Nachrichten laden",
-    openConversationStart: "Zum Anfang der Unterhaltung",
     "showEarlierMessages": "Frühere Nachrichten anzeigen",
     "copy": "Kopieren",
     "copied": "Kopiert",
@@ -774,14 +772,6 @@ export const de = {
     "firstPrompt": "Senden Sie Ihre erste Nachricht",
     "loadPlugin": "Laden Sie ein Entwicklungs-Plugin (optional)",
     "dismiss": "Verwerfen"
-  },
-  "diagnostics": {
-    "rendererCrashLoop": {
-      "title": "Fenster stürzt wiederholt ab",
-      "message": "PI-Desktop hat dieses Fenster in den letzten Minuten mehrfach neu geladen, und es hat jedes Mal erneut aufgehört zu reagieren. Noch einmal neu laden oder beenden, um Ihre Daten zu schützen. Tritt dies nach dem Öffnen derselben Unterhaltung auf, ist sie möglicherweise zu groß für die Anzeige im Fenster; die Unterhaltung selbst ist unbeschädigt.",
-      "reload": "Neu laden",
-      "quit": "Beenden"
-    }
   },
   "settings": {
     ...forkSettings,

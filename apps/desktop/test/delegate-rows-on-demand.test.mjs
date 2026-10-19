@@ -127,7 +127,6 @@ test("every main-view read is top-level; search keeps every row; the two open pa
   assert.equal((sessionSlice.match(/contentLimit: 64 \* 1024,\s*topLevelOnly: true,/g) ?? []).length, 3, "open, prefetch and the empty-read retry page top-level rows");
   assert.match(runtimeSource, /readSettledTail[\s\S]*?contentLimit: TRANSCRIPT_CONTENT_LIMIT,\s*topLevelOnly: true,/);
   assert.match(runtimeSource, /readActionWindow[\s\S]*?messageAround: messageId,[\s\S]*?topLevelOnly: true,/);
-  assert.match(readingSource, /openTranscriptStart[\s\S]*?messageBefore: TRANSCRIPT_PAGE_SIZE,[\s\S]*?topLevelOnly: true,/);
   assert.match(readingSource, /\.\.\.\(view\.focus \? \{\} : \{ topLevelOnly: true \}\)/, "paging follows the view's space: search stays physical");
   // The search jump itself never narrows: a hit inside a delegation needs its rows.
   assert.match(readingSource, /navigateTranscript: async \(input\) => \{[\s\S]*?messageAround: focus\.messageId,\s*messageLimit: TRANSCRIPT_SEARCH_PAGE_SIZE,\s*contentLimit: TRANSCRIPT_CONTENT_LIMIT,\s*\}\)/);

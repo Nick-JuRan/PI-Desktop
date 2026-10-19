@@ -2215,22 +2215,6 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   scroll-only trigger could never fire again. A collapsed scroller and a pinned
   overflowing transcript whose `scrollTop` has been reset to 0 are not treated as
   "at the top", so opening or revealing a session cannot page back to the start.
-- **Automatic progression is budgeted** (D666): boundary-driven advancement
-  fetches older pages only while fewer than `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET`
-  (600) rows are loaded. A transcript whose rows are mostly collapsed delegate
-  tool rows never fills the viewport, and unbudgeted progression walked a
-  300 MB session page by page into the renderer until it ran out of memory.
-  Past the budget the top boundary shows a `chat.loadEarlierMessages` button;
-  that button, a scroll gesture that reaches the top, and the minimap
-  continuation control are reader gestures and fetch one page per use. Growing
-  the mounted window over rows that are already loaded is never budgeted.
-- **The boundary also opens the conversation start** (D667): beside the older-page
-  button, `chat.openConversationStart` reads the first page
-  (`messageBefore: TRANSCRIPT_PAGE_SIZE`) as a historical reading window
-  (`restored`), with `hasMoreAfter` forward paging and the latest-turn control to
-  return. A long session is reached in one request instead of one older page at
-  a time. Remote sessions, whose history offers cursors rather than offsets, do
-  not get the control.
 - **History pages are top-level; a delegation's rows arrive when it is opened**
   (D668): every read behind the main transcript asks the host for the rows
   without a delegate parent, so a long delegation run — 96% of its lines and
@@ -2241,13 +2225,6 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   and merges them under their `Task`; a call whose delegate produced nothing is
   asked once. While a delegate runs, its rows still arrive live. A search hit
   inside a delegation keeps reading every physical row around it.
-- **An explicit older-page press stays at the top** (D667): the control releases
-  follow and holds `scrollTop` at 0 while the page lands and the mounted window
-  grows over it, instead of anchoring the viewport to the row the reader was
-  already on — which left the new rows and the control itself out of view and
-  made the press look like a no-op. The reader's next scroll gesture, a jump to
-  the latest turn, or a session change ends the hold. Scroll-driven paging keeps
-  its anchoring.
 - **Minimap hover cost**: dash magnification is applied by writing a custom
   property per dash, and dash centers are measured in a separate read-only pass.
   Reading a dash's geometry inside the same loop that writes to it forces one
