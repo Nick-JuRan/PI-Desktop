@@ -22,13 +22,45 @@ const MAX_PREVIEW_ENTRIES = 256;
 /** Characters of one live tool result the renderer keeps. */
 export const LIVE_TOOL_RESULT_DISPLAY_LIMIT = TRANSCRIPT_CONTENT_LIMIT;
 
-/** Keep the head of `text` within `limit` characters, marker included. */
+/**
+ * Count the code points of `text`, stopping once `stopAt` have been seen.
+ * Returns the count and the UTF-16 offset reached, so a caller can both decide
+ * whether a string fits and know where to cut it without walking the rest of a
+ * multi-MB payload or allocating one array element per character.
+ */
+function scanCodePoints(text: string, stopAt: number): { count: number; offset: number } {
+  let offset = 0;
+  let count = 0;
+  while (offset < text.length && count < stopAt) {
+    const code = text.charCodeAt(offset);
+    // A high surrogate followed by a low surrogate is one code point.
+    offset +=
+      code >= 0xd800 && code <= 0xdbff && offset + 1 < text.length ? 2 : 1;
+    count += 1;
+  }
+  return { count, offset };
+}
+
+/**
+ * Code points in `text`, exact up to `limit`; a longer string reports
+ * `limit + 1`, so the scan never walks past what the caller can use.
+ */
+export function countCodePoints(text: string, limit: number = Number.POSITIVE_INFINITY): number {
+  return scanCodePoints(text, Math.min(text.length, limit + 1)).count;
+}
+
+/** Keep the head of `text` within `limit` characters (code points), marker included. */
 export function truncateDisplayText(text: string, limit: number): string {
-  const chars = Array.from(text);
-  if (chars.length <= limit) return text;
-  const marker = Array.from(DISPLAY_TRUNCATION_MARKER);
-  if (limit <= marker.length) return marker.slice(0, limit).join("");
-  return chars.slice(0, limit - marker.length).join("") + DISPLAY_TRUNCATION_MARKER;
+  // The UTF-16 length bounds the code point count, so a string this short fits
+  // without a scan — the common case for every row that is not a huge payload.
+  if (text.length <= limit) return text;
+  // Scan only as far as the limit: a multi-MB tool result costs O(limit).
+  const reach = scanCodePoints(text, limit + 1);
+  if (reach.count <= limit) return text;
+  const markerLength = DISPLAY_TRUNCATION_MARKER.length; // ASCII: one unit per code point
+  if (limit <= markerLength) return DISPLAY_TRUNCATION_MARKER.slice(0, limit);
+  const head = scanCodePoints(text, limit - markerLength);
+  return text.slice(0, head.offset) + DISPLAY_TRUNCATION_MARKER;
 }
 
 /**
@@ -42,7 +74,7 @@ export function previewValue(value: unknown, limit: number): unknown {
     if (budget.left === 0) return VALUE_TRUNCATION_MARKER;
     if (typeof node === "string") {
       const clipped = truncateDisplayText(node, budget.left);
-      budget.left = Math.max(0, budget.left - Array.from(clipped).length);
+      budget.left = Math.max(0, budget.left - countCodePoints(clipped, budget.left));
       return clipped;
     }
     if (Array.isArray(node)) {

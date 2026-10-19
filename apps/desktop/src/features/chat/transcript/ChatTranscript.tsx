@@ -134,11 +134,13 @@ function TranscriptBody({
     tailEntry,
     minimapMessages,
     hasEarlierHistory,
+    historyFetchPaused,
     hydrationBounded,
     veilCovering,
     veilPhase,
     handleScroll,
     revealEarlierHistory,
+    loadEarlierHistory,
     releaseFollow,
     jumpToLatest,
     disclosureAnchorNotifier,
@@ -279,6 +281,17 @@ function TranscriptBody({
           >
             {loadingOlder ? t("chat.loadingEarlierMessages") : null}
           </div>
+          {historyFetchPaused && !loadingOlder ? (
+            // Automatic history progression stopped at its row budget; the
+            // reader fetches the next page explicitly, one page per press.
+            <button
+              type="button"
+              className="transcript-load-later transcript-load-earlier"
+              onClick={loadEarlierHistory}
+            >
+              {t("chat.loadEarlierMessages")}
+            </button>
+          ) : null}
           {hydrationBounded ? (
             // One viewport of slack, not a per-entry estimate. The spacer exists
             // so the bounded commit can still scroll to its bottom; sizing it

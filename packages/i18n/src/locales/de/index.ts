@@ -432,6 +432,7 @@ export const de = {
     "pasteInProgress": "Der eingefügte Inhalt wird weiterhin gespeichert. Versuchen Sie es gleich noch einmal.",
     "loadingEarlierMessages": "Frühere Nachrichten laden…",
     loadLaterMessages: "Spätere Nachrichten laden",
+    loadEarlierMessages: "Frühere Nachrichten laden",
     "showEarlierMessages": "Frühere Nachrichten anzeigen",
     "copy": "Kopieren",
     "copied": "Kopiert",

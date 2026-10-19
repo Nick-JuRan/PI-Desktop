@@ -443,6 +443,7 @@ export const en = {
     pasteInProgress: "Still saving the pasted content. Try again in a moment.",
     loadingEarlierMessages: "Loading earlier messages…",
     loadLaterMessages: "Load later messages",
+    loadEarlierMessages: "Load earlier messages",
     showEarlierMessages: "Show earlier messages",
     copy: "Copy",
     copied: "Copied",

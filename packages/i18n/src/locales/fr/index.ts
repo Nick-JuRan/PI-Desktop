@@ -432,6 +432,7 @@ export const fr = {
     "pasteInProgress": "Toujours enregistrer le contenu collé. Réessayez dans un instant.",
     "loadingEarlierMessages": "Chargement des messages précédents…",
     loadLaterMessages: "Charger les messages suivants",
+    loadEarlierMessages: "Charger les messages précédents",
     "showEarlierMessages": "Afficher les messages précédents",
     "copy": "Copier",
     "copied": "Copié",

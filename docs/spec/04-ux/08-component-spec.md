@@ -2215,6 +2215,15 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   scroll-only trigger could never fire again. A collapsed scroller and a pinned
   overflowing transcript whose `scrollTop` has been reset to 0 are not treated as
   "at the top", so opening or revealing a session cannot page back to the start.
+- **Automatic progression is budgeted** (D666): boundary-driven advancement
+  fetches older pages only while fewer than `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET`
+  (600) rows are loaded. A transcript whose rows are mostly collapsed delegate
+  tool rows never fills the viewport, and unbudgeted progression walked a
+  300 MB session page by page into the renderer until it ran out of memory.
+  Past the budget the top boundary shows a `chat.loadEarlierMessages` button;
+  that button, a scroll gesture that reaches the top, and the minimap
+  continuation control are reader gestures and fetch one page per use. Growing
+  the mounted window over rows that are already loaded is never budgeted.
 - **Minimap hover cost**: dash magnification is applied by writing a custom
   property per dash, and dash centers are measured in a separate read-only pass.
   Reading a dash's geometry inside the same loop that writes to it forces one
