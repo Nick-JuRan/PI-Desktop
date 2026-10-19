@@ -270,6 +270,12 @@ export type AppState = {
   dismissAssistantErrorMessage: (messageId: string) => void;
   activateMessageRevision: (rootUserId: string, revisionIndex: number) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
+  /**
+   * Read the rows a delegation produced under the named `Task` calls into the
+   * session's transcript. History pages carry top-level rows only, so a
+   * delegate's rows arrive when its run is opened.
+   */
+  loadDelegateRows: (sessionId: string, callIds: string[]) => Promise<void>;
   rollbackWorkspaceChange: (
     messageId: string,
     snapshotId: string,

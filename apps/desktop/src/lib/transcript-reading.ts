@@ -32,6 +32,13 @@ export const EMPTY_TRANSCRIPT: UiMessage[] = [];
 export const TRANSCRIPT_PAGE_SIZE = 100;
 export const TRANSCRIPT_SEARCH_PAGE_SIZE = 60;
 export const TRANSCRIPT_CONTENT_LIMIT = 64 * 1024;
+/**
+ * Rows read at once for a delegation that is opened: the newest page of its
+ * own row space, which is the host's largest window. History pages carry
+ * top-level rows only, so this is the only way a delegate's rows reach the
+ * renderer after a reload.
+ */
+export const TRANSCRIPT_DELEGATE_ROW_LIMIT = 1000;
 
 export function transcriptViewFromSession(
   session: SessionDetail,

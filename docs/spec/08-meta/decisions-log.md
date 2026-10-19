@@ -57,6 +57,7 @@ This log freezes previously open questions into concrete decisions.
 | D665 | Renderer transcript reads are bounded; transcript mutations name ids to the host | **Amend D199 / D390 / ADR 0120 / ADR 0216. Electron main fills in `messageLimit` (200) and `contentLimit` (64 KiB) for every renderer `session/get` that omits them, so the renderer never receives a whole transcript; the sidecar keeps the unbounded `session.get` through its own host proxy, so model context stays lossless. The live stream keeps only a display copy of each tool result (`tool_update` / `tool_end`), capped like a reloaded page; the transcript keeps the full payload. Message delete and the Stop undo of an unanswered prompt call the new `session.deleteMessage({ sessionId, messageId }) -> { deletedIds }` behind the shared rewrite gate; the host applies the user-turn rule and rewrites the transcript itself, and the renderer calls `session.replaceMessages` nowhere any more. `session.activateRevision` takes an optional `prefix`, refuses a root missing from the transcript when none is sent (`NOT_FOUND`), and the renderer re-reads a bounded page instead of receiving the rewritten transcript. Edit and retry hydrate the target message through one `messageAround` window; copy-conversation walks bounded pages. Renderer recovery stops auto-reloading after three reloads within five minutes, records `recovery: "crash-loop"`, and asks the user to reload or quit. Protocol version stays at 11; the new IPC channel and host method are additive.** | A delegation run that read patent full texts every few seconds grew one transcript to ~200 MB. Every unbounded renderer read of it (abort, delete, retry, edit, copy) and the full-size live `tool_end` rows pushed the renderer past the V8 heap, Electron reloaded it, and the user reopened the same session into the same death (exit code -536870904, four times in two days). Forcing a bound on reads alone would have made the renderer-side `replaceMessages` write-backs rewrite the transcript from a partial, display-capped window — a data-loss path — so the mutations had to move to the host first. |
 | D666 | Automatic history progression is budgeted | **Amend D269 / D665. Automatic history progression (the history-boundary observer) fetches older pages only while fewer than `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET` (600) rows are loaded; past that the transcript shows a `chat.loadEarlierMessages` button at the boundary, and only reader gestures — that button, a scroll that reaches the top, the minimap continuation — fetch further, one page per use. Growing the mounted window over already-loaded rows is never budgeted. Display truncation scans at most `limit` code points instead of materializing a multi-MB payload. A loaded canonical history stays loaded (the long-history E2E invariant is unchanged); bounding the live tail's row count is deferred to a decision of its own. The transcript on disk, persistence, and model context are unchanged.** | D665 bounded how large one row the renderer holds may be, not how many. A delegation run that read one patent full text every few seconds grew a session to 331 MB in 42 minutes; its rows are collapsed delegate tool rows that never fill the viewport, so D269 progression fetched the whole history page by page on every open ("Loading earlier messages…" never ending) until the renderer ran out of memory again (exit code -536870904) the day after D665 landed. |
 | D667 | The history boundary opens the conversation start; an explicit older-page press stays at the top | **Amend D269 / D666. Once automatic progression has paused, the boundary offers `chat.openConversationStart` beside `chat.loadEarlierMessages`: one bounded read of the first page (`messageBefore: TRANSCRIPT_PAGE_SIZE`, `messageLimit: TRANSCRIPT_PAGE_SIZE`) opens the conversation at its start as a historical reading window (`restored`), with `hasMoreAfter` forward paging and the existing latest-turn control to return. The control is absent for remote sessions, whose history exposes cursors rather than offsets. An explicit older-page press releases follow and holds the viewport at the top while the page lands and the mounted window grows over it; a scroll gesture, a jump to the latest turn, or a session change ends the hold. Scroll-driven paging keeps its anchoring. No host, protocol, or persistence change.** | With D666 in place a 3,794-row session (331 MB; 85 KB per row on average) was still 38 older pages away from its own prompt, and each press of the older-page control anchored the viewport to the row already on screen, so the fetched rows and the control itself landed out of view and the press read as a no-op. Navigating is the elegant answer; moving or trimming the rows is not — the loaded canonical history stays loaded, and the transcript, the persistence outbox and the model context are untouched. |
+| D668 | History pages are top-level; a delegation's rows are read when it is opened | **Amend ADR 0120 / ADR 0279 / D665–D667. The transcript layout cache (format 3) records each message line's delegate parent beside its offset, so `session.get` can take `topLevelOnly: true` — a window over the rows without a delegate parent, with every coordinate indexing that space and a nested `messageAround` target centring on its parent `Task` — or `delegateOf: [callId, …]` (1–64 ids, windowed) — the rows produced under those `Task` calls. The rows a space leaves out are neither read nor deserialized. Every read behind the main transcript (open, prefetch, settled refresh, edit/retry hydration, reading-position restore, start-of-conversation, copy) is top-level; a search jump and its paging keep every physical row. Opening a delegation — the work-panel tab or an inline `Task` expansion — reads the rows of the chain's calls that have none loaded (`loadDelegateRows`, one bounded read of up to 1000 rows per set of calls) and merges them under their `Task`; a delegate that produced nothing is asked once. Live rows, the transcript on disk, persistence, and the sidecar's model context are unchanged. Protocol version stays at 11; the options are additive.** | A 3,794-row session (331 MB) had 3,645 rows (96%) and 315 MB (99.7%) under `Task` calls: the main agent's own conversation was 150 rows and about 1 MB. Every physical page the renderer fetched was therefore 5–15 MB of a delegate's tool payloads parsed for 64 KiB previews of rows the turn stream does not even show, and the conversation was 38 pages from its prompt. Pages of the conversation itself cost what the conversation is; a delegation costs its rows only when someone looks at it. (The earlier count that attributed the rows to the main agent came from Windows `findstr`, which does not match lines over 8 KiB — nearly every line here.) |
 
 ## B. Secondary implementation defaults
 
@@ -7886,3 +7887,53 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   refusal, failed-read rollback) and
   `apps/desktop/test/transcript-row-growth.test.mjs` (boundary controls, hold at
   top, pane wiring). See `04-ux/08-component-spec.md`.
+
+## 2026-10-19 — History pages are top-level; a delegation's rows are read when it is opened (D668)
+
+- D668 amends ADR 0120, ADR 0279 and D665–D667. Measured on the session that
+  kept failing: 3,794 rows and 331 MB, of which 3,645 rows (96%) and 315 MB
+  (99.7%) were rows produced under `Task` calls; the main agent's own
+  conversation was 150 rows and about 1 MB. Every physical page the renderer
+  fetched was 5–15 MB of a delegate's tool payloads, parsed on the host for
+  64 KiB previews of rows the turn stream does not show, and the conversation
+  was 38 pages from its own prompt.
+- The transcript layout cache (format 3) records each message line's delegate
+  parent — the `parentToolCallId` in its `meta`, `-` for a top-level row —
+  beside its offset. The scan reads it from the line it already has: no key, no
+  parsing; a key, parsed ignoring `blocks`; a payload that merely mentions the
+  key parses to a row without a parent. A version-2 cache is ignored and rebuilt
+  once.
+- `session.get` takes `topLevelOnly: true`: the window's row space is the rows
+  without a delegate parent, `messageBefore` / `messageStart` / `messageEnd` /
+  `hasMore*` index that space, and a `messageAround` target inside a delegation
+  centres the window on its parent `Task` row. It also takes
+  `delegateOf: [callId, …]` (1–64 ids, requires `messageLimit`, exclusive with
+  `topLevelOnly`): the rows produced under those calls, in file order, windowed
+  over that set. In either space the rows left out are neither read nor
+  deserialized.
+- Every read behind the main transcript is top-level: open, prefetch, the
+  empty-read retry, the settled refresh after abort/delete/revision, edit and
+  retry hydration, reading-position restore, start-of-conversation, and copy.
+  A search jump and the paging of its window keep every physical row, because a
+  hit inside a delegation needs its rows.
+- Opening a delegation reads what the pages left out: the work-panel tab asks
+  for the chain's calls whose turns have no rows, an inline `Task` expansion
+  asks for its own call, both through `loadDelegateRows` — one bounded read of
+  up to 1000 rows per set of calls, merged under their `Task`, shared while in
+  flight and settled once so a delegate that produced nothing is not asked
+  again. A failed read is reported and may be retried on the next open. While a
+  delegate runs its rows still arrive live.
+- The transcript on disk, the persistence outbox, and the sidecar's model
+  context are unchanged. Protocol version stays at 11; the options are
+  additive.
+- The earlier count that attributed the rows to the main agent came from
+  Windows `findstr`, which does not match lines over 8 KiB — nearly every line
+  of such a session.
+- Covered by `crates/host-core/src/transcripts_layout_tests.rs`
+  (`the_layout_records_each_lines_delegate_parent_and_persists_it`),
+  `crates/host-core/src/sessions.rs` (`a_top_level_window_*`,
+  `a_delegate_window_*`), `apps/desktop/test/delegate-rows-on-demand.test.mjs`,
+  `apps/desktop/test/transcript-reading.test.mjs` and
+  `apps/desktop/test/conversation-read.test.mjs`. See
+  `03-runtime/04-data-storage.md`, `03-runtime/06-host-rpc-protocol.md`,
+  `03-runtime/01-ipc-protocol.md`, and `04-ux/08-component-spec.md`.

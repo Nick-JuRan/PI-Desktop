@@ -186,6 +186,7 @@ function HostToolRow({
   const { fileMenu, openFileMenu, closeFileMenu } = useChatFileMenu();
   const openSubagentTab = useAppStore((s) => s.openSubagentTab);
   const activeWorkPanelTabId = useAppStore((s) => s.activeWorkPanelTabId);
+  const loadDelegateRows = useAppStore((s) => s.loadDelegateRows);
   const status = message.toolStatus;
   const action = getToolAction(message.toolName);
   // A run row states what the command did, not what the call around it did: an
@@ -321,6 +322,15 @@ function HostToolRow({
     activeWorkPanelTabId === `subagent:${panelSelectionId}`;
   const renderedOpen = variant === "topology" ? panelOpen : open;
   const inlineOpen = variant !== "topology" && open;
+  // History pages carry top-level rows only; a `Task` row opened inline reads
+  // the rows its delegate produced the first time it is expanded without them.
+  const delegateRowsMissing =
+    inlineOpen && action === "delegate" && Boolean(message.toolCallId) && !delegate?.items.length;
+  const activeSessionId = useAppStore((s) => (delegateRowsMissing ? s.activeSessionId : undefined));
+  useEffect(() => {
+    if (!delegateRowsMissing || !activeSessionId || !message.toolCallId) return;
+    void loadDelegateRows(activeSessionId, [message.toolCallId]);
+  }, [activeSessionId, delegateRowsMissing, loadDelegateRows, message.toolCallId]);
   const delegationTiming =
     typeof delegationId === "string"
       ? delegationTimings?.get(delegationId)

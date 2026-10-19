@@ -319,6 +319,8 @@ export function registerSessionIpc({
             messageAround?: string;
             messageLimit?: number;
             contentLimit?: number;
+            topLevelOnly?: boolean;
+            delegateOf?: string[];
           },
     ) => {
       if (!host) throw new Error("host unavailable");

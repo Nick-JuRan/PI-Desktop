@@ -2761,6 +2761,54 @@ async fn handle_request(
                     "INVALID_PARAMS",
                 ));
             }
+            let top_level_only = params
+                .get("topLevelOnly")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            // `delegateOf` names the `Task` calls whose rows the window covers:
+            // a non-empty list of ids, bounded so one request cannot ask for an
+            // unbounded union, and always windowed.
+            let delegate_of: Option<Vec<String>> = match params.get("delegateOf") {
+                None | Some(Value::Null) => None,
+                Some(Value::Array(items)) => {
+                    let ids: Vec<String> = items
+                        .iter()
+                        .filter_map(|item| item.as_str())
+                        .map(str::trim)
+                        .filter(|id| !id.is_empty())
+                        .map(str::to_owned)
+                        .collect();
+                    if ids.is_empty() || ids.len() != items.len() || ids.len() > 64 {
+                        return Err(rpc_err(
+                            1002,
+                            "delegateOf must be 1-64 non-empty call ids",
+                            "INVALID_PARAMS",
+                        ));
+                    }
+                    Some(ids)
+                }
+                Some(_) => {
+                    return Err(rpc_err(
+                        1002,
+                        "delegateOf must be an array of call ids",
+                        "INVALID_PARAMS",
+                    ));
+                }
+            };
+            if (top_level_only || delegate_of.is_some()) && message_limit.is_none() {
+                return Err(rpc_err(
+                    1002,
+                    "topLevelOnly and delegateOf require a windowed read (messageLimit)",
+                    "INVALID_PARAMS",
+                ));
+            }
+            if top_level_only && delegate_of.is_some() {
+                return Err(rpc_err(
+                    1002,
+                    "topLevelOnly and delegateOf are exclusive",
+                    "INVALID_PARAMS",
+                ));
+            }
             let content_limit = params
                 .get("contentLimit")
                 .and_then(|v| v.as_u64())
@@ -2785,6 +2833,8 @@ async fn handle_request(
                     message_before,
                     message_limit,
                     content_limit,
+                    top_level_only,
+                    delegate_of,
                 },
             )
             .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;

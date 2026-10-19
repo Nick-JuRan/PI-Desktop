@@ -328,7 +328,15 @@ to later refresh and inference; the vendor picker does not collect them.
   against the canonical file, requires `messageLimit`, and excludes
   `messageBefore`. Missing IDs return no session. The focused user/assistant
   message retains its complete text; neighboring text and tool fields stay
-  capped. Bounded reads also return exclusive physical `messageEnd` and
+  capped. Optional `topLevelOnly: true` restricts the window's row space to the
+  rows without a delegate parent: `messageBefore`, `messageStart`, `messageEnd`
+  and the `hasMore*` flags then index the top-level rows, `messageAround` on a
+  delegate row centers on its parent `Task` row, and the delegate rows are
+  neither read nor deserialized (they are chosen out by the layout index, D668).
+  Optional `delegateOf: [callId, …]` (1–64 ids, requires `messageLimit`,
+  exclusive with `topLevelOnly`) restricts the space to the rows produced under
+  those `Task` calls, in file order, with the same windowed coordinates over
+  that set. Bounded reads also return exclusive physical `messageEnd` and
   `hasMoreAfter` to support contiguous forward pages (ADR session-content-search).
   When the selected message has `parentToolCallId`, optional `navigationParent`
   contains the latest matching Task tool-call projection from the same canonical

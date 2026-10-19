@@ -59,6 +59,7 @@
 | D665 | 渲染层读取对话记录一律有界；对话记录改写只向 host 传递 id | **修订 D199 / D390 / ADR 0120 / ADR 0216。渲染层发起的 `session/get` 若未带 `messageLimit` / `contentLimit`，由 Electron main 补上默认值（200 条、每条 64 KiB，并按 host 的 1000 条上限钳制），渲染层因此永远不会在一次回复里收到整份对话记录；sidecar 继续通过自己的 host 代理使用无上限的 `session.get` 重建模型上下文，模型上下文保持无损。实时流只保留每条工具结果的展示副本（`tool_update` / `tool_end`），截断规则与重新加载的页面一致；对话记录保留完整载荷。删除消息与 Stop 撤回未被回复的提问改为调用新增的 `session.deleteMessage({ sessionId, messageId }) -> { deletedIds }`，经共享的改写闸门执行；host 自行套用用户轮次规则并重写对话记录，渲染层不再在任何地方调用 `session.replaceMessages`。`session.activateRevision` 的 `prefix` 变为可选，未提供且根消息不在对话记录中时返回 `NOT_FOUND`，渲染层改为重新读取一页有界窗口而不是接收重写后的整份记录。编辑与重试通过一次 `messageAround` 窗口获取目标消息的完整文本；复制对话按有界分页遍历。渲染层恢复在五分钟内自动重载三次后停止，记录 `recovery: "crash-loop"`，并由用户选择重载或退出。协议版本保持 11；新增的 IPC 通道与 host 方法均为增量。** | 一次持续读取专利全文的委派运行把单个对话记录涨到约 200 MB。渲染层对它的每一次无上限读取（中止、删除、重试、编辑、复制）以及全尺寸的实时 `tool_end` 行把渲染进程推过 V8 堆上限，Electron 自动重载，用户再次打开同一会话又再次崩溃（退出码 -536870904，两天内四次）。若只给读取加上限，渲染层原有的 `replaceMessages` 写回会用一个分页且被展示截断的窗口重写对话记录——这是丢数据的路径——因此改写必须先搬到 host。 |
 | D666 | 自动历史推进有预算 | **修订 D269 / D665。由顶部边界观察器驱动的自动历史推进，只在已加载行数少于 `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET`（600）时继续读取更早的页；超过后对话记录在边界处显示 `chat.loadEarlierMessages` 按钮，之后只有读者手势——该按钮、滚动到顶部、小地图的延续控件——才继续读取，每次一页。为已加载的行扩大挂载窗口不计入预算。展示截断最多只扫描 `limit` 个码点，不再为数 MB 的载荷物化字符数组。已加载的规范历史保持加载（长历史 E2E 的不变量不变）；限制实时尾部行数另行决定。磁盘上的对话记录、持久化与模型上下文不变。** | D665 限制的是渲染层持有的单行有多大，不是有多少行。一次每隔几秒读取专利全文的委派运行在 42 分钟内把会话涨到 331 MB；它的行几乎都是折叠的子 agent 工具行，永远撑不满视口，于是每次打开时 D269 的推进都把整份历史一页页读进渲染层（"正在加载更早的消息…"永不结束），在 D665 合入的次日渲染层再次耗尽内存（退出码 -536870904）。 |
 | D667 | 历史边界可直接打开对话开头；显式加载更早一页后停留在顶部 | **修订 D269 / D666。自动推进暂停后，边界在 `chat.loadEarlierMessages` 旁提供 `chat.openConversationStart`：一次有界读取第一页（`messageBefore: TRANSCRIPT_PAGE_SIZE`、`messageLimit: TRANSCRIPT_PAGE_SIZE`）以历史阅读窗口（`restored`）打开对话开头，支持 `hasMoreAfter` 向后翻页，并用已有的"回到最新"控件返回。远程会话的历史只有游标没有偏移，不提供该控件。显式点击加载更早一页时解除跟随，并在页面落地、挂载窗口扩大期间把视口保持在顶部；滚动手势、跳到最新或切换会话结束该保持。滚动驱动的翻页保留原有锚定。不涉及 host、协议或持久化改动。** | 有了 D666 之后，一个 3,794 行（331 MB，平均每行 85 KB）的会话距自己的提问仍有 38 页；而每次点击加载更早一页，视口都锚定在屏幕上原有的行，新加载的行和控件本身都落在视野之外，点击看起来毫无效果。优雅的答案是导航，而不是搬运或裁剪行——已加载的规范历史保持加载，对话记录、持久化 outbox 与模型上下文均不受影响。 |
+| D668 | 历史页只含顶层行；委派的行在打开时读取 | **修订 ADR 0120 / ADR 0279 / D665–D667。对话记录 layout 缓存（格式 3）在每条消息偏移旁记录其委派父级，因此 `session.get` 可接受 `topLevelOnly: true`——窗口只覆盖没有委派父级的行，所有坐标在该空间内计数，落在委派行上的 `messageAround` 目标以其父 `Task` 行为中心——或 `delegateOf: [callId, …]`（1–64 个 id，必须带窗口）——只覆盖这些 `Task` 调用下产生的行。被空间排除的行既不读取也不反序列化。主对话流背后的每次读取（打开、预取、落定刷新、编辑/重试水合、阅读位置恢复、回到开头、复制）都是顶层的；搜索跳转及其翻页保留全部物理行。打开某个委派——工作面板标签页或行内展开 `Task` 行——读取链上尚无行的调用的行（`loadDelegateRows`，每组调用一次最多 1000 行的有界读取），并合并到其 `Task` 下；没有产出的委派只问一次。实时行、磁盘上的对话记录、持久化与 sidecar 的模型上下文不变。协议版本保持 11；选项为增量。** | 一个 3,794 行（331 MB）的会话里，3,645 行（96%）、315 MB（99.7%）在 `Task` 调用之下：主 agent 自己的对话只有 150 行、约 1 MB。渲染层取的每一物理页都是 5–15 MB 的委派工具载荷，在 host 上解析成对话流根本不显示的行的 64 KiB 预览，而对话距自己的提问有 38 页。对话本身的页只花对话本身的代价；委派只在有人看它时才花它的行的代价。（此前把行归于主 agent 的统计来自 Windows `findstr`，它不匹配超过 8 KiB 的行——这个会话几乎每一行都如此。） |
 
 ## B. 辅助实现默认值
 
@@ -5570,3 +5571,36 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   向后翻页、返回、远程拒绝、读取失败回滚）与
   `apps/desktop/test/transcript-row-growth.test.mjs`（边界控件、顶部保持、窗格接线）覆盖。
   见 `04-ux/08-component-spec.md`。
+
+## 2026-10-19 —— 历史页只含顶层行；委派的行在打开时读取（D668）
+
+- D668 修订 ADR 0120、ADR 0279 与 D665–D667。在持续出问题的会话上实测：3,794 行、331 MB，
+  其中 3,645 行（96%）、315 MB（99.7%）是 `Task` 调用之下产生的行；主 agent 自己的对话只有
+  150 行、约 1 MB。渲染层取的每一物理页都是 5–15 MB 的委派工具载荷，在 host 上解析成对话流
+  根本不显示的行的 64 KiB 预览，而对话距自己的提问有 38 页。
+- 对话记录 layout 缓存（格式 3）在每条消息偏移旁记录其委派父级——`meta` 中的
+  `parentToolCallId`，顶层行记为 `-`。扫描从它已经读到的行中取得：没有该键则不解析；有该键则
+  忽略 `blocks` 解析；载荷里仅仅提到该键的行解析为无父级。版本 2 的缓存被忽略并重建一次。
+- `session.get` 接受 `topLevelOnly: true`：窗口的行空间是没有委派父级的行，
+  `messageBefore` / `messageStart` / `messageEnd` / `hasMore*` 在该空间内计数，落在委派内的
+  `messageAround` 目标以其父 `Task` 行为中心。也接受 `delegateOf: [callId, …]`（1–64 个 id，
+  必须带 `messageLimit`，与 `topLevelOnly` 互斥）：这些调用下产生的行，按文件顺序，在该集合上
+  开窗。两种空间里被排除的行都既不读取也不反序列化。
+- 主对话流背后的每次读取都是顶层的：打开、预取、空读重试、中止/删除/切换修订后的落定刷新、
+  编辑与重试的水合、阅读位置恢复、回到对话开头、复制。搜索跳转及其窗口的翻页保留全部物理行，
+  因为委派内部的命中需要它的行。
+- 打开某个委派即读取页面漏掉的内容：工作面板标签页请求链上尚无行的调用，行内展开的 `Task`
+  行请求自己的调用，都经由 `loadDelegateRows`——每组调用一次最多 1000 行的有界读取，合并到
+  其 `Task` 下，进行中共享、完成后只记一次，因此没有产出的委派不会被反复询问。失败的读取会
+  提示，下次打开可重试。委派运行时其行仍实时到达。
+- 磁盘上的对话记录、持久化 outbox 与 sidecar 的模型上下文不变。协议版本保持 11；选项为增量。
+- 此前把行归于主 agent 的统计来自 Windows `findstr`，它不匹配超过 8 KiB 的行——这类会话
+  几乎每一行都如此。
+- 由 `crates/host-core/src/transcripts_layout_tests.rs`
+  （`the_layout_records_each_lines_delegate_parent_and_persists_it`）、
+  `crates/host-core/src/sessions.rs`（`a_top_level_window_*`、`a_delegate_window_*`）、
+  `apps/desktop/test/delegate-rows-on-demand.test.mjs`、
+  `apps/desktop/test/transcript-reading.test.mjs` 与
+  `apps/desktop/test/conversation-read.test.mjs` 覆盖。见
+  `03-runtime/04-data-storage.md`、`03-runtime/06-host-rpc-protocol.md`、
+  `03-runtime/01-ipc-protocol.md` 与 `04-ux/08-component-spec.md`。

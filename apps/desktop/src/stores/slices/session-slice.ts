@@ -374,6 +374,7 @@ export function createSessionSlice({
       await runtime.loadSessionDetail(id, {
         messageLimit: 100,
         contentLimit: 64 * 1024,
+        topLevelOnly: true,
       });
     },
 
@@ -459,6 +460,7 @@ export function createSessionSlice({
         const detailPromise = runtime.loadSessionDetail(id, {
           messageLimit: 100,
           contentLimit: 64 * 1024,
+          topLevelOnly: true,
         });
         let detail: Awaited<typeof detailPromise> | undefined;
         const retainedMessages =
@@ -522,6 +524,7 @@ export function createSessionSlice({
           const reread = await runtime.loadSessionDetail(id, {
             messageLimit: 100,
             contentLimit: 64 * 1024,
+            topLevelOnly: true,
           });
           if (!runtime.navigationIntentIsCurrent(intent)) return;
           if (reread.session && sessionReadLooksEmpty(reread.session)) {

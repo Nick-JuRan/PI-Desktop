@@ -1,7 +1,7 @@
 use super::*;
 use crate::transcripts::{
-    append_message, read_transcript_window_with_layout, remove_session_files, transcript_path,
-    update_message, write_transcript, MessageRecord,
+    append_message, read_transcript_lines_with_layout, read_transcript_window_with_layout,
+    remove_session_files, transcript_path, update_message, write_transcript, MessageRecord,
 };
 use serde_json::json;
 use tempfile::tempdir;
@@ -384,6 +384,89 @@ fn a_reliable_identity_persists_a_layout() {
             .unwrap()
             .exists(),
         identity.is_available()
+    );
+}
+
+fn delegate_message(id: &str, parent: &str, text: &str) -> MessageRecord {
+    MessageRecord {
+        id: id.into(),
+        role: "tool".into(),
+        tool_name: Some("plugin_local_fusion_search_fusion_full_text".into()),
+        is_error: false,
+        blocks: json!([{ "type": "tool_call", "callId": id, "name": "plugin_local_fusion_search_fusion_full_text", "text": text }]),
+        meta: Some(json!({ "parentToolCallId": parent, "agentName": "patent-reader" })),
+        created_at: CREATED_AT.into(),
+    }
+}
+
+#[test]
+fn the_layout_records_each_lines_delegate_parent_and_persists_it() {
+    let dir = tempdir().unwrap();
+    // A payload that merely mentions the key is not a delegate row.
+    let decoy = message("m2", r#"says "parentToolCallId": "task-0" in prose"#);
+    let messages = vec![
+        message("m1", &"x".repeat(LAYOUT_CACHE_MIN_LEN as usize)),
+        decoy,
+        delegate_message("d1", "task-1", "page one"),
+        delegate_message("d2", "task-1", "page two"),
+        message("m3", "answer"),
+        delegate_message("d3", "task-2", "page three"),
+    ];
+    seed_cache(dir.path(), &messages);
+    let scanned =
+        refresh_layout(dir.path(), "layout-regression", TranscriptLayout::default()).unwrap();
+    let parents: Vec<Option<&str>> = (0..scanned.message_count())
+        .map(|position| scanned.message_parent(position))
+        .collect();
+    assert_eq!(
+        parents,
+        vec![
+            None,
+            None,
+            Some("task-1"),
+            Some("task-1"),
+            None,
+            Some("task-2")
+        ]
+    );
+    assert_eq!(scanned.top_level_positions(), vec![0, 1, 4]);
+    assert_eq!(
+        scanned.delegate_positions(&["task-1".to_string()]),
+        vec![2, 3]
+    );
+    assert_eq!(
+        scanned.delegate_positions(&["task-1".to_string(), "task-2".to_string()]),
+        vec![2, 3, 5]
+    );
+
+    // The disk cache carries the parents: a cold process reads them back
+    // without rescanning, and the top-level window skips the delegate rows.
+    let path = transcript_path(dir.path(), "layout-regression").unwrap();
+    let identity = file_identity(&path, &fs::metadata(&path).unwrap());
+    if identity.is_available() {
+        let cache = fs::read_to_string(layout_cache_path(dir.path(), "layout-regression").unwrap())
+            .unwrap();
+        assert!(
+            cache.contains("task-1 task-1"),
+            "parents are persisted beside the offsets"
+        );
+        let cold = load_layout_cache(dir.path(), "layout-regression", &identity, scanned.file_len)
+            .unwrap()
+            .expect("the persisted layout is valid");
+        assert_eq!(cold.message_parents, scanned.message_parents);
+    }
+    let top_level = read_transcript_lines_with_layout(
+        dir.path(),
+        "layout-regression",
+        &scanned,
+        &scanned.top_level_positions(),
+        true,
+    )
+    .unwrap()
+    .messages;
+    assert_eq!(
+        top_level.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+        vec!["m1", "m2", "m3"]
     );
 }
 

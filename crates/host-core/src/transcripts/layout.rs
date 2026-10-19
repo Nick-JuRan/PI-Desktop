@@ -12,6 +12,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 use super::{sniff_line_kind, swap_into_place, transcript_path};
@@ -19,7 +20,10 @@ use super::{sniff_line_kind, swap_into_place, transcript_path};
 const LAYOUT_CACHE_MIN_LEN: u64 = 2 * 1024 * 1024;
 const LAYOUT_CACHE_MAX_LAG: u64 = 4 * 1024 * 1024;
 const LAYOUT_CACHE_MAGIC: &str = "PI-DESKTOP-TRANSCRIPT-LAYOUT";
-const LAYOUT_CACHE_VERSION: &str = "2";
+/// Version 3 records each message line's delegate parent beside its offset.
+const LAYOUT_CACHE_VERSION: &str = "3";
+/// Cache token for a top-level message line (one without a delegate parent).
+const TOP_LEVEL_TOKEN: &str = "-";
 
 /// A stable identity available on filesystems that expose one.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -77,6 +81,13 @@ impl FileIdentity {
 pub struct TranscriptLayout {
     /// Byte offset of each message line, in file order.
     pub message_offsets: Vec<u64>,
+    /// For each message line, the `parentToolCallId` a delegate row carries in
+    /// its `meta`, or `None` for a top-level row. Same length as
+    /// `message_offsets`. Recorded by the scan so a window over the top-level
+    /// rows, or over one delegate's rows, is chosen from the index and never
+    /// by deserializing the rows it leaves out — in a long delegation run those
+    /// are 96% of the lines and 99% of the bytes.
+    pub message_parents: Vec<Option<Box<str>>>,
     /// Byte offset of each compaction line, in file order.
     pub compaction_offsets: Vec<u64>,
     /// Byte length of the file prefix this layout describes.
@@ -89,6 +100,31 @@ impl TranscriptLayout {
     /// not the deduplicated message positions.
     pub fn message_count(&self) -> usize {
         self.message_offsets.len()
+    }
+
+    /// The delegate parent of the message line at `position`, if it has one.
+    pub fn message_parent(&self, position: usize) -> Option<&str> {
+        self.message_parents
+            .get(position)
+            .and_then(|parent| parent.as_deref())
+    }
+
+    /// Physical positions of the top-level message lines, ascending.
+    pub fn top_level_positions(&self) -> Vec<usize> {
+        (0..self.message_count())
+            .filter(|position| self.message_parent(*position).is_none())
+            .collect()
+    }
+
+    /// Physical positions of the rows produced under any of `parents`
+    /// (delegate `Task` call ids), ascending.
+    pub fn delegate_positions(&self, parents: &[String]) -> Vec<usize> {
+        (0..self.message_count())
+            .filter(|position| {
+                self.message_parent(*position)
+                    .is_some_and(|parent| parents.iter().any(|candidate| candidate == parent))
+            })
+            .collect()
     }
 
     fn empty(identity: FileIdentity) -> Self {
@@ -307,7 +343,10 @@ fn scan_layout(path: &Path, mut layout: TranscriptLayout) -> Result<TranscriptLa
         // contains bytes from a character that was torn during a crash.
         let line = String::from_utf8_lossy(&raw);
         match sniff_line_kind(line.trim_end()) {
-            Some("message") => layout.message_offsets.push(offset),
+            Some("message") => {
+                layout.message_offsets.push(offset);
+                layout.message_parents.push(delegate_parent(&line));
+            }
             Some("compaction") => layout.compaction_offsets.push(offset),
             _ => {}
         }
@@ -318,6 +357,39 @@ fn scan_layout(path: &Path, mut layout: TranscriptLayout) -> Result<TranscriptLa
     }
     layout.file_len = offset;
     Ok(layout)
+}
+
+/// The `parentToolCallId` a delegate row carries in its `meta`, or `None` for
+/// a top-level row.
+///
+/// The key is looked for as bytes first: a line without it is top-level
+/// without any parsing, which is every row of an ordinary session. A line with
+/// it is parsed ignoring `blocks`, so the payload — the megabytes a delegate's
+/// tool result can hold — is tokenized once here and never materialized. A
+/// payload that merely mentions the key parses to a row without a parent.
+fn delegate_parent(line: &str) -> Option<Box<str>> {
+    if !line.contains("\"parentToolCallId\"") {
+        return None;
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Meta {
+        #[serde(default)]
+        parent_tool_call_id: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct Record {
+        #[serde(default)]
+        meta: Option<Meta>,
+    }
+    serde_json::from_str::<Record>(line.trim_end())
+        .ok()?
+        .meta?
+        .parent_tool_call_id
+        .filter(|id| {
+            !id.is_empty() && id != TOP_LEVEL_TOKEN && !id.chars().any(char::is_whitespace)
+        })
+        .map(String::into_boxed_str)
 }
 
 fn load_layout_cache(
@@ -376,11 +448,15 @@ fn load_layout_cache(
     };
     // A classified JSONL record needs at least `{"type":"message"}\n`;
     // reject impossible counts before reserving memory from cache input.
-    if offset_count > file_len_usize / 19 || offset_count > tokens.clone().count() {
+    let Some(token_count) = offset_count.checked_add(message_count) else {
+        return Ok(None);
+    };
+    if offset_count > file_len_usize / 19 || token_count > tokens.clone().count() {
         return Ok(None);
     }
     let mut layout = TranscriptLayout {
         message_offsets: Vec::with_capacity(message_count),
+        message_parents: Vec::with_capacity(message_count),
         compaction_offsets: Vec::with_capacity(compaction_count),
         file_len,
         identity: cached_identity,
@@ -394,6 +470,17 @@ fn load_layout_cache(
         } else {
             layout.compaction_offsets.push(offset);
         }
+    }
+    // One parent token per message line follows the offsets.
+    for _ in 0..message_count {
+        let Some(token) = tokens.next() else {
+            return Ok(None);
+        };
+        layout.message_parents.push(if token == TOP_LEVEL_TOKEN {
+            None
+        } else {
+            Some(token.into())
+        });
     }
     let transcript = transcript_path(data_dir, session_id)?;
     let (Some(checksum_label), Some(checksum)) = (tokens.next(), tokens.next()) else {
@@ -414,6 +501,9 @@ fn load_layout_cache(
 }
 
 fn offsets_are_valid(layout: &TranscriptLayout) -> bool {
+    if layout.message_parents.len() != layout.message_offsets.len() {
+        return false;
+    }
     if layout
         .message_offsets
         .windows(2)
@@ -523,11 +613,18 @@ fn layout_cache_digest(layout: &TranscriptLayout) -> String {
     {
         digest.update(offset.to_le_bytes());
     }
+    for parent in &layout.message_parents {
+        digest.update(parent.as_deref().unwrap_or(TOP_LEVEL_TOKEN).as_bytes());
+        digest.update(b"\n");
+    }
     hex::encode(digest.finalize())
 }
 
 fn store_layout_cache(data_dir: &Path, session_id: &str, layout: &TranscriptLayout) -> Result<()> {
-    if layout.file_len < LAYOUT_CACHE_MIN_LEN || !layout.identity.is_available() {
+    if layout.file_len < LAYOUT_CACHE_MIN_LEN
+        || !layout.identity.is_available()
+        || layout.message_parents.len() != layout.message_offsets.len()
+    {
         return Ok(());
     }
     let path = transcript_path(data_dir, session_id)?;
@@ -559,6 +656,13 @@ fn store_layout_cache(data_dir: &Path, session_id: &str, layout: &TranscriptLayo
             if !offsets.is_empty() && offsets.len() % 8 != 0 {
                 writeln!(writer)?;
             }
+        }
+        for chunk in layout.message_parents.chunks(8) {
+            let tokens: Vec<&str> = chunk
+                .iter()
+                .map(|parent| parent.as_deref().unwrap_or(TOP_LEVEL_TOKEN))
+                .collect();
+            writeln!(writer, "{}", tokens.join(" "))?;
         }
         writeln!(writer, "checksum {}", layout_cache_digest(layout))?;
         writer.flush()?;

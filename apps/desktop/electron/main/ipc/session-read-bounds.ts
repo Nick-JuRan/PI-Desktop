@@ -26,6 +26,8 @@ export type SessionReadRequest = Readonly<{
   messageAround?: string;
   messageLimit?: number;
   contentLimit?: number;
+  topLevelOnly?: boolean;
+  delegateOf?: readonly string[];
 }>;
 
 export type BoundedSessionRead = Readonly<{
@@ -33,7 +35,12 @@ export type BoundedSessionRead = Readonly<{
   messageAround?: string;
   messageLimit: number;
   contentLimit: number;
+  topLevelOnly?: true;
+  delegateOf?: string[];
 }>;
+
+/** The host accepts at most this many delegate call ids in one read. */
+export const DELEGATE_READ_MAX_CALLS = 64;
 
 function positiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
@@ -56,10 +63,23 @@ export function boundSessionRead(request: SessionReadRequest): BoundedSessionRea
     request.messageBefore >= 0
       ? request.messageBefore
       : undefined;
+  // The row space: the rows of named delegate calls win over the top-level
+  // rows; both are windowed like any other read.
+  const delegateOf = Array.isArray(request.delegateOf)
+    ? request.delegateOf
+        .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+        .map((id) => id.trim())
+        .slice(0, DELEGATE_READ_MAX_CALLS)
+    : [];
   return {
     ...(messageAround !== undefined ? { messageAround } : {}),
     ...(messageBefore !== undefined ? { messageBefore } : {}),
     messageLimit,
     contentLimit,
+    ...(delegateOf.length > 0
+      ? { delegateOf }
+      : request.topLevelOnly === true
+        ? { topLevelOnly: true as const }
+        : {}),
   };
 }

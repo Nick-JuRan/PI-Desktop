@@ -11,8 +11,10 @@ import {
   sessionPermissions,
 } from "../../lib/pending-permissions";
 import {
+  dedupeSessionMessages,
   mergeLiveSessionMessages,
 } from "../../lib/session-transcript";
+import { TRANSCRIPT_CONTENT_LIMIT, TRANSCRIPT_DELEGATE_ROW_LIMIT } from "../../lib/transcript-reading";
 import { optimisticUserMessage } from "../../lib/session-transcript";
 import { withReviewChangeState } from "../../lib/workspace-review";
 import { settleStoppedAssistantMetrics } from "../../lib/context-usage";
@@ -50,6 +52,7 @@ export function createTranscriptSlice({
   | "clearError"
   | "activateMessageRevision"
   | "deleteMessage"
+  | "loadDelegateRows"
   | "rollbackWorkspaceChange"
   | "abort"
 > {
@@ -58,6 +61,10 @@ export function createTranscriptSlice({
     return sessionAllows(state.sessions.find((session) => session.id === state.activeSessionId)
       ?? { id: state.activeSessionId ?? "" }, "canEditMessages");
   };
+  // One read per (session, calls) while it is in flight and once it settled,
+  // so a Task opened again, or a delegate that produced nothing, never asks
+  // the host twice.
+  const delegateRowLoads = new Map<string, Promise<void>>();
   return {
     compactContext: async () => {
       const state = get();
@@ -394,6 +401,53 @@ export function createTranscriptSlice({
           error: error instanceof Error ? error.message : String(error),
           errorCode: (error as { code?: string })?.code ?? null,
         }));
+      }
+    },
+
+    loadDelegateRows: async (sessionId, callIds) => {
+      const calls = [...new Set(callIds.map((id) => id.trim()).filter(Boolean))].sort();
+      if (!sessionId || calls.length === 0) return;
+      const key = `${sessionId}\u0000${calls.join("\u0000")}`;
+      const active = delegateRowLoads.get(key);
+      if (active) return active;
+      const request = (async () => {
+        // The delegate's rows are a bounded window of their own space; the
+        // newest page of a very long delegation is enough to open its run.
+        const detail = await api.getSession(sessionId, {
+          delegateOf: calls,
+          messageLimit: TRANSCRIPT_DELEGATE_ROW_LIMIT,
+          contentLimit: TRANSCRIPT_CONTENT_LIMIT,
+        });
+        const rows = detail.session?.messages ?? [];
+        if (rows.length === 0) return;
+        const current = get();
+        if (current.activeSessionId === sessionId) {
+          const messages = dedupeSessionMessages([...current.messages, ...rows]);
+          runtime.cacheSessionTranscript(sessionId, messages, current.sessionHistory[sessionId]);
+          set((state) =>
+            state.activeSessionId === sessionId && state.messages === current.messages
+              ? { messages }
+              : {},
+          );
+          return;
+        }
+        const retained = current.retainedTranscripts[sessionId];
+        if (retained) {
+          const messages = dedupeSessionMessages([...retained, ...rows]);
+          runtime.cacheSessionTranscript(sessionId, messages, current.sessionHistory[sessionId]);
+          set((state) => ({
+            retainedTranscripts: { ...state.retainedTranscripts, [sessionId]: messages },
+          }));
+        }
+      })();
+      delegateRowLoads.set(key, request);
+      try {
+        await request;
+      } catch (error) {
+        // A failed read may be retried the next time the run is opened.
+        delegateRowLoads.delete(key);
+        if (get().activeSessionId === sessionId)
+          get().showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
       }
     },
 

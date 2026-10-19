@@ -84,6 +84,7 @@ export type SessionRuntime = {
       messageBefore?: number;
       messageLimit?: number;
       contentLimit?: number;
+      topLevelOnly?: boolean;
     },
   ) => ReturnType<typeof api.getSession>;
   /**
@@ -178,6 +179,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
       messageBefore?: number;
       messageLimit?: number;
       contentLimit?: number;
+      topLevelOnly?: boolean;
     },
   ) {
     const active = sessionDetailLoads.get(id);
@@ -230,16 +232,19 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
       ? recordPaneTranscript(current, id, current.messages) : {});
   }
 
-  // Every durable read a renderer makes is a bounded window; no read here asks
-  // for the whole transcript any more. A long delegation run can leave hundreds
-  // of MB of tool results in one transcript, and one structured clone of that
-  // killed the renderer (OOM). Mutations that used to need the whole array
-  // (delete, undo an unanswered prompt, revision switch) now name ids to the
-  // host, which rewrites the transcript itself.
+  // Every durable read a renderer makes is a bounded window of top-level rows;
+  // no read here asks for the whole transcript any more. A long delegation run
+  // can leave hundreds of MB of tool results in one transcript — 99% of them
+  // delegate rows — and one structured clone of that killed the renderer (OOM).
+  // Delegate rows are read on demand under their Task (`loadDelegateRows`).
+  // Mutations that used to need the whole array (delete, undo an unanswered
+  // prompt, revision switch) now name ids to the host, which rewrites the
+  // transcript itself.
   async function readSettledTail(id: string): Promise<SettledTailRead | null> {
     const detail = await api.getSession(id, {
       messageLimit: TRANSCRIPT_PAGE_SIZE,
       contentLimit: TRANSCRIPT_CONTENT_LIMIT,
+      topLevelOnly: true,
     });
     if (!detail.session) return null;
     const messages = detail.session.messages ?? [];
@@ -257,6 +262,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
       messageAround: messageId,
       messageLimit: TRANSCRIPT_PAGE_SIZE,
       contentLimit: TRANSCRIPT_CONTENT_LIMIT,
+      topLevelOnly: true,
     });
     return detail.session ?? null;
   }

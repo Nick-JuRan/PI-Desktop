@@ -1478,6 +1478,15 @@ cached read is proportional to the requested page. Consequences:
   prefix before reuse. Missing, old, unknown, corrupt, or mismatched caches are
   ignored and rebuilt from the JSONL source. Cache read/write failures are
   diagnostic only and do not make the session unreadable.
+- Format version 3 records, beside every message offset, the `parentToolCallId`
+  a delegate row carries in its `meta` (`-` for a top-level row). The scan reads
+  that from the line it already has: a line without the key is top-level
+  without any parsing, a line with it is parsed ignoring `blocks`, and a payload
+  that merely mentions the key parses to a row without a parent. The index lets
+  a window over the top-level rows, or over one delegate's rows, be chosen
+  without deserializing the rows it leaves out — in a long delegation run those
+  are 96% of the lines and 99% of the bytes (D668). A version-2 cache is ignored
+  and rebuilt once.
 - A matching identity and complete prefix permits append-only incremental
   scanning. A transcript rewrite invalidates both in-memory and disk layouts
   only after its atomic replacement succeeds; delete also removes both. Cache

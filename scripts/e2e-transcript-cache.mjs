@@ -128,11 +128,34 @@ try {
   let hasDiskCache = false;
   try {
     const cache = await readFile(layoutPath, "utf8");
-    assert.ok(cache.startsWith("PI-DESKTOP-TRANSCRIPT-LAYOUT 2\n"));
+    assert.ok(cache.startsWith("PI-DESKTOP-TRANSCRIPT-LAYOUT 3\n"));
+    // Format 3 records the delegate parent of the nested row beside the offsets.
+    assert.ok(/(^|\s)task-middle-call(\s|$)/.test(cache), "the layout cache must carry the nested row's parent");
     hasDiskCache = true;
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
+
+  // A top-level window is chosen from the parent index: the nested row is not
+  // in it and does not change its coordinates, while the delegate window
+  // returns exactly that row.
+  const topLevel = await host.call("session.get", {
+    id: sessionId,
+    messageLimit: 1000,
+    contentLimit: 64 * 1024,
+    topLevelOnly: true,
+  });
+  assert.equal(topLevel.session.messages.some((message) => message.id === "nested-child"), false);
+  assert.equal(topLevel.session.messages.length, firstBatch - 1, "every row but the nested one is top-level");
+  assert.equal(topLevel.session.messageEnd, firstBatch - 1);
+  const delegate = await host.call("session.get", {
+    id: sessionId,
+    messageLimit: 100,
+    contentLimit: 64 * 1024,
+    delegateOf: ["task-middle-call"],
+  });
+  assert.deepEqual(delegate.session.messages.map((message) => message.id), ["nested-child"]);
+  assert.equal(delegate.session.hasMoreBefore, false);
 
   for (let index = firstBatch; index < totalMessages; index += 1) {
     await append(sessionId, textMessage(index));
@@ -239,7 +262,7 @@ try {
     if (error.code !== "ENOENT") throw error;
   }
   if (hasDiskCache) {
-    assert.ok(rebuiltCache?.startsWith("PI-DESKTOP-TRANSCRIPT-LAYOUT 2\n"));
+    assert.ok(rebuiltCache?.startsWith("PI-DESKTOP-TRANSCRIPT-LAYOUT 3\n"));
   }
 
   const damagedSession = await host.call("session.create", {

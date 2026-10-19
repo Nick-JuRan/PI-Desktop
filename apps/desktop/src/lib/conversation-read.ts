@@ -6,6 +6,7 @@ export type ConversationPageReader = (options: {
   messageBefore?: number;
   messageLimit: number;
   contentLimit: number;
+  topLevelOnly: true;
 }) => Promise<{ session?: SessionDetail | null }>;
 
 /** The host caps one window at this many messages. */
@@ -35,6 +36,9 @@ export async function readConversationPages(
       ...(cursor !== undefined ? { messageBefore: cursor } : {}),
       messageLimit: pageSize,
       contentLimit,
+      // The conversation is its top-level rows; a delegate's rows are not part
+      // of what is copied, and they are the bulk of a long session's bytes.
+      topLevelOnly: true,
     });
     if (!session) return pages.length ? pages.flat() : null;
     pages.unshift(session.messages ?? []);

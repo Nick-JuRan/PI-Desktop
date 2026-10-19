@@ -7,6 +7,7 @@ use uuid::Uuid;
 use crate::db::{ms_to_ts, now_ms, ts_to_ms, Database};
 use crate::notifications::{self, Notification};
 use std::collections::HashMap;
+use std::path::Path;
 
 use crate::transcripts::{self, CompactionRecord, MessageRecord, RevisionRecord};
 
@@ -324,6 +325,14 @@ pub struct SessionReadOptions {
     /// Maximum characters per UI text/value field. This is a presentation cap;
     /// the full transcript remains available to the sidecar's uncapped read.
     pub content_limit: Option<usize>,
+    /// Count and return only top-level rows — those without a delegate parent.
+    /// Every window coordinate (`messageBefore`, `messageStart`, `messageEnd`)
+    /// is then an index among the top-level rows. The rows a delegate produced
+    /// are neither read nor deserialized; they come back through `delegate_of`.
+    pub top_level_only: bool,
+    /// Return only the rows produced under these delegate `Task` call ids, in
+    /// file order, with window coordinates indexing that set.
+    pub delegate_of: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1524,6 +1533,37 @@ pub fn session_summary(db: &Database, id: &str) -> Result<Option<SessionSummary>
     Ok(summary)
 }
 
+/// Where `message_id` sits in a window coordinate space (`positions`, ascending
+/// physical positions). In the top-level space a delegate row sits under its
+/// parent `Task` row, so a search hit inside a delegation centres the window on
+/// the call that produced it. `None` when the id — and, for a nested row, its
+/// parent — is not in the transcript or not in the space.
+fn window_position(
+    data_dir: &Path,
+    session_id: &str,
+    layout: &transcripts::layout::TranscriptLayout,
+    positions: &[usize],
+    message_id: &str,
+) -> Result<Option<usize>> {
+    let Some(physical) =
+        transcripts::find_message_position(data_dir, session_id, layout, message_id)?
+    else {
+        return Ok(None);
+    };
+    if let Ok(index) = positions.binary_search(&physical) {
+        return Ok(Some(index));
+    }
+    let Some(parent) = layout.message_parent(physical) else {
+        return Ok(None);
+    };
+    let Some(parent_physical) =
+        transcripts::find_message_position(data_dir, session_id, layout, parent)?
+    else {
+        return Ok(None);
+    };
+    Ok(positions.binary_search(&parent_physical).ok())
+}
+
 /// Load a session detail with an optional renderer-facing message window.
 /// The uncapped default is intentionally retained for the sidecar and for
 /// mutation paths that need the canonical transcript. Renderer callers should
@@ -1543,10 +1583,19 @@ pub fn get_session_with_options(
             db.data_dir(),
             id,
             |layout| {
-                let total = layout.message_count();
+                // The window's coordinate space: every physical message line,
+                // the top-level rows only, or the rows of the named delegate
+                // calls. The index decides; the rows outside the space are
+                // never read.
+                let positions: Vec<usize> = match options.delegate_of.as_deref() {
+                    Some(parents) => layout.delegate_positions(parents),
+                    None if options.top_level_only => layout.top_level_positions(),
+                    None => (0..layout.message_count()).collect(),
+                };
+                let total = positions.len();
                 let before = if let Some(message_id) = options.message_around.as_deref() {
                     let Some(position) =
-                        transcripts::find_message_position(db.data_dir(), id, layout, message_id)?
+                        window_position(db.data_dir(), id, layout, &positions, message_id)?
                     else {
                         return Ok(None);
                     };
@@ -1558,12 +1607,12 @@ pub fn get_session_with_options(
                     }
                 };
                 let start = before.saturating_sub(limit);
-                let read = transcripts::read_transcript_window_with_layout(
+                let read = transcripts::read_transcript_lines_with_layout(
                     db.data_dir(),
                     id,
                     layout,
-                    start,
-                    Some(before.saturating_sub(start)),
+                    &positions[start..before],
+                    true,
                 )?;
                 Ok(Some((
                     dedupe_records(read.messages),
@@ -5519,6 +5568,7 @@ mod tests {
                     message_before: before,
                     message_limit: Some(2),
                     content_limit: None,
+                    ..Default::default()
                 },
             )
             .unwrap()
@@ -5552,6 +5602,7 @@ mod tests {
                 message_before: None,
                 message_limit: Some(2),
                 content_limit: None,
+                ..Default::default()
             },
         )
         .unwrap()
@@ -5608,6 +5659,7 @@ mod tests {
                 message_before: None,
                 message_limit: Some(2),
                 content_limit: None,
+                ..Default::default()
             },
         )
         .unwrap()
@@ -5631,6 +5683,7 @@ mod tests {
                     message_before: Some(start),
                     message_limit: Some(2),
                     content_limit: None,
+                    ..Default::default()
                 },
             )
             .unwrap()
@@ -5680,6 +5733,7 @@ mod tests {
                 message_before: None,
                 message_limit: Some(4),
                 content_limit: None,
+                ..Default::default()
             },
         )
         .unwrap()
@@ -5742,6 +5796,7 @@ mod tests {
                 message_before: None,
                 message_limit: Some(1),
                 content_limit: Some(128),
+                ..Default::default()
             },
         )
         .unwrap()
@@ -6355,6 +6410,185 @@ mod tests {
         let detail = get_session(&db, &session_id).unwrap().unwrap();
         let ids: Vec<&str> = detail.messages.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(ids, vec!["u1", "a1", "u2", "a2"]);
+    }
+
+    /// One parent turn whose `Task` call spawned a delegate: u1, the Task row
+    /// `task-1`, five delegate rows under it, the assistant answer, and u2. The
+    /// top-level space is [u1, task-1, a1, u2]; the delegate space of `task-1`
+    /// is [d1..d5].
+    fn seed_delegation(db: &Database) -> String {
+        let session = create_session(db, None, None, None, None, None).unwrap();
+        let mut seq = 0;
+        let mut push = |message: UiMessage| {
+            let mut message = message;
+            message.created_at = format!("2025-05-01T00:00:{seq:02}Z");
+            seq += 1;
+            append_message(db, &session.id, &message, None).unwrap();
+        };
+        push(user_msg("u1", "search patents", ""));
+        let mut task = user_msg("task-1", "", "");
+        task.role = "tool".into();
+        task.tool_name = Some("Task".into());
+        task.tool_call_id = Some("task-1".into());
+        task.tool_status = Some("success".into());
+        push(task);
+        for index in 1..=5 {
+            let mut row = user_msg(&format!("d{index}"), &"patent text ".repeat(50), "");
+            row.role = "tool".into();
+            row.tool_name = Some("plugin_local_fusion_search_fusion_full_text".into());
+            row.tool_call_id = Some(format!("d{index}"));
+            row.tool_status = Some("success".into());
+            row.parent_tool_call_id = Some("task-1".into());
+            row.agent_name = Some("patent-reader".into());
+            push(row);
+        }
+        let mut answer = user_msg("a1", "found three", "");
+        answer.role = "assistant".into();
+        push(answer);
+        push(user_msg("u2", "thanks", ""));
+        session.id
+    }
+
+    fn ids(messages: &[UiMessage]) -> Vec<&str> {
+        messages.iter().map(|m| m.id.as_str()).collect()
+    }
+
+    #[test]
+    fn a_top_level_window_counts_and_returns_only_rows_without_a_delegate_parent() {
+        let db = test_db();
+        let session_id = seed_delegation(&db);
+        let read = |before: Option<i64>, limit: i64| {
+            get_session_with_options(
+                &db,
+                &session_id,
+                SessionReadOptions {
+                    message_before: before,
+                    message_limit: Some(limit),
+                    top_level_only: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+            .unwrap()
+        };
+        let tail = read(None, 2);
+        assert_eq!(ids(&tail.messages), vec!["a1", "u2"]);
+        // Coordinates index the top-level rows: four of them, not nine lines.
+        assert_eq!(tail.message_start, Some(2));
+        assert_eq!(tail.message_end, Some(4));
+        assert_eq!(tail.has_more_before, Some(true));
+        assert_eq!(tail.has_more_after, Some(false));
+        let head = read(Some(2), 2);
+        assert_eq!(ids(&head.messages), vec!["u1", "task-1"]);
+        assert_eq!(head.message_start, Some(0));
+        assert_eq!(head.has_more_before, Some(false));
+        assert_eq!(head.has_more_after, Some(true));
+        // The physical window still sees every line.
+        let physical = get_session_with_options(
+            &db,
+            &session_id,
+            SessionReadOptions {
+                message_limit: Some(100),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(physical.messages.len(), 9);
+        assert_eq!(physical.message_end, Some(9));
+    }
+
+    #[test]
+    fn a_delegate_window_returns_the_rows_under_the_named_calls_in_their_own_coordinates() {
+        let db = test_db();
+        let session_id = seed_delegation(&db);
+        let page = get_session_with_options(
+            &db,
+            &session_id,
+            SessionReadOptions {
+                message_limit: Some(3),
+                delegate_of: Some(vec!["task-1".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(ids(&page.messages), vec!["d3", "d4", "d5"]);
+        assert_eq!(page.message_start, Some(2));
+        assert_eq!(page.message_end, Some(5));
+        assert_eq!(page.has_more_before, Some(true));
+        assert_eq!(
+            page.messages[0].parent_tool_call_id.as_deref(),
+            Some("task-1"),
+            "delegate rows keep their parent"
+        );
+        let earlier = get_session_with_options(
+            &db,
+            &session_id,
+            SessionReadOptions {
+                message_before: Some(2),
+                message_limit: Some(3),
+                delegate_of: Some(vec!["task-1".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(ids(&earlier.messages), vec!["d1", "d2"]);
+        assert_eq!(earlier.has_more_before, Some(false));
+        // An unknown call has no rows and no history.
+        let none = get_session_with_options(
+            &db,
+            &session_id,
+            SessionReadOptions {
+                message_limit: Some(10),
+                delegate_of: Some(vec!["task-9".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert!(none.messages.is_empty());
+        assert_eq!(none.has_more_before, Some(false));
+    }
+
+    #[test]
+    fn a_top_level_window_centres_a_delegate_target_on_its_parent_task_row() {
+        let db = test_db();
+        let session_id = seed_delegation(&db);
+        let page = get_session_with_options(
+            &db,
+            &session_id,
+            SessionReadOptions {
+                message_around: Some("d3".into()),
+                message_limit: Some(2),
+                top_level_only: true,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .unwrap();
+        // task-1 is top-level position 1; the window centres on it the way a
+        // physical window centres on its target (position + limit / 2 + 1).
+        assert_eq!(ids(&page.messages), vec!["task-1", "a1"]);
+        assert_eq!(page.message_start, Some(1));
+        assert_eq!(page.message_end, Some(3));
+        // The owning Task is an ordinary row of this window, so no separate
+        // navigation parent is attached.
+        assert!(page.navigation_parent.is_none());
+        // A target that is in neither space is still "no session".
+        assert!(get_session_with_options(
+            &db,
+            &session_id,
+            SessionReadOptions {
+                message_around: Some("missing".into()),
+                message_limit: Some(2),
+                top_level_only: true,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .is_none());
     }
 
     #[test]

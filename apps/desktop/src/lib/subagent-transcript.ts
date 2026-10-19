@@ -8,7 +8,12 @@ import { isDelegationStartTool } from "./tool-display";
 import { delegationIdForMessage } from "./subagent-panel";
 
 /** One user/assistant exchange of a delegate session. */
-export type SubagentTranscriptTurn = { task: string; rows: SubagentRunItem[] };
+export type SubagentTranscriptTurn = {
+  /** The `Task` call that opened this turn; its rows are read on demand by it. */
+  callId: string;
+  task: string;
+  rows: SubagentRunItem[];
+};
 
 /**
  * A delegate's conversation as alternating turns: each Task call of the
@@ -160,7 +165,7 @@ export function buildSubagentTranscript(
         rows.push({ kind: "answer", message });
       }
     }
-    turns.push({ task: delegateTaskDescription(call), rows });
+    turns.push({ callId, task: delegateTaskDescription(call), rows });
   }
 
   return {
