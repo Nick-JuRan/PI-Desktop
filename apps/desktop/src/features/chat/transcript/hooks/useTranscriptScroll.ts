@@ -92,6 +92,13 @@ export function useTranscriptScroll({
   const wasRunningRef = useRef(isRunning);
   const followFrameRef = useRef(0);
   const prependHeightRef = useRef<number | null>(null);
+  // Set by the explicit control: the reader asked to see earlier messages, so
+  // the viewport stays at the top while the page lands and the mounted window
+  // grows over it, instead of being anchored to the row they were already
+  // reading — which left the new rows (and the control itself) out of view and
+  // made the press look like a no-op. The reader's next scroll gesture ends it.
+  const holdTopRef = useRef(false);
+
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [showJump, setShowJump] = useState(false);
 
@@ -219,6 +226,7 @@ export function useTranscriptScroll({
   useLayoutEffect(() => {
     releaseDisclosureAnchor();
     cancelFollowScroll();
+    holdTopRef.current = false;
     pinnedRef.current = savedReadingPosition?.pinned ?? true;
     setShowJump(!pinnedRef.current);
     if (pinnedRef.current) scrollToBottom();
@@ -343,8 +351,10 @@ export function useTranscriptScroll({
 
   /** The explicit control shown once automatic progression has stopped. */
   const loadEarlierHistory = useCallback(() => {
+    holdTopRef.current = true;
+    releaseFollow();
     loadOlder("gesture");
-  }, [loadOlder]);
+  }, [loadOlder, releaseFollow]);
 
   // Anchors the viewport whenever rows appear above it — a fetched older page
   // (`messages.length`) or a grown mounted window (`windowSize`, D261). Both add
@@ -355,6 +365,12 @@ export function useTranscriptScroll({
     const el = scrollRef.current;
     prependHeightRef.current = null;
     if (!el) return;
+    if (holdTopRef.current) {
+      el.scrollTop = 0;
+      lastScrollTopRef.current = 0;
+      if (transcriptHasLayout(el)) lastLaidOutScrollTopRef.current = 0;
+      return;
+    }
     const delta = el.scrollHeight - previousHeight;
     if (delta <= 0) return;
     el.scrollTop += delta;
@@ -387,6 +403,7 @@ export function useTranscriptScroll({
       performance.now(),
       lastScrollGestureAtRef.current,
     );
+    if (gesturing) holdTopRef.current = false;
     if (
       paneVisibleRef.current &&
       isHistoryRevealPosition(el, pinnedRef.current && !gesturing)
@@ -706,6 +723,7 @@ export function useTranscriptScroll({
     cancelReadingPosition();
     releaseDisclosureAnchor();
     pinnedRef.current = true;
+    holdTopRef.current = false;
     setShowJump(false);
     scrollToBottom(
       window.matchMedia("(prefers-reduced-motion: reduce)").matches

@@ -21,7 +21,11 @@ type ReadSession = (
 ) => Promise<{ session: SessionDetail | null }>;
 type ReadingActions = Pick<
   AppState,
-  "navigateTranscript" | "loadTranscriptPage" | "returnToLatestTranscript" | "restoreTranscriptReading"
+  | "navigateTranscript"
+  | "loadTranscriptPage"
+  | "returnToLatestTranscript"
+  | "restoreTranscriptReading"
+  | "openTranscriptStart"
 >;
 
 /** Read workflows publish renderer views and never write the runtime/model cache. */
@@ -66,6 +70,42 @@ export function createTranscriptReadingRuntime({ get, set }: StoreAccess, read: 
 
   const actions: ReadingActions = {
     returnToLatestTranscript,
+    openTranscriptStart: async (sessionId) => {
+      // One bounded read of the first page opens the conversation at its start
+      // as a historical reading window: forward paging continues from there and
+      // the latest-turn control returns to the live tail. A long session is
+      // reached in one request instead of one older page at a time — a 3,800
+      // row delegation run was 38 pages away from its own prompt.
+      if (get().activeSessionId !== sessionId) return;
+      // Remote history exposes older-item cursors only; a physical offset is
+      // not a position there.
+      if (isRemoteSession({ id: sessionId })) return;
+      const previous = get().transcriptViews[sessionId];
+      const range = currentView(sessionId);
+      if (range.loading) return;
+      const pending: TranscriptView = { ...range, restored: true, loading: "target" };
+      publish(sessionId, pending);
+      try {
+        const { session } = await read(sessionId, {
+          messageBefore: TRANSCRIPT_PAGE_SIZE,
+          messageLimit: TRANSCRIPT_PAGE_SIZE,
+          contentLimit: TRANSCRIPT_CONTENT_LIMIT,
+        });
+        if (get().transcriptViews[sessionId] !== pending) return;
+        if (get().activeSessionId !== sessionId) {
+          returnToLatestTranscript(sessionId);
+          return;
+        }
+        if (!session) throw new Error("Conversation no longer exists.");
+        publish(sessionId, { ...transcriptViewFromSession(session), restored: true });
+      } catch (error) {
+        if (get().transcriptViews[sessionId] !== pending) return;
+        if (previous) publish(sessionId, previous);
+        else returnToLatestTranscript(sessionId);
+        if (get().activeSessionId === sessionId)
+          get().showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+      }
+    },
     restoreTranscriptReading: async (sessionId, position, signal) => {
       if (signal.aborted || get().activeSessionId !== sessionId || !position.messageId) return false;
       const previous = get().transcriptViews[sessionId];

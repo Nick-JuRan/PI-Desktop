@@ -442,6 +442,7 @@ export const tr = {
     loadingEarlierMessages: "Önceki iletiler yükleniyor…",
     loadLaterMessages: "Sonraki mesajları yükle",
     loadEarlierMessages: "Önceki mesajları yükle",
+    openConversationStart: "Sohbetin başına git",
     showEarlierMessages: "Önceki iletileri göster",
     copy: "Kopyala",
     copied: "Kopyalandı",

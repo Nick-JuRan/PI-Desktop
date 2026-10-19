@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo } from "react";
 import { ChatTranscript } from "./ChatTranscript";
 import { useAppStore } from "../stores/app-store";
+import { isRemoteSession } from "../lib/remote-session-safety";
 import { headPermission, sessionPermissions } from "../lib/pending-permissions";
 import { headAsk } from "../lib/pending-asks";
 import { useTranscriptView } from "../hooks/use-transcript-view";
@@ -29,6 +30,7 @@ export const SessionPane = memo(function SessionPane({
 }) {
   const transcript = useTranscriptView(sessionId);
   const loadTranscriptPage = useAppStore((state) => state.loadTranscriptPage);
+  const openTranscriptStart = useAppStore((state) => state.openTranscriptStart);
   const returnToLatest = useAppStore((state) => state.returnToLatestTranscript);
   const restoreTranscriptReading = useAppStore((state) => state.restoreTranscriptReading);
   const restoreReading = useCallback<RestoreTranscriptReading>(
@@ -77,6 +79,7 @@ export const SessionPane = memo(function SessionPane({
           messages={transcript.messages}
           hasMoreBefore={transcript.hasMoreBefore}
           onLoadOlder={() => loadTranscriptPage(sessionId, "before")}
+          onOpenStart={isRemoteSession({ id: sessionId }) ? undefined : () => void openTranscriptStart(sessionId)}
           searchTarget={searchTarget}
           readingWindow={transcript.historical}
           onRestoreReading={restoreReading}

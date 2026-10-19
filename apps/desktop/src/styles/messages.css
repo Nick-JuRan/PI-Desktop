@@ -3359,6 +3359,18 @@
   background: var(--ds-bg-elevated-opaque);
 }
 
+/* The history boundary offers the next older page and the conversation start
+ * side by side once automatic progression has stopped. */
+.transcript-history-controls {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.transcript-history-controls .transcript-load-later {
+  margin: 12px 0;
+}
+
 .transcript-navigation-loading {
   position: absolute;
   top: 12px;

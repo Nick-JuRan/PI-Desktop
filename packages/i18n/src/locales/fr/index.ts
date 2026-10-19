@@ -433,6 +433,7 @@ export const fr = {
     "loadingEarlierMessages": "Chargement des messages précédents…",
     loadLaterMessages: "Charger les messages suivants",
     loadEarlierMessages: "Charger les messages précédents",
+    openConversationStart: "Aller au début de la conversation",
     "showEarlierMessages": "Afficher les messages précédents",
     "copy": "Copier",
     "copied": "Copié",

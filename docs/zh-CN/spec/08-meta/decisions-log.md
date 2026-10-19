@@ -58,6 +58,7 @@
 | D662 | 插件在工作面板 Browser 中打开受范围限制的 HTML | **在 `fs.read` 下新增 `pi.fs.openInBrowser(pathFromRoot)`。宿主执行插件常规的读取路径包含、受保护路径、凭据拒绝名单、声明范围与项目注册文件夹检查；仅接受已存在的 `.html`、`.htm`、`.xhtml` 文件。验证后，Main 请求渲染进程为当前本地会话创建 Browser 资源标签页。Browser 插件必须启用。此操作不授予 `browser.cdp`，不改变 BrowserPreview 或本地文件导航策略，也不新增 host-core 协议或持久化状态。见 ADR 0330、`07-plugins/03-plugin-api.md`、`07-plugins/13-plugin-permissions-matrix.md`、`04-ux/08-component-spec.md` 与 E2E-153。** | 文件管理器需要在应用内预览 HTML；如果授予插件 `browser.cdp`，也会暴露无关的页面检查与控制能力。 |
 | D665 | 渲染层读取对话记录一律有界；对话记录改写只向 host 传递 id | **修订 D199 / D390 / ADR 0120 / ADR 0216。渲染层发起的 `session/get` 若未带 `messageLimit` / `contentLimit`，由 Electron main 补上默认值（200 条、每条 64 KiB，并按 host 的 1000 条上限钳制），渲染层因此永远不会在一次回复里收到整份对话记录；sidecar 继续通过自己的 host 代理使用无上限的 `session.get` 重建模型上下文，模型上下文保持无损。实时流只保留每条工具结果的展示副本（`tool_update` / `tool_end`），截断规则与重新加载的页面一致；对话记录保留完整载荷。删除消息与 Stop 撤回未被回复的提问改为调用新增的 `session.deleteMessage({ sessionId, messageId }) -> { deletedIds }`，经共享的改写闸门执行；host 自行套用用户轮次规则并重写对话记录，渲染层不再在任何地方调用 `session.replaceMessages`。`session.activateRevision` 的 `prefix` 变为可选，未提供且根消息不在对话记录中时返回 `NOT_FOUND`，渲染层改为重新读取一页有界窗口而不是接收重写后的整份记录。编辑与重试通过一次 `messageAround` 窗口获取目标消息的完整文本；复制对话按有界分页遍历。渲染层恢复在五分钟内自动重载三次后停止，记录 `recovery: "crash-loop"`，并由用户选择重载或退出。协议版本保持 11；新增的 IPC 通道与 host 方法均为增量。** | 一次持续读取专利全文的委派运行把单个对话记录涨到约 200 MB。渲染层对它的每一次无上限读取（中止、删除、重试、编辑、复制）以及全尺寸的实时 `tool_end` 行把渲染进程推过 V8 堆上限，Electron 自动重载，用户再次打开同一会话又再次崩溃（退出码 -536870904，两天内四次）。若只给读取加上限，渲染层原有的 `replaceMessages` 写回会用一个分页且被展示截断的窗口重写对话记录——这是丢数据的路径——因此改写必须先搬到 host。 |
 | D666 | 自动历史推进有预算 | **修订 D269 / D665。由顶部边界观察器驱动的自动历史推进，只在已加载行数少于 `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET`（600）时继续读取更早的页；超过后对话记录在边界处显示 `chat.loadEarlierMessages` 按钮，之后只有读者手势——该按钮、滚动到顶部、小地图的延续控件——才继续读取，每次一页。为已加载的行扩大挂载窗口不计入预算。展示截断最多只扫描 `limit` 个码点，不再为数 MB 的载荷物化字符数组。已加载的规范历史保持加载（长历史 E2E 的不变量不变）；限制实时尾部行数另行决定。磁盘上的对话记录、持久化与模型上下文不变。** | D665 限制的是渲染层持有的单行有多大，不是有多少行。一次每隔几秒读取专利全文的委派运行在 42 分钟内把会话涨到 331 MB；它的行几乎都是折叠的子 agent 工具行，永远撑不满视口，于是每次打开时 D269 的推进都把整份历史一页页读进渲染层（"正在加载更早的消息…"永不结束），在 D665 合入的次日渲染层再次耗尽内存（退出码 -536870904）。 |
+| D667 | 历史边界可直接打开对话开头；显式加载更早一页后停留在顶部 | **修订 D269 / D666。自动推进暂停后，边界在 `chat.loadEarlierMessages` 旁提供 `chat.openConversationStart`：一次有界读取第一页（`messageBefore: TRANSCRIPT_PAGE_SIZE`、`messageLimit: TRANSCRIPT_PAGE_SIZE`）以历史阅读窗口（`restored`）打开对话开头，支持 `hasMoreAfter` 向后翻页，并用已有的"回到最新"控件返回。远程会话的历史只有游标没有偏移，不提供该控件。显式点击加载更早一页时解除跟随，并在页面落地、挂载窗口扩大期间把视口保持在顶部；滚动手势、跳到最新或切换会话结束该保持。滚动驱动的翻页保留原有锚定。不涉及 host、协议或持久化改动。** | 有了 D666 之后，一个 3,794 行（331 MB，平均每行 85 KB）的会话距自己的提问仍有 38 页；而每次点击加载更早一页，视口都锚定在屏幕上原有的行，新加载的行和控件本身都落在视野之外，点击看起来毫无效果。优雅的答案是导航，而不是搬运或裁剪行——已加载的规范历史保持加载，对话记录、持久化 outbox 与模型上下文均不受影响。 |
 
 ## B. 辅助实现默认值
 
@@ -5548,3 +5549,24 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   `apps/desktop/test/transcript-window.test.mjs` 与
   `apps/desktop/test/session-switch-performance.test.mjs` 覆盖。见
   `04-ux/08-component-spec.md`（会话小地图与对话记录历史）。
+
+## 2026-10-19 —— 历史边界可直接打开对话开头（D667）
+
+- D667 修订 D269 与 D666。自动推进有了预算之后，一个 3,794 行（331 MB，平均每行 85 KB）
+  的会话距自己的提问仍有 38 页；而每次点击 `chat.loadEarlierMessages`，视口都锚定在屏幕上
+  原有的行，新加载的行和控件本身都落在视野之外：点击看起来毫无效果。
+- 自动推进暂停后，边界在加载更早一页的控件旁提供 `chat.openConversationStart`。一次有界
+  读取第一页（`messageBefore: TRANSCRIPT_PAGE_SIZE`、`messageLimit: TRANSCRIPT_PAGE_SIZE`，
+  带展示截断）以历史阅读窗口（`restored`）打开对话开头：窗口持有自己的快照，
+  `hasMoreAfter` 向后翻页通过已有的 `loadTranscriptPage("after")` 从窗口末尾继续，
+  "回到最新"控件返回实时尾部。远程会话的历史只有游标没有偏移，不提供该控件
+  （`openTranscriptStart` 对其直接返回）。
+- 显式点击加载更早一页时解除跟随，并在页面落地、挂载窗口（D261）扩大期间把 `scrollTop`
+  保持为 0，读者因此看到自己要求的内容的开头、控件仍可触达。读者的下一次滚动手势、跳到最新
+  或切换会话结束该保持。滚动驱动的翻页保留行锚定。
+- 没有任何东西被搬运或裁剪：已加载的规范历史保持加载，磁盘上的对话记录、持久化 outbox 与
+  sidecar 的模型上下文均不受影响。不涉及 host、协议或存储改动。
+- 由 `apps/desktop/test/transcript-reading.test.mjs`（`openTranscriptStart`：首页读取、
+  向后翻页、返回、远程拒绝、读取失败回滚）与
+  `apps/desktop/test/transcript-row-growth.test.mjs`（边界控件、顶部保持、窗格接线）覆盖。
+  见 `04-ux/08-component-spec.md`。

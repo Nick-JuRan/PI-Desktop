@@ -2224,6 +2224,20 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   that button, a scroll gesture that reaches the top, and the minimap
   continuation control are reader gestures and fetch one page per use. Growing
   the mounted window over rows that are already loaded is never budgeted.
+- **The boundary also opens the conversation start** (D667): beside the older-page
+  button, `chat.openConversationStart` reads the first page
+  (`messageBefore: TRANSCRIPT_PAGE_SIZE`) as a historical reading window
+  (`restored`), with `hasMoreAfter` forward paging and the latest-turn control to
+  return. A long session is reached in one request instead of one older page at
+  a time. Remote sessions, whose history offers cursors rather than offsets, do
+  not get the control.
+- **An explicit older-page press stays at the top** (D667): the control releases
+  follow and holds `scrollTop` at 0 while the page lands and the mounted window
+  grows over it, instead of anchoring the viewport to the row the reader was
+  already on — which left the new rows and the control itself out of view and
+  made the press look like a no-op. The reader's next scroll gesture, a jump to
+  the latest turn, or a session change ends the hold. Scroll-driven paging keeps
+  its anchoring.
 - **Minimap hover cost**: dash magnification is applied by writing a custom
   property per dash, and dash centers are measured in a separate read-only pass.
   Reading a dash's geometry inside the same loop that writes to it forces one
