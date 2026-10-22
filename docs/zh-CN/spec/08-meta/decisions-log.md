@@ -54,13 +54,13 @@
 | D656 | 隔离宿主持续拒绝的 outbox 追加，避免整队停摆 | **修订 ADR 0041 / D318 / D444 / D597：当 `session.appendMessage` 或 `session.recordUsage` 返回的错误无法归类为重复消息 ID、`PERMISSION_DENIED:` 毒行或外键孤立行时，不再结束本次 flush，而是在同一 Host 代内按有界退避重试（5 秒起、翻倍、上限 60 秒）。同一队头连续第五次失败后，该追加被移入应用自有的死信文件 `session-message-outbox.dead-letter.json`（保留载荷、sessionId、隔离时间与宿主错误；只保留最新 256 条，超出丢弃最旧并记 warn），随后继续排空后续条目，因此单条被拒追加不再长期占用 FIFO 队头、填满 1024 条上限或导致所有会话写入失败。Host 重启属于新代，会立即重试该队头。隔离条目永不自动重放，`session.delete` 会连同该会话的隔离条目一起删除。协议版本、存储架构与队列文件格式均不变。** | 一条 `stream did not contain valid UTF-8` 追加在队头滞留 14.8 小时，期间 `session.persistence.outbox.is.full` 触发 5990 次，导致所有会话的写入直到重启前全部失败；此前只有三类错误有排空出口，其余错误被永久当作瞬时错误（#1560）。 |
 | D657 | 让内置浏览器打开工作区外的本地文件 | **修订 ADR 0170：通过绝对路径或 `file:` URL 可打开任意已存在的本地普通文件，本地文件页面也可导航到其他已存在的本地文件。相对输入仍以工作区为根；HTTP(S) 页面只保留此前工作区内文件链接的权限。缺失文件、目录与远程文件 authority 仍被阻止。`BrowserPreview` 与 sidecar 继续使用工作区根解析。公开的 `pi.browser.navigate` API 在高风险 `browser.cdp` 权限下采用相同策略。见 ADR 0328、E2E-059、`04-ux/08-component-spec.md` 与 `05-security/01-security.md`。** | 用户需要检查项目外的本地 HTML，而工作区范围内的 Agent 文件工具和远程页面导航仍须保留原有边界（#1627）。 |
 | D659 | 重新打开归档项目后恢复侧栏显示 | **修订 D093 / D455：成功明确激活项目时，清除该规范化路径的渲染层归档标记并持久化，使用户从「项目归档」点击「打开」、通过「添加项目」再次选择同一目录，或打开项目会话后，都能在主页侧边栏看到该项目。仅选择归档详情行而未激活，以及普通会话刷新，都不改变归档状态。不更改 Host/项目/会话存储或协议。见 ADR 0294、E2E-264 与 issue #1653。** | 用户明确重新打开项目后，活动工作区虽已切换，但按路径存储的归档展示标记仍在，导致项目从侧栏隐藏。 |
-| D661 | 分段回合过程与独立的思考偏好 | **取代 D633 / D651 与 `turn-process-and-thinking-display` ADR 中记录的 `Detailed` / `Compact` 显示模式行为与单一整体过程披露：回合渲染为按时间顺序排列的可折叠过程片段，Bash 与 run 别名位于所有折叠容器之外（回合级过程披露与任何普通活动组），即使所有组都收起也保持可见，且过程／组折叠默认值不依赖思考偏好。偏好为可选的布尔值 `AppSettings.showThinking`；缺失或非布尔值回退到旧版 `thinkingDisplayMode` 字段（`compact` 隐藏，`detailed`／未知／缺失显示），该旧字段仅为持久化设置兼容性保留。`showThinking` 加入可移植应用字段，因此会像旧字段一样同步；其余 Host 协议、持久化 schema、权限或插件契约不变。见修订后的 ADR、`04-ux/06-settings-ia.md`、`04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md` 与 E2E-CHAT-turn-process-and-thinking-display。** | 单一扁平容器让较长的工具／搜索序列难以浏览，并把推理可见性与过程折叠挤进同一个二值开关；独立布尔值加上始终可见的 Bash 行，让命令密集的回合保持可读又不遮挡回答。 |
+| D661 | 分段回合过程与独立的思考偏好 *（由 D668 修订）* | **取代 D633 / D651 与 `turn-process-and-thinking-display` ADR 中记录的 `Detailed` / `Compact` 显示模式行为与单一整体过程披露：回合渲染为按时间顺序排列的可折叠过程片段，Bash 与 run 别名位于所有折叠容器之外（回合级过程披露与任何普通活动组），即使所有组都收起也保持可见，且过程／组折叠默认值不依赖思考偏好。偏好为可选的布尔值 `AppSettings.showThinking`；缺失或非布尔值回退到旧版 `thinkingDisplayMode` 字段（`compact` 隐藏，`detailed`／未知／缺失显示），该旧字段仅为持久化设置兼容性保留。`showThinking` 加入可移植应用字段，因此会像旧字段一样同步；其余 Host 协议、持久化 schema、权限或插件契约不变。见修订后的 ADR、`04-ux/06-settings-ia.md`、`04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md` 与 E2E-CHAT-turn-process-and-thinking-display。** | 单一扁平容器让较长的工具／搜索序列难以浏览，并把推理可见性与过程折叠挤进同一个二值开关；独立布尔值加上始终可见的 Bash 行，让命令密集的回合保持可读又不遮挡回答。 |
 | D662 | 插件在工作面板 Browser 中打开受范围限制的 HTML | **在 `fs.read` 下新增 `pi.fs.openInBrowser(pathFromRoot)`。宿主执行插件常规的读取路径包含、受保护路径、凭据拒绝名单、声明范围与项目注册文件夹检查；仅接受已存在的 `.html`、`.htm`、`.xhtml` 文件。验证后，Main 请求渲染进程为当前本地会话创建 Browser 资源标签页。Browser 插件必须启用。此操作不授予 `browser.cdp`，不改变 BrowserPreview 或本地文件导航策略，也不新增 host-core 协议或持久化状态。见 ADR 0330、`07-plugins/03-plugin-api.md`、`07-plugins/13-plugin-permissions-matrix.md`、`04-ux/08-component-spec.md` 与 E2E-153。** | 文件管理器需要在应用内预览 HTML；如果授予插件 `browser.cdp`，也会暴露无关的页面检查与控制能力。 |
-| D665 | 渲染层读取对话记录一律有界；对话记录改写只向 host 传递 id *（由 D669 修订）* | **修订 D199 / D390 / ADR 0120 / ADR 0216。渲染层发起的 `session/get` 若未带 `messageLimit` / `contentLimit`，由 Electron main 补上默认值（200 条、每条 64 KiB，并按 host 的 1000 条上限钳制），渲染层因此永远不会在一次回复里收到整份对话记录；sidecar 继续通过自己的 host 代理使用无上限的 `session.get` 重建模型上下文，模型上下文保持无损。实时流只保留每条工具结果的展示副本（`tool_update` / `tool_end`），截断规则与重新加载的页面一致；对话记录保留完整载荷。删除消息与 Stop 撤回未被回复的提问改为调用新增的 `session.deleteMessage({ sessionId, messageId }) -> { deletedIds }`，经共享的改写闸门执行；host 自行套用用户轮次规则并重写对话记录，渲染层不再在任何地方调用 `session.replaceMessages`。`session.activateRevision` 的 `prefix` 变为可选，未提供且根消息不在对话记录中时返回 `NOT_FOUND`，渲染层改为重新读取一页有界窗口而不是接收重写后的整份记录。编辑与重试通过一次 `messageAround` 窗口获取目标消息的完整文本；复制对话按有界分页遍历。渲染层恢复在五分钟内自动重载三次后停止，记录 `recovery: "crash-loop"`，并由用户选择重载或退出。协议版本保持 11；新增的 IPC 通道与 host 方法均为增量。** | 一次持续读取专利全文的委派运行把单个对话记录涨到约 200 MB。渲染层对它的每一次无上限读取（中止、删除、重试、编辑、复制）以及全尺寸的实时 `tool_end` 行把渲染进程推过 V8 堆上限，Electron 自动重载，用户再次打开同一会话又再次崩溃（退出码 -536870904，两天内四次）。若只给读取加上限，渲染层原有的 `replaceMessages` 写回会用一个分页且被展示截断的窗口重写对话记录——这是丢数据的路径——因此改写必须先搬到 host。 |
-| D666 | 自动历史推进有预算 *（由 D669 撤回）* | **修订 D269 / D665。由顶部边界观察器驱动的自动历史推进，只在已加载行数少于 `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET`（600）时继续读取更早的页；超过后对话记录在边界处显示 `chat.loadEarlierMessages` 按钮，之后只有读者手势——该按钮、滚动到顶部、小地图的延续控件——才继续读取，每次一页。为已加载的行扩大挂载窗口不计入预算。展示截断最多只扫描 `limit` 个码点，不再为数 MB 的载荷物化字符数组。已加载的规范历史保持加载（长历史 E2E 的不变量不变）；限制实时尾部行数另行决定。磁盘上的对话记录、持久化与模型上下文不变。** | D665 限制的是渲染层持有的单行有多大，不是有多少行。一次每隔几秒读取专利全文的委派运行在 42 分钟内把会话涨到 331 MB；它的行几乎都是折叠的子 agent 工具行，永远撑不满视口，于是每次打开时 D269 的推进都把整份历史一页页读进渲染层（"正在加载更早的消息…"永不结束），在 D665 合入的次日渲染层再次耗尽内存（退出码 -536870904）。 |
-| D667 | 历史边界可直接打开对话开头；显式加载更早一页后停留在顶部 *（由 D669 撤回）* | **修订 D269 / D666。自动推进暂停后，边界在 `chat.loadEarlierMessages` 旁提供 `chat.openConversationStart`：一次有界读取第一页（`messageBefore: TRANSCRIPT_PAGE_SIZE`、`messageLimit: TRANSCRIPT_PAGE_SIZE`）以历史阅读窗口（`restored`）打开对话开头，支持 `hasMoreAfter` 向后翻页，并用已有的"回到最新"控件返回。远程会话的历史只有游标没有偏移，不提供该控件。显式点击加载更早一页时解除跟随，并在页面落地、挂载窗口扩大期间把视口保持在顶部；滚动手势、跳到最新或切换会话结束该保持。滚动驱动的翻页保留原有锚定。不涉及 host、协议或持久化改动。** | 有了 D666 之后，一个 3,794 行（331 MB，平均每行 85 KB）的会话距自己的提问仍有 38 页；而每次点击加载更早一页，视口都锚定在屏幕上原有的行，新加载的行和控件本身都落在视野之外，点击看起来毫无效果。优雅的答案是导航，而不是搬运或裁剪行——已加载的规范历史保持加载，对话记录、持久化 outbox 与模型上下文均不受影响。 |
-| D668 | 历史页只含顶层行；委派的行在打开时读取 | **修订 ADR 0120 / ADR 0279 / D665–D667。对话记录 layout 缓存（格式 3）在每条消息偏移旁记录其委派父级，因此 `session.get` 可接受 `topLevelOnly: true`——窗口只覆盖没有委派父级的行，所有坐标在该空间内计数，落在委派行上的 `messageAround` 目标以其父 `Task` 行为中心——或 `delegateOf: [callId, …]`（1–64 个 id，必须带窗口）——只覆盖这些 `Task` 调用下产生的行。被空间排除的行既不读取也不反序列化。主对话流背后的每次读取（打开、预取、落定刷新、编辑/重试水合、阅读位置恢复、回到开头、复制）都是顶层的；搜索跳转及其翻页保留全部物理行。打开某个委派——工作面板标签页或行内展开 `Task` 行——读取链上尚无行的调用的行（`loadDelegateRows`，每组调用一次最多 1000 行的有界读取），并合并到其 `Task` 下；没有产出的委派只问一次。实时行、磁盘上的对话记录、持久化与 sidecar 的模型上下文不变。协议版本保持 11；选项为增量。** | 一个 3,794 行（331 MB）的会话里，3,645 行（96%）、315 MB（99.7%）在 `Task` 调用之下：主 agent 自己的对话只有 150 行、约 1 MB。渲染层取的每一物理页都是 5–15 MB 的委派工具载荷，在 host 上解析成对话流根本不显示的行的 64 KiB 预览，而对话距自己的提问有 38 页。对话本身的页只花对话本身的代价；委派只在有人看它时才花它的行的代价。（此前把行归于主 agent 的统计来自 Windows `findstr`，它不匹配超过 8 KiB 的行——这个会话几乎每一行都如此。） |
-| D669 | 历史边界与渲染层恢复回到 D665 之前的行为 | **撤回 D666 与 D667；修订 D665。D668 消除了它们所绕开的原因——页面大半是委派的行——因此自动历史推进重新不设预算（D269），顶部边界不再有"加载更早的消息"与"回到对话开头"控件，加载更早一页时视口锚定在读者所在的行，渲染层恢复在冷却后重载消失的渲染进程，不再有崩溃循环熔断与对话框。`renderer.process.gone` 记录带 `reason`、`exitCode` 与 `reloaded`。D665 中保留：渲染层 `session/get` 的有界默认值、host 侧删除/撤回/切换修订（`session.deleteMessage`）、分页复制，以及工具结果的实时展示上限。本分叉与 upstream 的差异只剩 D665 的机制与 D668。** | D666 与 D667 绕开的是"页面大半是委派的行"这一症状；D668 消除了原因，它们针对的那个会话现在以自己 150 行的代价翻页，而它们添加的每个控件都是 upstream 项目没有的界面。D665 的机制保留，因为 Stop、删除、重试、编辑与复制不在 D668 覆盖范围内：没有有界默认值与 host 侧改写，它们会重新把整份对话记录读进渲染层，删除还会超过 host 的 64 MiB 请求上限。 |
+| D670 | 渲染层读取对话记录一律有界；对话记录改写只向 host 传递 id *（由 D674 修订）* | **修订 D199 / D390 / ADR 0120 / ADR 0216。渲染层发起的 `session/get` 若未带 `messageLimit` / `contentLimit`，由 Electron main 补上默认值（200 条、每条 64 KiB，并按 host 的 1000 条上限钳制），渲染层因此永远不会在一次回复里收到整份对话记录；sidecar 继续通过自己的 host 代理使用无上限的 `session.get` 重建模型上下文，模型上下文保持无损。实时流只保留每条工具结果的展示副本（`tool_update` / `tool_end`），截断规则与重新加载的页面一致；对话记录保留完整载荷。删除消息与 Stop 撤回未被回复的提问改为调用新增的 `session.deleteMessage({ sessionId, messageId }) -> { deletedIds }`，经共享的改写闸门执行；host 自行套用用户轮次规则并重写对话记录，渲染层不再在任何地方调用 `session.replaceMessages`。`session.activateRevision` 的 `prefix` 变为可选，未提供且根消息不在对话记录中时返回 `NOT_FOUND`，渲染层改为重新读取一页有界窗口而不是接收重写后的整份记录。编辑与重试通过一次 `messageAround` 窗口获取目标消息的完整文本；复制对话按有界分页遍历。渲染层恢复在五分钟内自动重载三次后停止，记录 `recovery: "crash-loop"`，并由用户选择重载或退出。协议版本保持 11；新增的 IPC 通道与 host 方法均为增量。** | 一次持续读取专利全文的委派运行把单个对话记录涨到约 200 MB。渲染层对它的每一次无上限读取（中止、删除、重试、编辑、复制）以及全尺寸的实时 `tool_end` 行把渲染进程推过 V8 堆上限，Electron 自动重载，用户再次打开同一会话又再次崩溃（退出码 -536870904，两天内四次）。若只给读取加上限，渲染层原有的 `replaceMessages` 写回会用一个分页且被展示截断的窗口重写对话记录——这是丢数据的路径——因此改写必须先搬到 host。 |
+| D671 | 自动历史推进有预算 *（由 D674 撤回）* | **修订 D269 / D670。由顶部边界观察器驱动的自动历史推进，只在已加载行数少于 `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET`（600）时继续读取更早的页；超过后对话记录在边界处显示 `chat.loadEarlierMessages` 按钮，之后只有读者手势——该按钮、滚动到顶部、小地图的延续控件——才继续读取，每次一页。为已加载的行扩大挂载窗口不计入预算。展示截断最多只扫描 `limit` 个码点，不再为数 MB 的载荷物化字符数组。已加载的规范历史保持加载（长历史 E2E 的不变量不变）；限制实时尾部行数另行决定。磁盘上的对话记录、持久化与模型上下文不变。** | D670 限制的是渲染层持有的单行有多大，不是有多少行。一次每隔几秒读取专利全文的委派运行在 42 分钟内把会话涨到 331 MB；它的行几乎都是折叠的子 agent 工具行，永远撑不满视口，于是每次打开时 D269 的推进都把整份历史一页页读进渲染层（"正在加载更早的消息…"永不结束），在 D670 合入的次日渲染层再次耗尽内存（退出码 -536870904）。 |
+| D672 | 历史边界可直接打开对话开头；显式加载更早一页后停留在顶部 *（由 D674 撤回）* | **修订 D269 / D671。自动推进暂停后，边界在 `chat.loadEarlierMessages` 旁提供 `chat.openConversationStart`：一次有界读取第一页（`messageBefore: TRANSCRIPT_PAGE_SIZE`、`messageLimit: TRANSCRIPT_PAGE_SIZE`）以历史阅读窗口（`restored`）打开对话开头，支持 `hasMoreAfter` 向后翻页，并用已有的"回到最新"控件返回。远程会话的历史只有游标没有偏移，不提供该控件。显式点击加载更早一页时解除跟随，并在页面落地、挂载窗口扩大期间把视口保持在顶部；滚动手势、跳到最新或切换会话结束该保持。滚动驱动的翻页保留原有锚定。不涉及 host、协议或持久化改动。** | 有了 D671 之后，一个 3,794 行（331 MB，平均每行 85 KB）的会话距自己的提问仍有 38 页；而每次点击加载更早一页，视口都锚定在屏幕上原有的行，新加载的行和控件本身都落在视野之外，点击看起来毫无效果。优雅的答案是导航，而不是搬运或裁剪行——已加载的规范历史保持加载，对话记录、持久化 outbox 与模型上下文均不受影响。 |
+| D673 | 历史页只含顶层行；委派的行在打开时读取 | **修订 ADR 0120 / ADR 0279 / D670–D672。对话记录 layout 缓存（格式 3）在每条消息偏移旁记录其委派父级，因此 `session.get` 可接受 `topLevelOnly: true`——窗口只覆盖没有委派父级的行，所有坐标在该空间内计数，落在委派行上的 `messageAround` 目标以其父 `Task` 行为中心——或 `delegateOf: [callId, …]`（1–64 个 id，必须带窗口）——只覆盖这些 `Task` 调用下产生的行。被空间排除的行既不读取也不反序列化。主对话流背后的每次读取（打开、预取、落定刷新、编辑/重试水合、阅读位置恢复、回到开头、复制）都是顶层的；搜索跳转及其翻页保留全部物理行。打开某个委派——工作面板标签页或行内展开 `Task` 行——读取链上尚无行的调用的行（`loadDelegateRows`，每组调用一次最多 1000 行的有界读取），并合并到其 `Task` 下；没有产出的委派只问一次。实时行、磁盘上的对话记录、持久化与 sidecar 的模型上下文不变。协议版本保持 11；选项为增量。** | 一个 3,794 行（331 MB）的会话里，3,645 行（96%）、315 MB（99.7%）在 `Task` 调用之下：主 agent 自己的对话只有 150 行、约 1 MB。渲染层取的每一物理页都是 5–15 MB 的委派工具载荷，在 host 上解析成对话流根本不显示的行的 64 KiB 预览，而对话距自己的提问有 38 页。对话本身的页只花对话本身的代价；委派只在有人看它时才花它的行的代价。（此前把行归于主 agent 的统计来自 Windows `findstr`，它不匹配超过 8 KiB 的行——这个会话几乎每一行都如此。） |
+| D674 | 历史边界与渲染层恢复回到 D670 之前的行为 | **撤回 D671 与 D672；修订 D670。D673 消除了它们所绕开的原因——页面大半是委派的行——因此自动历史推进重新不设预算（D269），顶部边界不再有"加载更早的消息"与"回到对话开头"控件，加载更早一页时视口锚定在读者所在的行，渲染层恢复在冷却后重载消失的渲染进程，不再有崩溃循环熔断与对话框。`renderer.process.gone` 记录带 `reason`、`exitCode` 与 `reloaded`。D670 中保留：渲染层 `session/get` 的有界默认值、host 侧删除/撤回/切换修订（`session.deleteMessage`）、分页复制，以及工具结果的实时展示上限。本分叉与 upstream 的差异只剩 D670 的机制与 D673。** | D671 与 D672 绕开的是"页面大半是委派的行"这一症状；D673 消除了原因，它们针对的那个会话现在以自己 150 行的代价翻页，而它们添加的每个控件都是 upstream 项目没有的界面。D670 的机制保留，因为 Stop、删除、重试、编辑与复制不在 D673 覆盖范围内：没有有界默认值与 host 侧改写，它们会重新把整份对话记录读进渲染层，删除还会超过 host 的 64 MiB 请求上限。 |
 
 ## B. 辅助实现默认值
 
@@ -340,6 +340,8 @@
 | D602 | 崩溃转储留在数据目录 | **Electron 的 Crashpad 报告器在 `ready` 之前以本地模式启动（`uploadToServer: false`）。转储放在 `<data_dir>/crash-dumps`，而不是 Electron 默认的 `userData` crashDumps 路径，因此 `PI_DESKTOP_DATA_DIR` profile 不会与其它安装共用转储。下一次持有单实例锁的启动会为新于 `crash-dumps.json` 的转储写一条 `diagnostics` 记录，按 Crashpad `ptype` 分类：任一新转储属于 browser/main 进程则为 `error`，已恢复的 renderer/GPU/utility 崩溃为 `warn`。host-core 与 sidecar 崩溃仍走监督器路径。不上传，不改 IPC，不改 schema。** | 崩溃留下的 minidump 无人读取。Crashpad 也会记录已恢复的渲染进程崩溃，因此下次启动用 `error` 声称上次运行已死是错的；而数据目录之外的转储会逃出 `PI_DESKTOP_DATA_DIR` 隔离。 |
 | D619 | 复制公式得到的是它的 TeX 源码 | **仅渲染层：当选区覆盖到渲染出来的公式时，`text/plain` 从 MathML `annotation` 写出——行内 `$…$`，块级 `$$…$$` 独占行，也就是 `lib/latex-math.ts` 把 `\(…\)` 和 `\[…\]` 归一到的那组定界符，且每组定界符都像代码段的围栏那样加长到盖过公式内部出现的最长同字符串——而不是 KaTeX 画的那两棵树。落在公式内部的切口会扩展成整个公式。只有公式被改写：归约后的克隆经由 `Selection.toString()`——复制自己跑的那个序列化器——读回，因此同处一个选区的正文、列表、表格和代码块保留平台自己的读法，包括 `innerText` 会写出、而复制本就会略过的 `user-select: none` 界面零件。不含公式的选区，以及在选区所在位置之外触发的复制，整份交回平台。只写一种 flavour：`text/plain`。接管事件同时丢掉了平台的 `text/html`，且不再写回——归约后的克隆是应用自己的标记，写回去会带上文本读法已略过的 `user-select: none` 界面零件；而改为携带渲染结果则会把每个公式粘贴两遍，因为隐藏 MathML 树的只有 KaTeX 自己的样式表，样式表不会随剪贴板一起走。只有一个由外壳持有的文档级 `copy` 监听器，记录区的右键复制经由同一个模块读取同一个选区。** | 公式粘出来是它的字形，而且每棵渲染树各一份，无法带进 LaTeX 文档或别的 Markdown 编辑器（issue #414）。ADR 0268 当年移除「引用」的理由正是 OS 剪贴板可以替代，那剪贴板就得真的装着源码。 |
 | D620 | pi-ai 内置的 API-key 服务成为命名预设 | **向 `NAMED_ENDPOINT_PRESETS` 新增十五条命名预设——Ant Ling、Baseten、Cerebras、Hugging Face、Meta（`responses`）、MiniMax（国际）、Moonshot AI（国际）、NVIDIA、OpenCode Zen、Vercel AI Gateway、Qwen Token 套餐（`alibaba-token-plan`）、Qwen Token 套餐（中国）、小米 Token 套餐（中国/欧洲/新加坡）——各自使用官方主机名；models.dev 键与 pi-ai 提供方 id 不同的那几条，把 pi-ai id 保留为别名。八个内置提供方仍作例外并写明原因：Amazon Bedrock、Azure OpenAI、Cloudflare AI Gateway、Cloudflare Workers AI、Google Vertex AI（URL 里带账户或区域），GitHub Copilot 与 OpenAI Codex（以厂商账号行提供），以及 Radius（这里的 `pi_messages` 仅限账号）。pi-ai 升级后若某提供方既未被覆盖也不在例外中，`packages/agent-runtime/src/pi-ai-provider-sync.test.ts` 会失败。不改协议、存储或 IPC。** | pi-ai 其他能力本就可达，但服务目录的 API-key 一半靠手工维护，已经跟库自带的提供方列表脱节（ADR 0307）。 |
+| D668 | 每回合一个过程披露，并提供三种转录显示模式 | **修订 D661 / `turn-process-and-thinking-display` ADR：每个回合渲染一个顶层过程披露，包含回答前的全部行；回答留在披露之外。`AppSettings.transcriptDisplayMode` 选择布局：`flat` 不渲染嵌套活动组，`command-first` 将 `Bash`／run 行作为活动组旁的独立行，`fully-folded`（缺失或无效值的默认）让命令留在所属组内，且只有普通助手进度文字会拆分活动组。该模式在渲染时读取，因此切换后立即重绘——投影缓存只以消息和压缩为键。披露标题按失败／停止／执行中／已完成的优先级报告，且绝不回显当前条目；披露与它展开的层级共用一条左边缘。`transcriptDisplayMode` 加入可移植应用字段；`keepCommandsExpanded` 已弃用，仅为持久化设置兼容性保留，不再暴露，也不再参与渲染读取。无 Host 协议、持久化 schema、权限或插件契约变更。见修订后的 ADR、`04-ux/06-settings-ia.md`、`04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md` 与 E2E-CHAT-turn-process-and-thinking-display。** | 按时间顺序的分段把同一回合拆成答案上方多个并列披露，而布尔命令折叠偏好只能表达两种布局；三种模式覆盖平铺、命令优先与已发布的分组视图，且不改变工具收到的内容或持久化内容。 |
+| D669 | `@` 查询越过被截断的文件索引 | **修订 D124：8000 条的 `fs/index` 快照被截断时，非空的 `@` 查询会在输入停顿后，通过只读的 Electron 通道 `pi-desktop/fs/search` 在该根目录的完整清单中搜索，最好的 50 行与本地匹配合并。完整的索引从不搜索。远程会话保持使用快照。不改变主机 RPC、存储或 schema。** | 只保留最浅 8000 条的索引，会让深几层目录里的脚本对任何查询都匹配不到，而截断提示还在邀请用户细化查询（issue #1781）。 |
 
 ## M0. 模型目录决策
 
@@ -5494,9 +5496,47 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   schema 或迁移。设置读取通过渲染层 API 规范化应用这些默认值。见
   `04-ux/01-ui-ia.md`、`04-ux/06-settings-ia.md` 与 E2E-266。
 
-## 2026-10-16 —— 渲染层读取对话记录一律有界；对话记录改写只向 host 传递 id（D665）
+## 2026-10-21 —— 每回合一个过程披露与三种转录显示模式（D668）
 
-- D665 修订 D199、D390、ADR 0120 与 ADR 0216。渲染层发起的 `session/get` 若未带
+- D668 修订 D661 / `turn-process-and-thinking-display` ADR：每个回合现在渲染一个顶层
+  过程披露，包含回答前的全部行。命令行不再是披露的同级；末尾回答、助手错误、中止后的
+  末尾文字和待处理操作面留在披露之外。
+- `AppSettings.transcriptDisplayMode` 选择布局。`flat` 不渲染嵌套活动组，按转录顺序列出
+  各行。`command-first` 保留活动组，但把 `Bash`／run 行提升为独立行，普通进度消息或命令
+  会结束当前组。`fully-folded` 是缺失或无效值的默认，让命令行留在所属组内，只有普通助手
+  进度文字会拆分活动组。该模式在渲染时读取，因此切换后立即重绘。
+- `showThinking` 开启时，`flat` 与 `command-first` 中的思考行默认展开；`fully-folded`
+  保留已发布的例外，只有最后一个活动行在其为当前步骤时展开。关闭偏好时不再渲染任何
+  已完成的推理行，仅在推理流式输出期间保留整段运行的 TextShimmer `Thinking` 指示器。
+- `keepCommandsExpanded` 已弃用，仅为持久化设置兼容性保留；不再暴露，也不再参与渲染
+  读取。披露标题、左边缘与窗格拥有的披露记忆保持不变。
+- 已由 `apps/desktop/test/turn-process.test.mjs`、
+  `apps/desktop/test/transcript-display-modes-ui.test.mjs`、
+  `apps/desktop/test/transcript-display-mode-settings.test.mjs` 与
+  `apps/desktop/test/settings-roundtrip.test.mjs` 覆盖。见修订后的 ADR、
+  `04-ux/06-settings-ia.md`、`04-ux/08-component-spec.md`、
+  `04-ux/09-interaction-patterns.md` 与 E2E-CHAT-turn-process-and-thinking-display。
+
+## 2026-10-19 —— `@` 查询越过被截断的文件索引（D669）
+
+- `fs/index` 快照只保留最浅的 8000 个条目，菜单也只在这份快照里模糊过滤。在大项目里
+  ——例如每个资源都带一个 `.meta` 文件的 Unity 项目——藏在几层目录下的脚本根本不在
+  快照中，无论怎么输入都找不到，尽管截断脚注提示用户继续输入（issue #1781）。
+- 快照被截断时，非空查询现在会在输入停顿 150 ms 后同时发给 `fs/search`。主进程用与
+  渲染器相同的打分，在它为索引已经构建好的清单（`git ls-files`）上排序；若索引来自
+  目录遍历，则改为一次更深的遍历（遵守同一忽略集，最多 200,000 个条目或 2 秒），
+  返回最好的 50 行。菜单把它们与本地匹配合并；较早查询的结果会被丢弃。
+- 完整的索引从不搜索，小项目行为不变。列表可能不完整时截断脚注保留。远程会话继续
+  使用快照，因为远程文件协议没有搜索操作。不需要打包原生列文件工具（ripgrep、bfs）：
+  git 本来就能列出整个仓库，搜索 60,000 个路径只需几毫秒。
+- 由 `packages/host-runtime/src/fs-index.test.ts` 与
+  `apps/desktop/test/composer-deep-file-search-user-path.test.mjs` 覆盖。见
+  `03-runtime/01-ipc-protocol.md` §13c、`04-ux/08-component-spec.md` §11.8 与
+  E2E-COMPOSER-deep-file-mentions。
+
+## 2026-10-16 —— 渲染层读取对话记录一律有界；对话记录改写只向 host 传递 id（D670）
+
+- D670 修订 D199、D390、ADR 0120 与 ADR 0216。渲染层发起的 `session/get` 若未带
   `messageLimit` / `contentLimit`，由 Electron main 补上边界
   （`ipc/session-read-bounds.ts`：200 条、每条 64 KiB，并按 host 的 1000 条上限钳制）。
   渲染层因此永远不会在一次回复里收到整份对话记录。sidecar 通过自己的 host 代理用
@@ -5531,9 +5571,9 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   `03-runtime/01-ipc-protocol.md`、`03-runtime/06-host-rpc-protocol.md` 与
   `03-runtime/09-logging-and-observability.md`。
 
-## 2026-10-19 —— 自动历史推进有预算（D666）
+## 2026-10-19 —— 自动历史推进有预算（D671）
 
-- D666 修订 D269 与 D665。D665 限制的是渲染层持有的单行有多大；本决定限制自动历史推进
+- D671 修订 D269 与 D670。D670 限制的是渲染层持有的单行有多大；本决定限制自动历史推进
   加载多少行。
 - 由顶部边界观察器驱动的历史推进（D269）只在已加载行数少于
   `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET`（600）时读取更早的页。行几乎都是折叠的子 agent
@@ -5552,9 +5592,9 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   `apps/desktop/test/session-switch-performance.test.mjs` 覆盖。见
   `04-ux/08-component-spec.md`（会话小地图与对话记录历史）。
 
-## 2026-10-19 —— 历史边界可直接打开对话开头（D667）
+## 2026-10-19 —— 历史边界可直接打开对话开头（D672）
 
-- D667 修订 D269 与 D666。自动推进有了预算之后，一个 3,794 行（331 MB，平均每行 85 KB）
+- D672 修订 D269 与 D671。自动推进有了预算之后，一个 3,794 行（331 MB，平均每行 85 KB）
   的会话距自己的提问仍有 38 页；而每次点击 `chat.loadEarlierMessages`，视口都锚定在屏幕上
   原有的行，新加载的行和控件本身都落在视野之外：点击看起来毫无效果。
 - 自动推进暂停后，边界在加载更早一页的控件旁提供 `chat.openConversationStart`。一次有界
@@ -5573,9 +5613,9 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   `apps/desktop/test/transcript-row-growth.test.mjs`（边界控件、顶部保持、窗格接线）覆盖。
   见 `04-ux/08-component-spec.md`。
 
-## 2026-10-19 —— 历史页只含顶层行；委派的行在打开时读取（D668）
+## 2026-10-19 —— 历史页只含顶层行；委派的行在打开时读取（D673）
 
-- D668 修订 ADR 0120、ADR 0279 与 D665–D667。在持续出问题的会话上实测：3,794 行、331 MB，
+- D673 修订 ADR 0120、ADR 0279 与 D670–D672。在持续出问题的会话上实测：3,794 行、331 MB，
   其中 3,645 行（96%）、315 MB（99.7%）是 `Task` 调用之下产生的行；主 agent 自己的对话只有
   150 行、约 1 MB。渲染层取的每一物理页都是 5–15 MB 的委派工具载荷，在 host 上解析成对话流
   根本不显示的行的 64 KiB 预览，而对话距自己的提问有 38 页。
@@ -5606,9 +5646,9 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   `03-runtime/04-data-storage.md`、`03-runtime/06-host-rpc-protocol.md`、
   `03-runtime/01-ipc-protocol.md` 与 `04-ux/08-component-spec.md`。
 
-## 2026-10-19 —— 历史边界与渲染层恢复回到 D665 之前的行为（D669）
+## 2026-10-19 —— 历史边界与渲染层恢复回到 D670 之前的行为（D674）
 
-- D669 撤回 D666 与 D667，修订 D665。D666 与 D667 是对症状的绕行，而 D668 消除了症状的原因：
+- D674 撤回 D671 与 D672，修订 D670。D671 与 D672 是对症状的绕行，而 D673 消除了症状的原因：
   渲染层取到的页面大半是委派的行，所以推进必须设预算、长会话需要直达开头的捷径。历史页只含
   顶层行之后，这两项决定针对的那个会话以自己 150 行的代价打开和翻页，而这些控件是 upstream
   项目没有的界面。
@@ -5619,8 +5659,8 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
 - 渲染层恢复回到 upstream 的模块：消失的主渲染进程在 2 秒冷却后重载，
   `renderer.process.gone` 记录带 `reason`、`exitCode` 与 `reloaded`。崩溃循环熔断、其对话框、
   `diagnostics.rendererCrashLoop` 文案与 `recovery` 字段移除。持续内存耗尽的渲染进程现在是
-  需要诊断的 D668 回归，而不是需要识别的状态。
-- D665 中保留的部分——撤掉它们会在 D668 没有触及的用户路径上让故障回来：Electron main 为每次
+  需要诊断的 D673 回归，而不是需要识别的状态。
+- D670 中保留的部分——撤掉它们会在 D673 没有触及的用户路径上让故障回来：Electron main 为每次
   渲染层 `session/get` 补上 `messageLimit` 与 `contentLimit`；删除、撤回与切换修订只向 host
   传递 id（`session.deleteMessage`）；复制按有界分页进行；实时 `tool_end` / `tool_update`
   结果按展示上限截断。没有它们，Stop、删除、重试与编辑会重新把整份对话记录读进渲染层，大会话

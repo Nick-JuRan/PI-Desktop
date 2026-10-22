@@ -52,13 +52,13 @@ This log freezes previously open questions into concrete decisions.
 | D656 | Quarantine appends the host keeps refusing instead of stalling the outbox | **Amend ADR 0041 / D318 / D444 / D597: an append whose `session.appendMessage` or `session.recordUsage` call fails with an error the outbox cannot classify as a duplicate message id, a `PERMISSION_DENIED:` poison row, or a foreign-key orphan is retried on a bounded backoff (5s, doubling to a 60s cap) instead of ending the flush. The fifth consecutive failure on that head moves it into an application-owned dead-letter file, `session-message-outbox.dead-letter.json`, with its payload, session id, quarantine timestamp, and host error; only the newest 256 quarantined appends are kept, and the oldest is discarded with a warn. The flush then continues with the next entry, so one refused append can no longer hold the FIFO head, fill the 1024-entry cap, or fail every session's writes. Quarantined appends are never replayed automatically, and `session.delete` drops that session's quarantined appends too. No protocol version, storage schema, or queued-outbox format change.** | A `stream did not contain valid UTF-8` append stayed at the FIFO head for 14.8 hours while `session.persistence.outbox.is.full` fired 5990 times, so every session's appends failed until restart. Only three error classes had a drain, and every other error was treated as transient forever (#1560). |
 | D657 | Let the embedded Browser open local files outside the workspace | **Amend ADR 0170: an explicit absolute path or `file:` URL may load any existing regular local file, and a local-file page may navigate to other existing local files. Relative inputs remain workspace-rooted; HTTP(S) pages retain only the prior in-workspace file-link allowance. Missing files, directories, and remote file authorities remain blocked. `BrowserPreview` and the sidecar keep their workspace-rooted resolver. The public `pi.browser.navigate` API follows this policy under the high-risk `browser.cdp` permission. See ADR 0328, E2E-059, `04-ux/08-component-spec.md`, and `05-security/01-security.md`.** | Users need to inspect local HTML outside a project, while workspace-scoped agent file tools and remote-page navigation must retain their existing boundary (#1627). |
 | D659 | Reopen archived projects in the sidebar | **Amend D093 / D455: successful explicit project activation clears the normalized path's renderer-local archived flag and persists it, so Open from Project archive, reopening the same folder through Add project, and opening a project session reveal the project in the home sidebar. Selecting a row for inspection and ordinary session refreshes do not alter archive state. No host/project/session storage or protocol change. See ADR 0294, E2E-264, and issue #1653.** | Reopening a project changed the active workspace but left its path-keyed archived presentation flag set, hiding it from the sidebar after the user explicitly reopened it. |
-| D661 | Segmented turn process and independent thinking preference | **Supersede the `Detailed` / `Compact` display-mode behavior and the single whole-process disclosure recorded by D633 / D651 and the `turn-process-and-thinking-display` ADR: a turn renders as chronological collapsible process segments, Bash and run aliases stay outside every folded container (the turn-level process disclosure and any ordinary activity group) and remain visible even when every group is collapsed, and process/group folding defaults are independent of the thinking preference. The preference is the optional boolean `AppSettings.showThinking`; absent or non-boolean values fall back to the legacy `thinkingDisplayMode` field (`compact` hides, `detailed`/unknown/absent shows), which is retained only for persisted-settings compatibility. `showThinking` joins the portable application fields so it synchronizes like the legacy field; no other host protocol, persistence schema, permission, or plugin contract change. See the amended ADR, `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, and E2E-CHAT-turn-process-and-thinking-display.** | One flat container left long tool/search runs hard to scan and forced reasoning visibility and process folding into the same two-valued switch; an independent boolean plus always-visible Bash rows keeps shell-heavy turns readable without hiding the answer. |
+| D661 | Segmented turn process and independent thinking preference *(amended by D668)* | **Supersede the `Detailed` / `Compact` display-mode behavior and the single whole-process disclosure recorded by D633 / D651 and the `turn-process-and-thinking-display` ADR: a turn renders as chronological collapsible process segments, Bash and run aliases stay outside every folded container (the turn-level process disclosure and any ordinary activity group) and remain visible even when every group is collapsed, and process/group folding defaults are independent of the thinking preference. The preference is the optional boolean `AppSettings.showThinking`; absent or non-boolean values fall back to the legacy `thinkingDisplayMode` field (`compact` hides, `detailed`/unknown/absent shows), which is retained only for persisted-settings compatibility. `showThinking` joins the portable application fields so it synchronizes like the legacy field; no other host protocol, persistence schema, permission, or plugin contract change. See the amended ADR, `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, and E2E-CHAT-turn-process-and-thinking-display.** | One flat container left long tool/search runs hard to scan and forced reasoning visibility and process folding into the same two-valued switch; an independent boolean plus always-visible Bash rows keeps shell-heavy turns readable without hiding the answer. |
 | D662 | Open scoped HTML files in the work-panel Browser from plugins | **Add `pi.fs.openInBrowser(pathFromRoot)` under `fs.read`. The host applies the plugin's normal read containment, protected-path, credential deny-list, declared scope, and registered project-folder checks; only existing `.html`, `.htm`, and `.xhtml` files qualify. After validation, Main asks the renderer to create a Browser resource tab for the active local session. The Browser plugin must be enabled. This grants no `browser.cdp`, changes no BrowserPreview or local-file navigation policy, and adds no host-core protocol or persisted-state change. See ADR 0330, `07-plugins/03-plugin-api.md`, `07-plugins/13-plugin-permissions-matrix.md`, `04-ux/08-component-spec.md`, and E2E-153.** | The File Manager needs an in-app HTML preview, while granting its plugin `browser.cdp` would also expose unrelated page inspection and control. |
-| D665 | Renderer transcript reads are bounded; transcript mutations name ids to the host *(amended by D669)* | **Amend D199 / D390 / ADR 0120 / ADR 0216. Electron main fills in `messageLimit` (200) and `contentLimit` (64 KiB) for every renderer `session/get` that omits them, so the renderer never receives a whole transcript; the sidecar keeps the unbounded `session.get` through its own host proxy, so model context stays lossless. The live stream keeps only a display copy of each tool result (`tool_update` / `tool_end`), capped like a reloaded page; the transcript keeps the full payload. Message delete and the Stop undo of an unanswered prompt call the new `session.deleteMessage({ sessionId, messageId }) -> { deletedIds }` behind the shared rewrite gate; the host applies the user-turn rule and rewrites the transcript itself, and the renderer calls `session.replaceMessages` nowhere any more. `session.activateRevision` takes an optional `prefix`, refuses a root missing from the transcript when none is sent (`NOT_FOUND`), and the renderer re-reads a bounded page instead of receiving the rewritten transcript. Edit and retry hydrate the target message through one `messageAround` window; copy-conversation walks bounded pages. Renderer recovery stops auto-reloading after three reloads within five minutes, records `recovery: "crash-loop"`, and asks the user to reload or quit. Protocol version stays at 11; the new IPC channel and host method are additive.** | A delegation run that read patent full texts every few seconds grew one transcript to ~200 MB. Every unbounded renderer read of it (abort, delete, retry, edit, copy) and the full-size live `tool_end` rows pushed the renderer past the V8 heap, Electron reloaded it, and the user reopened the same session into the same death (exit code -536870904, four times in two days). Forcing a bound on reads alone would have made the renderer-side `replaceMessages` write-backs rewrite the transcript from a partial, display-capped window — a data-loss path — so the mutations had to move to the host first. |
-| D666 | Automatic history progression is budgeted *(withdrawn by D669)* | **Amend D269 / D665. Automatic history progression (the history-boundary observer) fetches older pages only while fewer than `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET` (600) rows are loaded; past that the transcript shows a `chat.loadEarlierMessages` button at the boundary, and only reader gestures — that button, a scroll that reaches the top, the minimap continuation — fetch further, one page per use. Growing the mounted window over already-loaded rows is never budgeted. Display truncation scans at most `limit` code points instead of materializing a multi-MB payload. A loaded canonical history stays loaded (the long-history E2E invariant is unchanged); bounding the live tail's row count is deferred to a decision of its own. The transcript on disk, persistence, and model context are unchanged.** | D665 bounded how large one row the renderer holds may be, not how many. A delegation run that read one patent full text every few seconds grew a session to 331 MB in 42 minutes; its rows are collapsed delegate tool rows that never fill the viewport, so D269 progression fetched the whole history page by page on every open ("Loading earlier messages…" never ending) until the renderer ran out of memory again (exit code -536870904) the day after D665 landed. |
-| D667 | The history boundary opens the conversation start; an explicit older-page press stays at the top *(withdrawn by D669)* | **Amend D269 / D666. Once automatic progression has paused, the boundary offers `chat.openConversationStart` beside `chat.loadEarlierMessages`: one bounded read of the first page (`messageBefore: TRANSCRIPT_PAGE_SIZE`, `messageLimit: TRANSCRIPT_PAGE_SIZE`) opens the conversation at its start as a historical reading window (`restored`), with `hasMoreAfter` forward paging and the existing latest-turn control to return. The control is absent for remote sessions, whose history exposes cursors rather than offsets. An explicit older-page press releases follow and holds the viewport at the top while the page lands and the mounted window grows over it; a scroll gesture, a jump to the latest turn, or a session change ends the hold. Scroll-driven paging keeps its anchoring. No host, protocol, or persistence change.** | With D666 in place a 3,794-row session (331 MB; 85 KB per row on average) was still 38 older pages away from its own prompt, and each press of the older-page control anchored the viewport to the row already on screen, so the fetched rows and the control itself landed out of view and the press read as a no-op. Navigating is the elegant answer; moving or trimming the rows is not — the loaded canonical history stays loaded, and the transcript, the persistence outbox and the model context are untouched. |
-| D668 | History pages are top-level; a delegation's rows are read when it is opened | **Amend ADR 0120 / ADR 0279 / D665–D667. The transcript layout cache (format 3) records each message line's delegate parent beside its offset, so `session.get` can take `topLevelOnly: true` — a window over the rows without a delegate parent, with every coordinate indexing that space and a nested `messageAround` target centring on its parent `Task` — or `delegateOf: [callId, …]` (1–64 ids, windowed) — the rows produced under those `Task` calls. The rows a space leaves out are neither read nor deserialized. Every read behind the main transcript (open, prefetch, settled refresh, edit/retry hydration, reading-position restore, start-of-conversation, copy) is top-level; a search jump and its paging keep every physical row. Opening a delegation — the work-panel tab or an inline `Task` expansion — reads the rows of the chain's calls that have none loaded (`loadDelegateRows`, one bounded read of up to 1000 rows per set of calls) and merges them under their `Task`; a delegate that produced nothing is asked once. Live rows, the transcript on disk, persistence, and the sidecar's model context are unchanged. Protocol version stays at 11; the options are additive.** | A 3,794-row session (331 MB) had 3,645 rows (96%) and 315 MB (99.7%) under `Task` calls: the main agent's own conversation was 150 rows and about 1 MB. Every physical page the renderer fetched was therefore 5–15 MB of a delegate's tool payloads parsed for 64 KiB previews of rows the turn stream does not even show, and the conversation was 38 pages from its prompt. Pages of the conversation itself cost what the conversation is; a delegation costs its rows only when someone looks at it. (The earlier count that attributed the rows to the main agent came from Windows `findstr`, which does not match lines over 8 KiB — nearly every line here.) |
-| D669 | The history boundary and renderer recovery return to their pre-D665 behavior | **Withdraw D666 and D667; amend D665. D668 removed the cause they worked around — pages that were mostly a delegation's rows — so automatic history progression is unbudgeted again (D269), the top boundary has no `Load earlier messages` or `Go to the beginning` control, an older page anchors the viewport to the row the reader was on, and renderer recovery reloads a gone renderer after its cooldown with no crash-loop breaker or dialog. The `renderer.process.gone` entry carries `reason`, `exitCode`, and `reloaded`. Kept from D665: bounded renderer `session/get` defaults, host-side delete/undo/revision (`session.deleteMessage`), paged copy, and the live display cap on tool results. The fork's divergence from upstream is the D665 mechanics and D668 only.** | D666 and D667 worked around pages that were mostly a delegation's rows; D668 removed that cause, so the session they were written for pages at the cost of its 150 own rows, and every control they added is interface the upstream project does not have. The D665 mechanics stay because Stop, delete, retry, edit and copy are not covered by D668: without bounded defaults and host-side mutation they read the whole transcript into the renderer again, and a delete would exceed the host's 64 MiB request limit. |
+| D670 | Renderer transcript reads are bounded; transcript mutations name ids to the host *(amended by D674)* | **Amend D199 / D390 / ADR 0120 / ADR 0216. Electron main fills in `messageLimit` (200) and `contentLimit` (64 KiB) for every renderer `session/get` that omits them, so the renderer never receives a whole transcript; the sidecar keeps the unbounded `session.get` through its own host proxy, so model context stays lossless. The live stream keeps only a display copy of each tool result (`tool_update` / `tool_end`), capped like a reloaded page; the transcript keeps the full payload. Message delete and the Stop undo of an unanswered prompt call the new `session.deleteMessage({ sessionId, messageId }) -> { deletedIds }` behind the shared rewrite gate; the host applies the user-turn rule and rewrites the transcript itself, and the renderer calls `session.replaceMessages` nowhere any more. `session.activateRevision` takes an optional `prefix`, refuses a root missing from the transcript when none is sent (`NOT_FOUND`), and the renderer re-reads a bounded page instead of receiving the rewritten transcript. Edit and retry hydrate the target message through one `messageAround` window; copy-conversation walks bounded pages. Renderer recovery stops auto-reloading after three reloads within five minutes, records `recovery: "crash-loop"`, and asks the user to reload or quit. Protocol version stays at 11; the new IPC channel and host method are additive.** | A delegation run that read patent full texts every few seconds grew one transcript to ~200 MB. Every unbounded renderer read of it (abort, delete, retry, edit, copy) and the full-size live `tool_end` rows pushed the renderer past the V8 heap, Electron reloaded it, and the user reopened the same session into the same death (exit code -536870904, four times in two days). Forcing a bound on reads alone would have made the renderer-side `replaceMessages` write-backs rewrite the transcript from a partial, display-capped window — a data-loss path — so the mutations had to move to the host first. |
+| D671 | Automatic history progression is budgeted *(withdrawn by D674)* | **Amend D269 / D670. Automatic history progression (the history-boundary observer) fetches older pages only while fewer than `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET` (600) rows are loaded; past that the transcript shows a `chat.loadEarlierMessages` button at the boundary, and only reader gestures — that button, a scroll that reaches the top, the minimap continuation — fetch further, one page per use. Growing the mounted window over already-loaded rows is never budgeted. Display truncation scans at most `limit` code points instead of materializing a multi-MB payload. A loaded canonical history stays loaded (the long-history E2E invariant is unchanged); bounding the live tail's row count is deferred to a decision of its own. The transcript on disk, persistence, and model context are unchanged.** | D670 bounded how large one row the renderer holds may be, not how many. A delegation run that read one patent full text every few seconds grew a session to 331 MB in 42 minutes; its rows are collapsed delegate tool rows that never fill the viewport, so D269 progression fetched the whole history page by page on every open ("Loading earlier messages…" never ending) until the renderer ran out of memory again (exit code -536870904) the day after D670 landed. |
+| D672 | The history boundary opens the conversation start; an explicit older-page press stays at the top *(withdrawn by D674)* | **Amend D269 / D671. Once automatic progression has paused, the boundary offers `chat.openConversationStart` beside `chat.loadEarlierMessages`: one bounded read of the first page (`messageBefore: TRANSCRIPT_PAGE_SIZE`, `messageLimit: TRANSCRIPT_PAGE_SIZE`) opens the conversation at its start as a historical reading window (`restored`), with `hasMoreAfter` forward paging and the existing latest-turn control to return. The control is absent for remote sessions, whose history exposes cursors rather than offsets. An explicit older-page press releases follow and holds the viewport at the top while the page lands and the mounted window grows over it; a scroll gesture, a jump to the latest turn, or a session change ends the hold. Scroll-driven paging keeps its anchoring. No host, protocol, or persistence change.** | With D671 in place a 3,794-row session (331 MB; 85 KB per row on average) was still 38 older pages away from its own prompt, and each press of the older-page control anchored the viewport to the row already on screen, so the fetched rows and the control itself landed out of view and the press read as a no-op. Navigating is the elegant answer; moving or trimming the rows is not — the loaded canonical history stays loaded, and the transcript, the persistence outbox and the model context are untouched. |
+| D673 | History pages are top-level; a delegation's rows are read when it is opened | **Amend ADR 0120 / ADR 0279 / D670–D672. The transcript layout cache (format 3) records each message line's delegate parent beside its offset, so `session.get` can take `topLevelOnly: true` — a window over the rows without a delegate parent, with every coordinate indexing that space and a nested `messageAround` target centring on its parent `Task` — or `delegateOf: [callId, …]` (1–64 ids, windowed) — the rows produced under those `Task` calls. The rows a space leaves out are neither read nor deserialized. Every read behind the main transcript (open, prefetch, settled refresh, edit/retry hydration, reading-position restore, start-of-conversation, copy) is top-level; a search jump and its paging keep every physical row. Opening a delegation — the work-panel tab or an inline `Task` expansion — reads the rows of the chain's calls that have none loaded (`loadDelegateRows`, one bounded read of up to 1000 rows per set of calls) and merges them under their `Task`; a delegate that produced nothing is asked once. Live rows, the transcript on disk, persistence, and the sidecar's model context are unchanged. Protocol version stays at 11; the options are additive.** | A 3,794-row session (331 MB) had 3,645 rows (96%) and 315 MB (99.7%) under `Task` calls: the main agent's own conversation was 150 rows and about 1 MB. Every physical page the renderer fetched was therefore 5–15 MB of a delegate's tool payloads parsed for 64 KiB previews of rows the turn stream does not even show, and the conversation was 38 pages from its prompt. Pages of the conversation itself cost what the conversation is; a delegation costs its rows only when someone looks at it. (The earlier count that attributed the rows to the main agent came from Windows `findstr`, which does not match lines over 8 KiB — nearly every line here.) |
+| D674 | The history boundary and renderer recovery return to their pre-D670 behavior | **Withdraw D671 and D672; amend D670. D673 removed the cause they worked around — pages that were mostly a delegation's rows — so automatic history progression is unbudgeted again (D269), the top boundary has no `Load earlier messages` or `Go to the beginning` control, an older page anchors the viewport to the row the reader was on, and renderer recovery reloads a gone renderer after its cooldown with no crash-loop breaker or dialog. The `renderer.process.gone` entry carries `reason`, `exitCode`, and `reloaded`. Kept from D670: bounded renderer `session/get` defaults, host-side delete/undo/revision (`session.deleteMessage`), paged copy, and the live display cap on tool results. The fork's divergence from upstream is the D670 mechanics and D673 only.** | D671 and D672 worked around pages that were mostly a delegation's rows; D673 removed that cause, so the session they were written for pages at the cost of its 150 own rows, and every control they added is interface the upstream project does not have. The D670 mechanics stay because Stop, delete, retry, edit and copy are not covered by D673: without bounded defaults and host-side mutation they read the whole transcript into the renderer again, and a delete would exceed the host's 64 MiB request limit. |
 
 ## B. Secondary implementation defaults
 
@@ -337,6 +337,8 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D602 | Crash dumps stay in the data directory | **Electron's Crashpad reporter starts local-only (`uploadToServer: false`) before `ready`. Dumps live under `<data_dir>/crash-dumps`, not the default Electron `userData` crashDumps path, so a `PI_DESKTOP_DATA_DIR` profile does not share dumps. The next lock-holding launch writes one `diagnostics` line for dumps newer than `crash-dumps.json`, classified by Crashpad `ptype`: `error` if any new dump is the browser/main process, `warn` for recovered renderer/GPU/utility crashes. Host-core and sidecar crashes stay on the supervisor path. No upload, no IPC, no schema change.** | A crash left a minidump nobody read. Crashpad also records recovered renderer crashes, so a next-launch `error` that said the previous run died was a lie; and dumps outside the data directory escaped `PI_DESKTOP_DATA_DIR` isolation. |
 | D619 | A copied formula is its TeX source | **Renderer only: a copy whose selection covers rendered math writes `text/plain` from the MathML `annotation` — `$…$` inline, `$$…$$` on its own lines, the delimiters `lib/latex-math.ts` normalizes `\(…\)` and `\[…\]` to, each run widened past any run inside the formula as a code span's fence is — instead of the two trees KaTeX paints. A cut that lands inside a formula grows to the whole formula. Only the formulas are rewritten: the reduced clone is read back through `Selection.toString()`, the serializer a copy itself runs, so prose, lists, tables and code blocks sharing the selection keep the platform's own reading — `user-select: none` chrome left behind included, which `innerText` would have written out. A selection with no formula in it, and a copy raised where the selection does not live, are left to the platform entirely. One flavour is written, `text/plain`: taking the event over drops the platform's `text/html` too and none is written back, because the reduced clone is app markup that would carry the `user-select: none` chrome the text reading drops, and because carrying the rendering instead would paste every formula twice — KaTeX's stylesheet is the only thing hiding the MathML tree and no stylesheet travels on the clipboard. One document `copy` listener owned by the shell, and the transcript's right-click Copy reads the same selection through the same module.** | A formula pasted as its glyphs, once per rendered tree, so it could not be carried into a LaTeX document or another Markdown editor (issue #414). ADR 0268 removed quoting on the grounds that the OS clipboard was the substitute; the clipboard had to actually carry the source. |
 | D620 | pi-ai built-in API-key services are named presets | **Add fifteen named endpoint presets — Ant Ling, Baseten, Cerebras, Hugging Face, Meta (`responses`), MiniMax (International), Moonshot AI (International), NVIDIA, OpenCode Zen, Vercel AI Gateway, Qwen Token Plan (`alibaba-token-plan`), Qwen Token Plan (China), Xiaomi Token Plan (China / Europe / Singapore) — to `NAMED_ENDPOINT_PRESETS`, each at its published host, with the pi-ai provider id kept as an alias wherever the models.dev key differs. Eight built-in providers remain exceptions with a recorded reason: Amazon Bedrock, Azure OpenAI, Cloudflare AI Gateway, Cloudflare Workers AI, Google Vertex AI (account- or region-scoped URLs), GitHub Copilot and OpenAI Codex (vendor-account rows), and Radius (`pi_messages` is account-only here). `packages/agent-runtime/src/pi-ai-provider-sync.test.ts` fails on a pi-ai upgrade that leaves a provider neither covered nor excepted. No protocol, storage, or IPC change.** | Every other pi-ai capability was already reachable, but the API-key half of the service catalog was hand-maintained and had drifted from the library's own provider list (ADR 0307). |
+| D668 | One process disclosure per turn, with three transcript display modes | **Amend D661 / the `turn-process-and-thinking-display` ADR. A turn renders exactly one top-level process disclosure holding every pre-answer row; the answer stays outside it. `AppSettings.transcriptDisplayMode` selects the layout: `flat` renders no nested activity groups, `command-first` renders `Bash`/run rows as standalone rows beside activity groups, and `fully-folded` (the default for absent or invalid values) keeps commands inside their groups and lets only ordinary assistant progress text split them. The mode is read while rendering, so switching repaints immediately - the projection cache is keyed by messages and compactions only. The disclosure header reports failed / stopped / running / finished with precedence in that order and never echoes the current item, and the disclosure shares one left edge with the levels it reveals. `transcriptDisplayMode` joins the portable application fields; `keepCommandsExpanded` is deprecated, retained only for persisted-settings compatibility, and no longer exposed or read for rendering. No host protocol, persistence schema, permission, or plugin contract change. See the amended ADR, `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, and E2E-CHAT-turn-process-and-thinking-display.** | Chronological segmentation split one turn into several sibling disclosures above the answer, and the boolean command-folding preference could only express two layouts; a three-mode setting covers flat, command-first, and the released grouped view without changing what a tool received or stored. |
+| D669 | `@` queries search past a truncated file index | **Amend D124: while the 8000-entry `fs/index` snapshot is truncated, a non-empty `@` query is also searched over the root's full listing through the read-only Electron channel `pi-desktop/fs/search` once typing pauses, and its best 50 rows merge with the local matches. A complete index never searches. Remote sessions keep their snapshot. No host RPC, storage, or schema change.** | The shallowest-8000-entry index left a script several folders down matching no query at all, even though the truncation note invited the reader to refine it (issue #1781). |
 
 
 ## M0. Model catalog decisions
@@ -7784,9 +7786,130 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   normalization; no persisted schema or migration change is required. See
   `04-ux/01-ui-ia.md`, `04-ux/06-settings-ia.md`, and E2E-266.
 
-## 2026-10-16 — Renderer transcript reads are bounded; transcript mutations name ids to the host (D665)
+## 2026-10-16 — macOS paints an opaque native window surface (D665)
 
-- D665 amends D199, D390, ADR 0120, and ADR 0216. A renderer `session/get`
+- D665 supersedes the macOS `vibrancy: "sidebar"` + `transparent: true` window
+  backing from D348. A vibrancy material behind a transparent surface is
+  recomposited by WindowServer every frame the window stays dirty, which held an
+  idle focused window near 40% GPU on Apple Silicon (issue #1064). macOS now
+  paints the opaque background the other platforms already use, keeping the
+  `hiddenInset` titlebar, the inset traffic-light position, and the renderer's
+  sidebar tint and sheen.
+- The `window.setBackgroundColor` IPC no longer returns early on darwin, so a
+  granted `windowAppearance.backgroundColor` plugin theme is applied on macOS
+  like every other platform (ADR 0248): a theme change repaints the native
+  surface instead of being skipped. Native corner behavior is unchanged.
+- The bounded-animation contract that bounded idle indicators under #1064 stays
+  in force; only its stated rationale changes, because a dirty window is
+  recomposited on every platform. See ADR 0332, ADR 0248, ADR 0260,
+  `04-ux/08-component-spec.md`, `04-ux/07-ui-design-system.md`, and
+  `07-plugins/13-plugin-permissions-matrix.md`.
+- Covered by `apps/desktop/test/macos-opaque-window-surface.test.mjs`,
+  `apps/desktop/test/window-background.test.mjs`,
+  `apps/desktop/test/window-background-theme.test.mjs`, and
+  `apps/desktop/test/idle-status-animations.test.mjs`.
+
+## 2026-10-20 — macOS translucency is a window setting (D666, amended by D667)
+
+- D666 amends D665 / ADR 0332: the macOS main window still paints an opaque
+  native surface by default, and `AppSettings.macosWindowTranslucency` lets a
+  user opt back into the `sidebar` vibrancy material behind a transparent
+  backing. `macosWindowSurfaceOptions(translucent, color)` is the single surface
+  declaration; `mainWindowBackgroundOptions("darwin", color)` keeps the opaque
+  result so a platform-only caller never gets the material.
+- Electron fixes `transparent` when a window is created, so the preference is
+  read before `new BrowserWindow` and a change applies on the next launch. The
+  darwin-only Settings → General → Appearance row persists the choice and shows
+  a restart hint while it differs from the surface this process was created
+  with; no runtime window mutation, renderer reload, or relaunch is performed.
+- While the window is translucent, `window.setBackgroundColor` leaves the
+  surface to the material, so a plugin theme's
+  `windowAppearance.backgroundColor` is applied only on the opaque surface. The
+  renderer tint and sheen are unchanged in both modes, and no persisted-format
+  migration is required (D667 changed the absent-value meaning to translucent).
+- Covered by `apps/desktop/test/macos-window-translucency.test.mjs`,
+  `apps/desktop/test/macos-opaque-window-surface.test.mjs`, and
+  `apps/desktop/test/window-background.test.mjs`. See ADR 0332,
+  `04-ux/08-component-spec.md`, and `04-ux/07-ui-design-system.md`.
+
+## 2026-10-20 — macOS translucency stays the default (D667)
+
+- D667 amends D665 / D666 and ADR 0332: the macOS main window ships
+  **translucent** again — `vibrancy: "sidebar"`, `visualEffectState:
+  "followWindow"`, and a transparent `#00000000` backing — and
+  `AppSettings.macosWindowTranslucency` is the opt-out. Absent and `true` mean
+  the shipped material; only `false` paints the opaque surface that leaves
+  WindowServer's per-frame recomposition path (#1064). The store itself defaults
+  to translucent, so a boot that cannot read settings still paints the expected
+  window.
+- A translucent window owns its pixels: the post-creation
+  `applyMainWindowBackground` call now skips macOS windows created translucent,
+  in addition to the already-guarded `window.setBackgroundColor` and theme paths.
+  Without that guard the window was created with the material and then had an
+  opaque host colour painted over it, so the switch looked inert after a restart.
+  `window/control` `getState` keeps reporting the surface the process actually
+  created, which keeps the Settings restart hint honest.
+- No persisted migration: an absent value now means translucent, which restores
+  the pre-D665 appearance for every existing install, and an explicit `false`
+  keeps the opaque choice a user already made. See ADR 0332, ADR 0248,
+  `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`, and
+  `apps/desktop/test/macos-window-translucency.test.mjs`.
+
+## 2026-10-21 — One process disclosure per turn, with three transcript display modes (D668)
+
+- D668 amends D661 / the `turn-process-and-thinking-display` ADR: a turn now
+  renders exactly one top-level process disclosure containing every pre-answer
+  row. No run row is a sibling of that disclosure; the trailing answer, assistant
+  errors, stopped trailing text, and pending action surfaces stay outside it.
+- `AppSettings.transcriptDisplayMode` selects the layout. `flat` renders no
+  nested activity groups and lists rows in transcript order. `command-first`
+  keeps the groups but lifts `Bash`/run rows into standalone rows, with a normal
+  progress message or a command ending a group. `fully-folded`, the default for
+  absent or invalid values, keeps run rows inside their groups and lets only
+  ordinary assistant progress text split them. The mode is read while rendering,
+  so switching repaints immediately.
+- With `showThinking` on, Thinking rows default expanded in `flat` and
+  `command-first`; `fully-folded` keeps the released exception where only the
+  last active row opens while it is live. With the preference off, no completed
+  reasoning row renders and only a live whole-run TextShimmer `Thinking`
+  indicator remains while reasoning streams.
+- `keepCommandsExpanded` is deprecated and retained only for persisted-settings
+  compatibility; it is no longer exposed or read for rendering. The disclosure
+  header, left edge, and pane-owned disclosure memory are unchanged.
+- Covered by `apps/desktop/test/turn-process.test.mjs`,
+  `apps/desktop/test/transcript-display-modes-ui.test.mjs`,
+  `apps/desktop/test/transcript-display-mode-settings.test.mjs`, and
+  `apps/desktop/test/settings-roundtrip.test.mjs`. See the amended ADR,
+  `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`,
+  `04-ux/09-interaction-patterns.md`, and
+  E2E-CHAT-turn-process-and-thinking-display.
+
+## 2026-10-19 — `@` queries search past a truncated file index (D669)
+
+- The `fs/index` snapshot keeps the shallowest 8000 entries, and the menu
+  fuzzy-filtered only that snapshot. In a large tree — a Unity project, where
+  every asset has a `.meta` sibling — scripts several folders deep were never
+  in it, so no query could reach them even though the truncation footnote
+  invited refining the query (issue #1781).
+- While the snapshot is truncated, a non-empty query is now also sent to
+  `fs/search` after a 150 ms typing pause. Main ranks it with the renderer's
+  scorer over the listing it already built for the index (`git ls-files`), or
+  over a deeper ignore-set walk (at most 200,000 entries or two seconds) when
+  the index came from the walk, and returns the best 50 rows. The menu merges
+  them with its local matches; an answer for an earlier query is dropped.
+- A complete index never searches, so small projects behave as before. The
+  footnote stays while the list may be incomplete. Remote sessions keep their
+  snapshot because the remote file protocol has no search operation. Bundling
+  a native lister (ripgrep, bfs) was not needed: git already lists the whole
+  repository, and searching 60,000 paths takes a few milliseconds.
+- Covered by `packages/host-runtime/src/fs-index.test.ts` and
+  `apps/desktop/test/composer-deep-file-search-user-path.test.mjs`. See
+  `03-runtime/01-ipc-protocol.md` §13c, `04-ux/08-component-spec.md` §11.8,
+  and E2E-COMPOSER-deep-file-mentions.
+
+## 2026-10-16 — Renderer transcript reads are bounded; transcript mutations name ids to the host (D670)
+
+- D670 amends D199, D390, ADR 0120, and ADR 0216. A renderer `session/get`
   that omits `messageLimit` / `contentLimit` is bounded by Electron main
   (`ipc/session-read-bounds.ts`: 200 messages, 64 KiB per message, clamped to
   the host's 1000-message cap). The renderer therefore never receives a whole
@@ -7831,9 +7954,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `03-runtime/01-ipc-protocol.md`, `03-runtime/06-host-rpc-protocol.md`, and
   `03-runtime/09-logging-and-observability.md`.
 
-## 2026-10-19 — Automatic history progression is budgeted (D666)
+## 2026-10-19 — Automatic history progression is budgeted (D671)
 
-- D666 amends D269 and D665. D665 bounded how large one row the renderer holds
+- D671 amends D269 and D670. D670 bounded how large one row the renderer holds
   may be; this bounds how many rows automatic history progression loads.
 - History progression driven by the top boundary observer (D269) fetches older
   pages only while fewer than `TRANSCRIPT_AUTO_HISTORY_ROW_BUDGET` (600) rows
@@ -7859,9 +7982,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   and `apps/desktop/test/session-switch-performance.test.mjs`. See
   `04-ux/08-component-spec.md` (Conversation minimap and transcript history).
 
-## 2026-10-19 — The history boundary opens the conversation start (D667)
+## 2026-10-19 — The history boundary opens the conversation start (D672)
 
-- D667 amends D269 and D666. With automatic progression budgeted, a 3,794-row
+- D672 amends D269 and D671. With automatic progression budgeted, a 3,794-row
   session (331 MB, 85 KB per row on average) was still 38 older pages from its
   own prompt, and each press of `chat.loadEarlierMessages` anchored the viewport
   to the row already on screen, so the fetched rows and the control itself
@@ -7889,9 +8012,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `apps/desktop/test/transcript-row-growth.test.mjs` (boundary controls, hold at
   top, pane wiring). See `04-ux/08-component-spec.md`.
 
-## 2026-10-19 — History pages are top-level; a delegation's rows are read when it is opened (D668)
+## 2026-10-19 — History pages are top-level; a delegation's rows are read when it is opened (D673)
 
-- D668 amends ADR 0120, ADR 0279 and D665–D667. Measured on the session that
+- D673 amends ADR 0120, ADR 0279 and D670–D672. Measured on the session that
   kept failing: 3,794 rows and 331 MB, of which 3,645 rows (96%) and 315 MB
   (99.7%) were rows produced under `Task` calls; the main agent's own
   conversation was 150 rows and about 1 MB. Every physical page the renderer
@@ -7939,10 +8062,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `03-runtime/04-data-storage.md`, `03-runtime/06-host-rpc-protocol.md`,
   `03-runtime/01-ipc-protocol.md`, and `04-ux/08-component-spec.md`.
 
-## 2026-10-19 — The history boundary and renderer recovery return to their pre-D665 behavior (D669)
+## 2026-10-19 — The history boundary and renderer recovery return to their pre-D670 behavior (D674)
 
-- D669 withdraws D666 and D667 and amends D665. D666 and D667 were workarounds
-  for the symptom D668 removed at its cause: the pages the renderer fetched were
+- D674 withdraws D671 and D672 and amends D670. D671 and D672 were workarounds
+  for the symptom D673 removed at its cause: the pages the renderer fetched were
   mostly a delegation's rows, so progression had to be budgeted and a long
   session needed a shortcut to its start. With history pages top-level, the
   session they were written for opens and pages at the cost of its 150 own rows,
@@ -7957,10 +8080,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   reloaded after the 2 s cooldown, and the `renderer.process.gone` entry carries
   `reason`, `exitCode`, and `reloaded`. The crash-loop breaker, its dialog, the
   `diagnostics.rendererCrashLoop` strings, and the `recovery` field are
-  removed. A renderer that keeps running out of memory is now a D668 regression
+  removed. A renderer that keeps running out of memory is now a D673 regression
   to diagnose, not a state to detect.
-- Kept from D665, because withdrawing them would reintroduce the failure on the
-  user paths D668 does not touch: Electron main fills in `messageLimit` and
+- Kept from D670, because withdrawing them would reintroduce the failure on the
+  user paths D673 does not touch: Electron main fills in `messageLimit` and
   `contentLimit` on every renderer `session/get`; delete, undo and revision
   switches name ids to the host (`session.deleteMessage`); copy walks bounded
   pages; live `tool_end` / `tool_update` results are capped for display. Without
