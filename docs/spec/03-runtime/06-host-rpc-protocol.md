@@ -332,7 +332,7 @@ to later refresh and inference; the vendor picker does not collect them.
   rows without a delegate parent: `messageBefore`, `messageStart`, `messageEnd`
   and the `hasMore*` flags then index the top-level rows, `messageAround` on a
   delegate row centers on its parent `Task` row, and the delegate rows are
-  neither read nor deserialized (they are chosen out by the layout index, D673).
+  neither read nor deserialized (they are chosen out by the layout index; fork, see `90-fork/07-transcript-reads-and-history-pages.md`).
   Optional `delegateOf: [callId, …]` (1–64 ids, requires `messageLimit`,
   exclusive with `topLevelOnly`) restricts the space to the rows produced under
   those `Task` calls, in file order, with the same windowed coordinates over

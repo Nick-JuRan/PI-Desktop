@@ -2265,7 +2265,7 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   overflowing transcript whose `scrollTop` has been reset to 0 are not treated as
   "at the top", so opening or revealing a session cannot page back to the start.
 - **History pages are top-level; a delegation's rows arrive when it is opened**
-  (D673): every read behind the main transcript asks the host for the rows
+  (fork; see `90-fork/07-transcript-reads-and-history-pages.md`): every read behind the main transcript asks the host for the rows
   without a delegate parent, so a long delegation run — 96% of its lines and
   99% of its bytes under `Task` calls — opens and pages at the cost of its own
   turns. Opening a delegation in the work-panel tab, or expanding its `Task` row
