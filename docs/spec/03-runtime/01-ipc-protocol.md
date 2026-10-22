@@ -1094,7 +1094,7 @@ Minimal interface:
   message-line positions in the transcript file, not deduplicated index counts —
   unless the read names a row space: `topLevelOnly: true` pages the rows without
   a delegate parent and indexes them, `delegateOf: [callId, …]` pages the rows
-  produced under those `Task` calls (D673). The main transcript reads top-level
+  produced under those `Task` calls (fork; see `90-fork/07-transcript-reads-and-history-pages.md`). The main transcript reads top-level
   only (open, prefetch, settled refresh, edit/retry hydration, reading-position
   restore, copy); a search jump and the paging of its
   window keep every physical row, because a hit inside a delegation needs its

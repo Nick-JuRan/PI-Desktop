@@ -112,6 +112,7 @@
 - [04-classification-query.md](90-fork/04-classification-query.md)
 - [05-windows-portability.md](90-fork/05-windows-portability.md)
 - [06-non-patent-search.md](90-fork/06-non-patent-search.md)
+- [07-transcript-reads-and-history-pages.md](90-fork/07-transcript-reads-and-history-pages.md)
 
 ## ADR
 - [../adr/README.md](../adr/README.md)

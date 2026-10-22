@@ -1494,7 +1494,7 @@ cached read is proportional to the requested page. Consequences:
   that merely mentions the key parses to a row without a parent. The index lets
   a window over the top-level rows, or over one delegate's rows, be chosen
   without deserializing the rows it leaves out — in a long delegation run those
-  are 96% of the lines and 99% of the bytes (D673). A version-2 cache is ignored
+  are 96% of the lines and 99% of the bytes (fork; see `90-fork/07-transcript-reads-and-history-pages.md`). A version-2 cache is ignored
   and rebuilt once.
 - A matching identity and complete prefix permits append-only incremental
   scanning. A transcript rewrite invalidates both in-memory and disk layouts

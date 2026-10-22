@@ -16,6 +16,7 @@ fork 在 upstream 之上只维护少量私有功能。相应的仓库策略是�
 - **分类查询插件**——`Extensions/classification-queryer`，IPC/CPC 分类树工具。见 `04-classification-query.md`。
 - **Windows 测试门禁可移植性**——对 upstream 测试门禁与 E2E 脚本的 Windows 适配。见 `05-windows-portability.md`。
 - **非专利检索插件**——`Extensions/non-patent-search`，带自动 IP 登录的 CNKI 论文检索与全文工具。见 `06-non-patent-search.md`。
+- **有界的对话记录读取与顶层历史页**——渲染层只读取顶层行的有界窗口，改写由 host 执行，委派的行在打开时读取。见 `07-transcript-reads-and-history-pages.md`。
 
 ## 3. fork 页面与 upstream 页面的关系
 

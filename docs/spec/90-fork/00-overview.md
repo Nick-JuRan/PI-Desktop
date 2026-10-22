@@ -32,6 +32,10 @@ of it is what makes `Sync fork` merge cleanly.
 - **Non-patent search plugin** — `Extensions/non-patent-search`, CNKI paper
   search and full-text tools with automatic IP login. See
   `06-non-patent-search.md`.
+- **Bounded transcript reads and top-level history pages** — the renderer
+  reads bounded windows of top-level rows, mutations run on the host, and a
+  delegation's rows are read when it is opened. See
+  `07-transcript-reads-and-history-pages.md`.
 
 ## 3. How fork pages relate to upstream pages
 
