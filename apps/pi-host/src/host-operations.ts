@@ -1,8 +1,10 @@
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import { relative, sep } from "node:path";
 import { createWorkspaceFiles } from "./workspace-files.js";
 import { createWorkspaceTools } from "./workspace-tools.js";
 import { readdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 import { RacpError, type Principal, type SessionSummary } from "@pi-desktop/agent-host";
 import {

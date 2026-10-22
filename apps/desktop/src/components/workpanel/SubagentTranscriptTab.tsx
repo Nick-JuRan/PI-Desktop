@@ -1,7 +1,9 @@
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import { useEffect } from "react";
 import { toolResultPayload } from "../../lib/tool-presentation";
 import { SubagentStopButton } from "../../features/chat/transcript/SubagentStopButton";
 import { collectDelegationStatuses, subagentOutcome } from "../../lib/subagent-topology";
-import { Fragment, useEffect, useLayoutEffect, useMemo } from "react";
+import { Fragment, useLayoutEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../stores/app-store";
 import { useFollowScroll } from "../../hooks/use-follow-scroll";

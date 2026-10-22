@@ -1,3 +1,6 @@
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import { resolveSubagentSkillIds } from "./subagent-definition.js";
+import { subagentExtensionToolSelector } from "./subagent-tools.js";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
@@ -11,13 +14,11 @@ import {
   normalizeSubagentName,
   parseSubagentDefinition,
   resolveSubagentToolNames,
-  resolveSubagentSkillIds,
   subagentCanMutate,
   subagentPinnedProviders,
   subagentToolsLabel,
   type SubagentDefinition,
 } from "./subagent-definition.js";
-import { subagentExtensionToolSelector } from "./subagent-tools.js";
 
 function parse(raw: string, fallbackName = "reviewer") {
   return parseSubagentDefinition(raw, { source: "user", fallbackName });
