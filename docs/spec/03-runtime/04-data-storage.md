@@ -415,7 +415,16 @@ reasoning visibility. It is a portable application preference and synchronizes
 across devices like the legacy field. Missing values fall back to the legacy
 `thinkingDisplayMode` field (`compact` hides, `detailed`/unknown/absent shows),
 which is retained only for persisted-settings compatibility and as that
-fallback. These additive display preferences neither rewrite stored reasoning
+fallback. The app settings JSON also optionally stores `transcriptDisplayMode`
+(`flat` | `command-first` | `fully-folded`) for transcript process grouping:
+`flat` renders no nested activity groups, `command-first` renders `Bash`/run rows
+as standalone rows beside activity groups, and `fully-folded` keeps each command
+inside the group around it. Missing or unknown values normalize to
+`fully-folded` in both the renderer and main-process settings normalizers. It is
+a portable application preference and changes presentation only. The deprecated
+`keepCommandsExpanded` boolean is retained only for persisted-settings
+compatibility; it is no longer exposed in Settings and no longer read for
+rendering. These additive display preferences neither rewrite stored reasoning
 nor change the database schema.
 
 The settings blob may still contain legacy prompt-enhancement keys from an
@@ -1485,7 +1494,7 @@ cached read is proportional to the requested page. Consequences:
   that merely mentions the key parses to a row without a parent. The index lets
   a window over the top-level rows, or over one delegate's rows, be chosen
   without deserializing the rows it leaves out — in a long delegation run those
-  are 96% of the lines and 99% of the bytes (D668). A version-2 cache is ignored
+  are 96% of the lines and 99% of the bytes (D673). A version-2 cache is ignored
   and rebuilt once.
 - A matching identity and complete prefix permits append-only incremental
   scanning. A transcript rewrite invalidates both in-memory and disk layouts
