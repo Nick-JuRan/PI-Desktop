@@ -1,3 +1,5 @@
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import { capToolResultForDisplay } from "../../lib/tool-result-display";
 import { projectPlanHistory } from "../../lib/plan-history";
 import i18n from "i18next";
 import {
@@ -38,7 +40,6 @@ import {
   isPendingPlan,
   mergePlanCheckpoint,
 } from "../../lib/plan-mode-state";
-import { capToolResultForDisplay } from "../../lib/tool-result-display";
 import type { AppState } from "../app-state";
 import type { SessionRuntime } from "../runtime/session-runtime";
 import type { StoreAccess } from "./types";

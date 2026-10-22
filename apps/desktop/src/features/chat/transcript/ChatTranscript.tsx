@@ -1,3 +1,5 @@
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import { readConversationPages } from "../../../lib/conversation-read";
 import { memo, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { PlanningState, UiMessage } from "@pi-desktop/shared";
@@ -24,7 +26,6 @@ import type { RestoreTranscriptReading } from "../../../hooks/use-transcript-rea
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 import { DisclosureAnchorContext } from "../../../lib/disclosure-anchor-context";
 import { api } from "../../../lib/api";
-import { readConversationPages } from "../../../lib/conversation-read";
 import { mergeLiveSessionMessages } from "../../../lib/session-transcript";
 import { conversationPlainText } from "../../../lib/chat-transcript-text";
 import {

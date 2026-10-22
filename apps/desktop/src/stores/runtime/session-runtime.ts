@@ -1,6 +1,9 @@
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import type { SessionDetail } from "@pi-desktop/shared";
+import { capToolResultForDisplay } from "../../lib/tool-result-display";
+import { TRANSCRIPT_CONTENT_LIMIT, TRANSCRIPT_PAGE_SIZE } from "../../lib/transcript-reading";
 import type {
   AgentEventEnvelope,
-  SessionDetail,
   SessionSummary,
   UiMessage,
 } from "@pi-desktop/shared";
@@ -24,8 +27,6 @@ import {
   sessionMatchesProject,
 } from "../../lib/sidebar-session-groups";
 import type { ComposerDraftSnapshot } from "../../lib/composer-smart-stop";
-import { capToolResultForDisplay } from "../../lib/tool-result-display";
-import { TRANSCRIPT_CONTENT_LIMIT, TRANSCRIPT_PAGE_SIZE } from "../../lib/transcript-reading";
 import { recordPaneTranscript } from "../../lib/session-panes";
 import type { AppState, SessionHistoryWindow } from "../app-state";
 import type { StoreAccess } from "../slices/types";

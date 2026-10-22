@@ -1,3 +1,6 @@
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import { dedupeSessionMessages } from "../../lib/session-transcript";
+import { TRANSCRIPT_CONTENT_LIMIT, TRANSCRIPT_DELEGATE_ROW_LIMIT } from "../../lib/transcript-reading";
 import i18n from "i18next";
 import { isRemoteSession, sessionAllows } from "../../lib/remote-session-safety";
 import type {
@@ -11,10 +14,8 @@ import {
   sessionPermissions,
 } from "../../lib/pending-permissions";
 import {
-  dedupeSessionMessages,
   mergeLiveSessionMessages,
 } from "../../lib/session-transcript";
-import { TRANSCRIPT_CONTENT_LIMIT, TRANSCRIPT_DELEGATE_ROW_LIMIT } from "../../lib/transcript-reading";
 import { optimisticUserMessage } from "../../lib/session-transcript";
 import { withReviewChangeState } from "../../lib/workspace-review";
 import { settleStoppedAssistantMetrics } from "../../lib/context-usage";

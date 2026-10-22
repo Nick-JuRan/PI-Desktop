@@ -61,8 +61,8 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `packages/shared/package.json` | +4 −0 | hook | refactor(fork): isolate subagent-depth into fork-owned modules |
 | `packages/shared/src/index.ts` | +1 −0 | hook | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/shared/src/protocol.ts` | +3 −0 | hook | feat: 引入子代理深度、子代理工具调用选择 |
-| `packages/shared/src/subagent-definition.test.ts` | +64 −0 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
-| `packages/shared/src/subagent-definition.ts` | +68 −7 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules; feat(subagents): raise MAX_SUBAGENT_CONCURRENCY to 50 |
+| `packages/shared/src/subagent-definition.test.ts` | +65 −0 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
+| `packages/shared/src/subagent-definition.ts` | +69 −7 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules; feat(subagents): raise MAX_SUBAGENT_CONCURRENCY to 50 |
 
 ## i18n fork block (depth + tool-selection strings)
 
@@ -93,7 +93,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | upstream file | +/− vs upstream | kind | introduced by |
 | --- | --- | --- | --- |
 | `apps/desktop/electron/main/logger.ts` | +1 −1 | hook | fix(desktop): make Windows build and test gates portable |
-| `apps/desktop/electron/main/runtime/lifecycle.ts` | +2 −0 | hook | fix(electron): keep runtime entry within architecture budget |
+| `apps/desktop/electron/main/runtime/lifecycle.ts` | +3 −0 | hook | fix(electron): keep runtime entry within architecture budget |
 | `apps/desktop/test/plugin-restore-notifies-renderer.test.mjs` | +1 −0 | hook | fix(sync): stub the fork network-notice hook in upstream's lifecycle test |
 | `apps/desktop/package.json` | +1 −1 | hook | fix(desktop): make Windows build and test gates portable |
 | `apps/desktop/test/chat-error-message.test.mjs` | +1 −2 | hook | fix(desktop): make Windows build and test gates portable |
@@ -111,7 +111,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `apps/desktop/test/session-message-presentation.test.mjs` | +1 −0 | hook | fix(test): stub transcript timestamp in presentation fixture |
 | `apps/pi-host/src/config.test.ts` | +4 −4 | integration point | fix(desktop): make Windows build and test gates portable |
 | `apps/pi-host/src/host-operations.test.ts` | +2 −2 | hook | fix(desktop): make Windows build and test gates portable |
-| `apps/pi-host/src/host-operations.ts` | +8 −2 | integration point | fix(desktop): make Windows build and test gates portable |
+| `apps/pi-host/src/host-operations.ts` | +9 −1 | integration point | fix(desktop): make Windows build and test gates portable |
 | `crates/host-core/src/mcp_servers/tests.rs` | +2 −1 | hook | fix(desktop): make Windows build and test gates portable |
 | `crates/host-core/src/sessions/fork_files.rs` | +6 −1 | hook | merge resolution |
 | `crates/host-core/src/user_skills/tests.rs` | +1 −1 | hook | fix(desktop): make Windows build and test gates portable |
@@ -124,7 +124,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 
 | upstream file | +/− vs upstream | kind | introduced by |
 | --- | --- | --- | --- |
-| `apps/desktop/electron/main/voice-service.ts` | +3 −2 | hook | fix(voice): complete local dictation integration |
+| `apps/desktop/electron/main/voice-service.ts` | +4 −2 | hook | fix(voice): complete local dictation integration |
 
 ## transcript reads / history pages (bounded renderer reads, top-level history pages, delegate rows on open)
 
@@ -132,19 +132,19 @@ Spec: `docs/spec/90-fork/07-transcript-reads-and-history-pages.md`. Islands: `ap
 
 | upstream file | +/− vs upstream | kind | introduced by |
 | --- | --- | --- | --- |
-| `apps/desktop/electron/main/ipc/session-ipc.ts` | +39 −18 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `apps/desktop/src/components/workpanel/SubagentTranscriptTab.tsx` | +14 −1 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `apps/desktop/src/features/chat/transcript/ChatTranscript.tsx` | +6 −4 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `apps/desktop/electron/main/ipc/session-ipc.ts` | +40 −18 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `apps/desktop/src/components/workpanel/SubagentTranscriptTab.tsx` | +15 −0 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `apps/desktop/src/features/chat/transcript/ChatTranscript.tsx` | +7 −4 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/lib/remote-project-session.ts` | +5 −1 | hook | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/lib/subagent-transcript.ts` | +7 −2 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/lib/transcript-reading.ts` | +7 −0 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/stores/app-state.ts` | +6 −0 | hook | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `apps/desktop/src/stores/runtime/session-runtime.ts` | +59 −20 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `apps/desktop/src/stores/runtime/session-runtime.ts` | +60 −20 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/stores/runtime/transcript-action.ts` | +36 −9 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/stores/runtime/transcript-reading-runtime.ts` | +6 −0 | hook | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `apps/desktop/src/stores/slices/events-slice.ts` | +9 −10 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `apps/desktop/src/stores/slices/events-slice.ts` | +10 −10 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/stores/slices/session-slice.ts` | +3 −0 | hook | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `apps/desktop/src/stores/slices/transcript-slice.ts` | +139 −128 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `apps/desktop/src/stores/slices/transcript-slice.ts` | +140 −128 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/test/delete-message-preserves-transcript.test.mjs` | +54 −22 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/test/native-pi-sessions.test.mjs` | +19 −7 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/test/remote-mvp-renderer.test.mjs` | +1 −1 | hook | PR #51–#56 (bounded transcript reads, top-level history pages) |

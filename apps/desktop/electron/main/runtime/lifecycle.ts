@@ -1,3 +1,5 @@
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import { installInsecureEndpointNotice } from "../network-notice";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -19,7 +21,6 @@ import type { Logger } from "../logger";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { RuntimeState } from "./context";
 import { syncPluginDisplayLocale } from "../plugin-display-locale";
-import { installInsecureEndpointNotice } from "../network-notice";
 import { RuntimeSupervisor } from "@pi-desktop/host-runtime";
 
 type RestartKind = "host" | "sidecar";

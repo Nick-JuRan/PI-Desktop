@@ -5,8 +5,9 @@
  * means zero import overhead at startup.
  */
 
-import { app, BrowserWindow } from "electron";
+// Fork-only imports (separate statement so upstream import edits never conflict).
 import { IPC } from "@pi-desktop/shared";
+import { app, BrowserWindow } from "electron";
 import { randomUUID } from "node:crypto";
 import { PvRecorderBackend, checkMicrophonePermission, requestMicrophonePermission } from "./audio-backend";
 import type {

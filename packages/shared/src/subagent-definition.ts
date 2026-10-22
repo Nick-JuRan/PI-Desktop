@@ -15,15 +15,16 @@
  *   `tools: inherit` (nested Task / mode-switch tools stay denied).
  */
 
-import {
-  SUBAGENT_THINKING_LEVELS,
-  type SubagentThinkingLevel,
-} from "./types.js";
+// Fork-only imports (separate statement so upstream import edits never conflict).
 import {
   isSubagentDynamicSelection,
   subagentMcpServerIdFromSelector,
   subagentSkillIdFromSelector,
 } from "./subagent-tools.js";
+import {
+  SUBAGENT_THINKING_LEVELS,
+  type SubagentThinkingLevel,
+} from "./types.js";
 
 /**
  * Where a definition came from. User-owned global documents shadow builtins by

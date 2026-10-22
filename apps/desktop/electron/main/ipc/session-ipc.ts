@@ -1,3 +1,5 @@
+// Fork-only imports (separate statement so upstream import edits never conflict).
+import { boundSessionRead } from "./session-read-bounds";
 import { shell } from "electron";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { mkdirSync } from "node:fs";
@@ -27,7 +29,6 @@ import type { PersistenceOutbox } from "../persistence-outbox";
 import type { PluginRuntime } from "../plugin-runtime";
 import { readSessionCollaboration } from "../services/session-collaboration";
 import { localNativeProjectPaths, searchSessionsAcrossSources } from "../services/session-search";
-import { boundSessionRead } from "./session-read-bounds";
 import type { IpcRegistrar } from "./types";
 import { getActiveRemoteHostsBoot } from "../bootstrap/remote-hosts.js";
 
