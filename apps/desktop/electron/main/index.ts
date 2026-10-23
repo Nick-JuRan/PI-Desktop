@@ -592,6 +592,8 @@ const {
 
 /** sessionId → open host turn id, for turn bookkeeping across agent events. */
 const activeTurns = new Map<string, string>();
+/** Host-verified completion turns whose first settled reply may be silent. */
+const completionNoticeTurns = new Set<string>();
 /** Plan submission turns end without a task-complete notification. */
 const planSubmissionTurnIds = new Set<string>();
 /** sessionId → host execution id for an approved plan currently dispatched. */
@@ -729,6 +731,7 @@ const {
 const eventPersistence = createEventPersistence({
   runtimeState,
   steeringReplies,
+  completionNoticeTurns,
   activeTurns,
   activeToolCalls,
   activeToolCallKey,
@@ -897,6 +900,7 @@ function registerIpc() {
     updater,
     dataDir,
     activeTurns,
+    completionNoticeTurns,
     isTurnDispatchable,
     sessionProjects,
     persistenceOutbox,
