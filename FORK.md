@@ -116,7 +116,6 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `crates/host-core/src/sessions/fork_files.rs` | +6 −1 | hook | merge resolution |
 | `crates/host-core/src/user_skills/tests.rs` | +1 −1 | hook | fix(desktop): make Windows build and test gates portable |
 | `docs/architecture/allowlist.json` | +3 −0 | hook | fix(architecture): document Mid-Autumn scene budget |
-| `packages/host-runtime/src/launch-resolver.test.ts` | +2 −1 | hook | fix(desktop): make Windows build and test gates portable |
 | `scripts/e2e-image-chat.mjs` | +10 −3 | integration point | fix(e2e): adapt desktop scenarios to upstream UI changes |
 | `scripts/e2e-keep-awake.mjs` | +64 −21 | integration point | fix(e2e): align portable release and restart checks |
 
@@ -174,7 +173,7 @@ Not fork features: upstream edits to `.github/workflows/*` that the Dash0 GitHub
 | --- | --- | --- | --- |
 | `.github/workflows/ci.yml` | +0 −3 | `Run provider optional client certificate E2E` step in the `js` job | sync 2026-10-20 (#57) |
 
-Total upstream files touched: 119 (including the pending workflow change).
+Total upstream files touched: 118 (including the pending workflow change). `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8).
 
 Fork E2E islands (never conflict): `scripts/e2e/fork-nested-topology.tsx` + `scripts/e2e-fork-nested-topology.mjs` (run with `node scripts/e2e-fork-nested-topology.mjs`).
 
