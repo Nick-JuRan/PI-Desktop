@@ -1,6 +1,5 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { join } from "node:path";
 
 import { createHeadlessLaunchResolver, type HostProviderRecord } from "./launch-resolver.js";
 
