@@ -184,6 +184,8 @@ type RuntimeParams = {
   /** Maximum number of delegated subagent levels. */
   maxSubagentDepth?: number;
   scratchDir?: string;
+  /** Per-session visualization directory; omitted for remote sessions. */
+  visualizationsDir?: string;
   /** Session-bound workspace root supplied by Electron main. */
   projectPath?: string;
   remoteWorkspace?: { hostKey: string; path: string };
@@ -386,6 +388,10 @@ async function runtimeFor(
     scratchDir:
       typeof params.scratchDir === "string" && params.scratchDir
         ? params.scratchDir
+        : undefined,
+    visualizationsDir:
+      typeof params.visualizationsDir === "string" && params.visualizationsDir
+        ? params.visualizationsDir
         : undefined,
     onEvent: (envelope: AgentEventEnvelope) => notify("agent.event", envelope),
     onDiagnostic: (diagnostic) => notify("agent.diagnostic", diagnostic),

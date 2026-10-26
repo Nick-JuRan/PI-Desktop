@@ -402,7 +402,10 @@ may be retained while exactly one workspace supplies the visible shell context.
   has its own draft slot. Creating a new session does not copy another slot. A
   completed send clears only the draft belonging to the session that submitted
   it, even if the user switches sessions while the request is in flight;
-  deleted sessions cannot retain drafts.
+  deleted sessions cannot retain drafts. A rejected submission restores its
+  captured text and file references only while no later submission has taken
+  ownership of that draft slot; an older late failure never replaces newer
+  input.
 - The composer also recalls the accepted submissions of its own conversation,
   newest-first, with ArrowUp/ArrowDown (D632). ArrowUp starts browsing only when
   the draft is empty (no text and no references), and while browsing both keys
@@ -607,6 +610,11 @@ may be retained while exactly one workspace supplies the visible shell context.
   switching back restores it; selecting a workspace without an active
   conversation hides the panel. Session/workspace identity remains attached to
   every relative resource, preventing cross-context reinterpretation.
+- Browser page execution is Main-owned, independent of the side panel's
+  presentation lifecycle. Hidden/background tool operations keep their trusted
+  session connection and never reveal or retarget the visible page. A shell
+  reload detaches presentation; selecting a session restores its live Browser
+  tab metadata without changing the panel's collapsed state.
 - Relaunch discards every session context, including Browser resources; only
   the committed preferred panel width persists. Native window state is stored
   independently from normal bounds, including when the app closes while
@@ -935,9 +943,11 @@ may be retained while exactly one workspace supplies the visible shell context.
   hidden thinking does not create a redundant group, and existing Task topology
   remains separate. No mode adds a second top-level disclosure or leaves a run
   row outside the process.
-- The active ordinary group stays open while the turn runs. After completion,
-  ordinary groups with at most four visible items and Task topology groups remain
-  open; larger ordinary groups start closed. These defaults do not depend on the
+- Every ordinary group of a turn stays open while that turn runs, whether or not
+  it still owns the live segment. After the turn settles, ordinary groups with at
+  most four visible items, Task topology groups and groups that still render a
+  Thinking row remain open; larger ordinary groups of plain tool rows start
+  closed. Apart from visible reasoning these defaults do not depend on the
   thinking preference. Closing the turn's disclosure hides every group and run
   row under it without erasing their choices; reopening restores their defaults
   and any explicit user choices.
@@ -959,9 +969,11 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Activating a group or item header toggles only that level. Closing a parent
   preserves child state, reopening restores it, and sibling groups remain
   independent. Opening a parent is never an expand-all action.
-- A manual item action claims its containing group as user-owned without toggling
-  it. Streaming and completion cannot reopen a manual close or close around
-  content the user opened, focused or selected. Choices survive preference
+- An explicit choice belongs to its own level alone: it never pins an ancestor
+  open or closed. Streaming and completion cannot reopen a manual close. Reading
+  protection is transient - while focus or a selection is inside a level, an
+  automatic close is deferred for that level and its ancestors, and leaving the
+  content hands control back to the automatic default. Choices survive preference
   changes, singleton-to-group growth and remounts while the retained session pane
   lives.
 - Search/navigation opens the turn process and activity group that own the named

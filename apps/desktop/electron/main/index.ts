@@ -397,6 +397,7 @@ const {
   activeUserSubagentDocuments,
   disabledBuiltinSubagents,
   disabledBuiltinSkills,
+  runtimeDisabledBuiltinSkills,
   loadUserSkillBody,
   resolveEffectiveCommandShell,
   resolveAgentRuntimeLaunch,
@@ -778,7 +779,9 @@ const sidecarRuntime = createSidecarRuntime({
   sessionProjects,
   loadUserSkillBody,
   activeUserSkills,
-  disabledBuiltinSkills,
+  // Runtime consumers honor the inline-visualization switch; the Skills page
+  // keeps reading the raw host state above.
+  disabledBuiltinSkills: runtimeDisabledBuiltinSkills,
   pluginActiveInProject,
   currentNetworkProxy,
 });
@@ -973,6 +976,7 @@ function registerIpc() {
     refreshUserMcp,
     describeError,
     activeUserSubagentDocuments,
+    runtimeDisabledBuiltinSkills,
     disabledBuiltinSubagents,
     disabledBuiltinSkills,
     pluginViews,

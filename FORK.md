@@ -47,7 +47,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `apps/desktop/electron/main/ipc/register.ts` | +2 −0 | hook | fix(voice): complete local dictation integration |
 | `apps/desktop/electron/main/ipc/skills-ipc.ts` | +9 −0 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
 | `apps/desktop/electron/main/plugin-runtime.ts` | +10 −6 | integration point | feat(subagents): discover trusted extension tools dynamically |
-| `apps/desktop/electron/main/runtime/session-launch.ts` | +170 −2 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
+| `apps/desktop/electron/main/runtime/session-launch.ts` | +169 −1 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules; sync 2026-10-26 restored upstream's `../oauth` import position (the fork had moved it, which conflicted) |
 | `apps/desktop/electron/main/runtime/sidecar.ts` | +9 −1 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/src/components/settings/AgentSubagentsPage.tsx` | +75 −4 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
 | `apps/desktop/src/components/settings/SubagentEditorSheet.tsx` | +213 −27 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
@@ -171,7 +171,7 @@ Not fork features: upstream edits to `.github/workflows/*` that the Dash0 GitHub
 
 | upstream file | +/− vs upstream | what upstream added | since |
 | --- | --- | --- | --- |
-| `.github/workflows/ci.yml` | +0 −3 | `Run provider optional client certificate E2E` step in the `js` job | sync 2026-10-20 (#57) |
+| `.github/workflows/ci.yml` | +3 −17 | `trusted-extensions-e2e` job: `Run provider optional client certificate E2E` step (since sync 2026-10-20, #57); `Build host-core` moved before the E2E steps, `Run inline GenUI interaction and isolation E2E` and `Run File Manager theme E2E` steps added. `rust-windows` job: `Test visualization paths and lifecycle on Windows` and `Test GenUI document file boundaries on Windows` steps added. Apply with `git diff origin/main upstream/main -- .github/workflows/ci.yml`. | sync 2026-10-20 (#57), sync 2026-10-26 |
 
 Total upstream files touched: 118 (including the pending workflow change). `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8).
 
