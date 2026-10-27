@@ -98,6 +98,7 @@
 # 远端（幂等）
 git remote get-url upstream >/dev/null 2>&1 || git remote add upstream https://github.com/vastsa/PI-Desktop.git
 git remote set-url --push upstream no_push
+gh repo set-default origin    # 否则多 remote 时 gh 默认落到父仓库 vastsa；写入主检出 .git/config 的 remote.origin.gh-resolved = base，linked worktree 共享同一 .git，C4 里照样生效
 git fetch origin main
 git fetch upstream main
 
@@ -160,6 +161,8 @@ git fetch origin main
 git merge-base --is-ancestor origin/main HEAD || git merge --no-edit origin/main   # 期间 origin/main 又动了就再合一次
 pnpm check:pr-base                                # 无 node_modules 时：node scripts/check-pr-base-main.mjs
 git push -u origin "$BR"
+# 下面三条 gh 命令依赖 C1 的 `gh repo set-default origin`：没有它，多 remote 的检出会解析到 vastsa/PI-Desktop，
+# gh pr create 报 "No commits between main and …"。临时替代：每条加 -R Nick-JuRan/PI-Desktop。
 gh pr create --base main --head "$BR" \
   --title "sync: merge upstream main through ${TARGET:0:7}" \
   --body "## Summary
