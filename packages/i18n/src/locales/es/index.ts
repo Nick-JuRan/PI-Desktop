@@ -2114,6 +2114,8 @@ sklm: {
       "open": "Nuevo"
     },
     "closeTab": "Cerrar {{name}}",
+    "closeOtherTabs": "Cerrar las demás pestañas",
+    "closeAllTabs": "Cerrar todas las pestañas",
     "tabs": {
       "review": "Revisar",
       "browser": "Navegador",

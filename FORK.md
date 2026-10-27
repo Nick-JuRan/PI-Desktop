@@ -29,7 +29,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `packages/agent-runtime/src/delegation-chain.ts` | +22 −2 | integration point | feat: 引入子代理深度、子代理工具调用选择; fix(subagents): bound resumable chains per direct parent |
 | `packages/agent-runtime/src/delegation-history.ts` | +11 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/agent-runtime/src/runtime.test.ts` | +273 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
-| `packages/agent-runtime/src/runtime.ts` | +286 −50 | integration point | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue |
+| `packages/agent-runtime/src/runtime.ts` | +300 −50 | integration point | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue; sync 2026-10-27: upstream `3e4bbe123` removed the resumable system-prompt block the depth guard decorated (list now lives in `TaskList`), and upstream `e9f1ca7c1`'s `delegatePrompt` / `scopeDelegateTools(…, applyInstructions)` carry the fork's selection, `parentLabel`, `canDelegate` and trailing `skillIds` |
 | `packages/agent-runtime/src/sidecar.ts` | +82 −0 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
 | `packages/agent-runtime/src/subagent.test.ts` | +13 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/agent-runtime/src/subagent.ts` | +19 −3 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
