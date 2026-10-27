@@ -171,9 +171,9 @@ Not fork features: upstream edits to `.github/workflows/*` that the Dash0 GitHub
 
 | upstream file | +/− vs upstream | what upstream added | since |
 | --- | --- | --- | --- |
-| `.github/workflows/ci.yml` | +3 −17 | `trusted-extensions-e2e` job: `Run provider optional client certificate E2E` step (since sync 2026-10-20, #57); `Build host-core` moved before the E2E steps, `Run inline GenUI interaction and isolation E2E` and `Run File Manager theme E2E` steps added. `rust-windows` job: `Test visualization paths and lifecycle on Windows` and `Test GenUI document file boundaries on Windows` steps added. Apply with `git diff origin/main upstream/main -- .github/workflows/ci.yml`. | sync 2026-10-20 (#57), sync 2026-10-26 |
+| — | — | none pending | — |
 
-Total upstream files touched: 118 (including the pending workflow change). `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8).
+Total upstream files touched: 117. `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8).
 
 Fork E2E islands (never conflict): `scripts/e2e/fork-nested-topology.tsx` + `scripts/e2e-fork-nested-topology.mjs` (run with `node scripts/e2e-fork-nested-topology.mjs`).
 
