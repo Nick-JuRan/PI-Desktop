@@ -12,6 +12,10 @@ use std::path::Path;
 use crate::transcripts::{self, CompactionRecord, MessageRecord, RevisionRecord};
 
 mod fork_files;
+mod history_mutations;
+pub use history_mutations::{
+    activate_message_revision_canonical, delete_message, retract_pending_prompt,
+};
 mod model_system;
 mod usage;
 pub use usage::record_usage;
@@ -129,6 +133,10 @@ pub struct SessionSummary {
     pub thinking_level: String,
     #[serde(default = "default_permission_mode")]
     pub permission_mode: String,
+    /// The `/fast` switch for this session's main turns (ADR 0334). Requests
+    /// use the priority tier only when the model binding also allows it.
+    #[serde(default)]
+    pub fast_mode: bool,
     pub updated_at: String,
     pub created_at: String,
     /// True when this session is the transcript owned by a scheduled-task run.
@@ -270,6 +278,11 @@ pub struct UiMessage {
     /// Internal model-context state, preserved outside visible message text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_system: Option<Value>,
+    /// Opaque provider replay data (thinking/text block boundaries and
+    /// signatures) for an assistant row. Stored in record meta; no SQL
+    /// migration, and older builds ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_replay: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -393,6 +406,9 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
     let mut meta_obj = serde_json::Map::new();
     if let Some(system) = &message.model_system {
         meta_obj.insert("modelSystem".into(), system.clone());
+    }
+    if let Some(replay) = &message.provider_replay {
+        meta_obj.insert("providerReplay".into(), replay.clone());
     }
     if let Some(command) = &message.command {
         meta_obj.insert("command".into(), json!(command));
@@ -550,6 +566,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
     };
     let meta = record.meta.unwrap_or(Value::Null);
     let model_system = meta.get("modelSystem").cloned();
+    let provider_replay = meta.get("providerReplay").cloned();
     let command = meta
         .get("command")
         .and_then(Value::as_str)
@@ -728,6 +745,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             agent_name,
             hosted_search: hosted_search.clone(),
             model_system: None,
+            provider_replay: None,
         }
     } else {
         let content = blocks
@@ -773,6 +791,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             agent_name,
             hosted_search,
             model_system,
+            provider_replay,
         }
     }
 }
@@ -1308,7 +1327,8 @@ fn session_created_at(db: &Database, session_id: &str) -> Result<String> {
 const SUMMARY_SELECT: &str =
     "SELECT s.id, s.title, s.last_seq, p.path, s.model_id, s.provider_id, s.mode,
             s.thinking_level, s.permission_mode, s.updated_at, s.created_at,
-            EXISTS (SELECT 1 FROM task_runs r WHERE r.session_id = s.id) AS scheduled_run
+            EXISTS (SELECT 1 FROM task_runs r WHERE r.session_id = s.id) AS scheduled_run,
+            s.fast_mode
      FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
      WHERE s.deleted_at IS NULL";
 
@@ -1328,6 +1348,7 @@ pub(crate) fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Sess
         // Read by name: search and listing build their own column lists, so the
         // alias keeps this mapper independent of any one query's column order.
         scheduled_run: row.get("scheduled_run")?,
+        fast_mode: row.get("fast_mode")?,
         worktree: None,
     })
 }
@@ -1383,6 +1404,8 @@ pub struct SessionCreateOptions {
     pub project_path: Option<String>,
     pub thinking_level: Option<String>,
     pub permission_mode: Option<String>,
+    /// The `/fast` switch (ADR 0334); false keeps the default service tier.
+    pub fast_mode: bool,
 }
 
 pub fn create_session_with_thinking(
@@ -1404,6 +1427,7 @@ pub fn create_session_with_thinking(
             project_path,
             thinking_level,
             permission_mode: None,
+            fast_mode: false,
         },
     )
 }
@@ -1425,6 +1449,7 @@ pub fn create_session_with_options(
         project_path,
         thinking_level,
         permission_mode,
+        fast_mode,
     } = options;
     let now = now_ms();
     let id = Uuid::new_v4().to_string();
@@ -1454,8 +1479,8 @@ pub fn create_session_with_options(
         .prepare_cached(
             "INSERT INTO sessions (
                 id, title, project_id, provider_id, model_id, mode, thinking_level,
-                permission_mode, title_source, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
+                permission_mode, title_source, fast_mode, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)",
         )?
         .execute(params![
             id,
@@ -1467,6 +1492,7 @@ pub fn create_session_with_options(
             thinking_level,
             permission_mode,
             title_source,
+            fast_mode,
             now
         ])?;
     Ok(SessionSummary {
@@ -1479,6 +1505,7 @@ pub fn create_session_with_options(
         mode,
         thinking_level,
         permission_mode,
+        fast_mode,
         updated_at: ms_to_ts(now),
         created_at: ms_to_ts(now),
         // The run row that owns this transcript is written after creation.
@@ -1869,10 +1896,11 @@ pub fn fork_session_through(
             .prepare_cached(
                 "INSERT INTO sessions (
                     id, title, project_id, provider_id, model_id, mode, thinking_level,
-                    permission_mode, source, pinned, last_seq, created_at, updated_at
+                    permission_mode, fast_mode, source, pinned, last_seq, created_at,
+                    updated_at
                  )
                  SELECT ?1, ?2, project_id, provider_id, model_id, mode, thinking_level,
-                        permission_mode, NULL, 0, ?3, ?4, ?4
+                        permission_mode, fast_mode, NULL, 0, ?3, ?4, ?4
                  FROM sessions WHERE id = ?5",
             )?
             .execute(params![id, title, records.len() as i64, now, source_id])?;
@@ -1902,6 +1930,7 @@ pub fn fork_session_through(
         mode: source.summary.mode,
         thinking_level: source.summary.thinking_level,
         permission_mode: source.summary.permission_mode,
+        fast_mode: source.summary.fast_mode,
         updated_at: created_at.clone(),
         created_at,
         // A fork is the user's own conversation, not the automation's transcript.
@@ -1947,6 +1976,31 @@ pub fn configure_session_with_thinking(
     thinking_level: Option<&str>,
     permission_mode: Option<&str>,
 ) -> Result<Option<SessionSummary>> {
+    configure_session_with_fast_mode(
+        db,
+        id,
+        mode,
+        provider_id,
+        model_id,
+        thinking_level,
+        permission_mode,
+        None,
+    )
+}
+
+/// Full configurator. Every `None` preserves the persisted value, including
+/// the `/fast` switch (ADR 0334).
+#[allow(clippy::too_many_arguments)]
+pub fn configure_session_with_fast_mode(
+    db: &Database,
+    id: &str,
+    mode: &str,
+    provider_id: Option<&str>,
+    model_id: Option<&str>,
+    thinking_level: Option<&str>,
+    permission_mode: Option<&str>,
+    fast_mode: Option<bool>,
+) -> Result<Option<SessionSummary>> {
     if !(is_valid_mode(mode) || mode == "chat") {
         return Err(anyhow!("mode must be plan or agent"));
     }
@@ -1973,7 +2027,8 @@ pub fn configure_session_with_thinking(
              SET mode = ?2, provider_id = COALESCE(?3, provider_id),
                  model_id = COALESCE(?4, model_id),
                  thinking_level = COALESCE(?5, thinking_level),
-                 permission_mode = COALESCE(?6, permission_mode), updated_at = ?7
+                 permission_mode = COALESCE(?6, permission_mode),
+                 fast_mode = COALESCE(?8, fast_mode), updated_at = ?7
              WHERE id = ?1",
         )?
         .execute(params![
@@ -1983,7 +2038,8 @@ pub fn configure_session_with_thinking(
             model_id,
             thinking_level,
             permission_mode,
-            now_ms()
+            now_ms(),
+            fast_mode
         ])?;
     if changed == 0 {
         return Ok(None);
@@ -2855,43 +2911,6 @@ pub fn replace_messages(db: &Database, session_id: &str, messages: &[UiMessage])
     rewrite_transcript(db, session_id, messages, &[])
 }
 
-/// Drop one message from the live transcript on the host, and return the ids
-/// that went with it.
-///
-/// A user row takes its whole turn along: every following row up to, but not
-/// including, the next user row. Any other row is removed alone. That is the
-/// rule the renderer applied before it handed the rewritten array back over
-/// IPC; it moved here so the renderer never has to hold the full transcript
-/// to delete one turn of it, and so a paged, display-capped window can never
-/// become the next transcript (a 200 MB session had no bounded way to do
-/// this). An id the transcript does not carry removes nothing.
-pub fn delete_message(db: &Database, session_id: &str, message_id: &str) -> Result<Vec<String>> {
-    let Some(detail) = get_session(db, session_id)? else {
-        return Err(anyhow!("NOT_FOUND: session {session_id}"));
-    };
-    let messages = detail.messages;
-    let Some(index) = messages.iter().position(|message| message.id == message_id) else {
-        return Ok(Vec::new());
-    };
-    let mut end = index + 1;
-    if messages[index].role == "user" {
-        while end < messages.len() && messages[end].role != "user" {
-            end += 1;
-        }
-    }
-    let deleted: Vec<String> = messages[index..end]
-        .iter()
-        .map(|message| message.id.clone())
-        .collect();
-    let remaining: Vec<UiMessage> = messages[..index]
-        .iter()
-        .chain(messages[end..].iter())
-        .cloned()
-        .collect();
-    replace_messages(db, session_id, &remaining)?;
-    Ok(deleted)
-}
-
 /// Rewrite the transcript and reseat the index rows.
 ///
 /// `already_stored` names families the caller stored on its own way here, so
@@ -3144,38 +3163,66 @@ pub fn update_tool_review_state(
     snapshot_id: &str,
     state: &str,
 ) -> Result<bool> {
-    let Some(detail) = get_session(db, session_id)? else {
+    if !session_exists(db, session_id)? {
+        return Ok(false);
+    }
+    let record = transcripts::layout::with_layout_recovery(db.data_dir(), session_id, |layout| {
+        if layout.message_count() == 0 {
+            return Ok(None);
+        }
+        let Some(position) =
+            transcripts::find_message_position(db.data_dir(), session_id, layout, message_id)?
+        else {
+            return Ok(None);
+        };
+        Ok(transcripts::read_transcript_window_with_layout(
+            db.data_dir(),
+            session_id,
+            layout,
+            position,
+            Some(1),
+        )?
+        .messages
+        .pop())
+    })?;
+    let Some(record) = record else {
         return Ok(false);
     };
-    let mut messages = detail.messages;
-    let mut changed = false;
-    for message in &mut messages {
-        if message.id != message_id || message.role != "tool" {
-            continue;
-        }
-        let Some(tool_result) = message.tool_result.as_mut().and_then(Value::as_object_mut) else {
-            continue;
-        };
-        let Some(details) = tool_result
-            .get_mut("details")
-            .and_then(Value::as_object_mut)
-        else {
-            continue;
-        };
-        let Some(review) = details.get_mut("review").and_then(Value::as_object_mut) else {
-            continue;
-        };
-        if review.get("snapshotId").and_then(Value::as_str) != Some(snapshot_id) {
-            continue;
-        }
-        review.insert("state".into(), Value::String(state.to_string()));
-        changed = true;
-        break;
+    let message = record_to_ui(record);
+    let matches_snapshot = message.role == "tool"
+        && message
+            .tool_result
+            .as_ref()
+            .and_then(Value::as_object)
+            .and_then(|result| result.get("details"))
+            .and_then(Value::as_object)
+            .and_then(|details| details.get("review"))
+            .and_then(Value::as_object)
+            .and_then(|review| review.get("snapshotId"))
+            .and_then(Value::as_str)
+            == Some(snapshot_id);
+    if !matches_snapshot {
+        return Ok(false);
     }
-    if changed {
-        replace_messages(db, session_id, &messages)?;
+    if message
+        .tool_result
+        .as_ref()
+        .and_then(|result| result.get("details")?.get("review")?.get("state")?.as_str())
+        == Some(state)
+    {
+        return Ok(true);
     }
-    Ok(changed)
+    transcripts::append_tool_review_state(
+        db.data_dir(),
+        session_id,
+        message_id,
+        snapshot_id,
+        state,
+    )?;
+    db.conn()
+        .prepare_cached("UPDATE sessions SET updated_at = ?1 WHERE id = ?2")?
+        .execute(params![now_ms(), session_id])?;
+    Ok(true)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3613,6 +3660,23 @@ pub fn activate_message_revision(
     session_id: &str,
     root_user_id: &str,
     revision_index: i64,
+    prefix: &[UiMessage],
+) -> Result<Vec<UiMessage>> {
+    activate_message_revision_with_prefix(
+        db,
+        session_id,
+        root_user_id,
+        revision_index,
+        Some(prefix),
+    )
+}
+
+/// None requires a durable family anchor; Some preserves the legacy prefix API.
+fn activate_message_revision_with_prefix(
+    db: &Database,
+    session_id: &str,
+    root_user_id: &str,
+    revision_index: i64,
     prefix: Option<&[UiMessage]>,
 ) -> Result<Vec<UiMessage>> {
     let session_created = session_created_at(db, session_id)?;
@@ -3634,15 +3698,19 @@ pub fn activate_message_revision(
     let live = get_session(db, session_id)?
         .map(|detail| detail.messages)
         .unwrap_or_default();
+    if prefix.is_none()
+        && live_branch_start(&live, root_user_id)
+            .filter(|&index| live[index].role == "user")
+            .is_none()
+    {
+        return Err(anyhow!(
+            "NOT_FOUND: revision family anchor missing from canonical transcript"
+        ));
+    }
     let live_start = archive_live_branch(db, session_id, root_user_id, &live)?;
-    let prefix: &[UiMessage] = match (live_start, prefix) {
-        (Some(start), _) => &live[..start],
-        (None, Some(prefix)) => prefix,
-        (None, None) => {
-            return Err(anyhow!(
-                "NOT_FOUND: revision root {root_user_id} is not in the live transcript"
-            ));
-        }
+    let prefix: &[UiMessage] = match live_start {
+        Some(start) => &live[..start],
+        None => prefix.ok_or_else(|| anyhow!("NOT_FOUND: canonical revision prefix missing"))?,
     };
 
     let payload =
@@ -4448,6 +4516,7 @@ mod tests {
             agent_name: None,
             hosted_search: None,
             model_system: None,
+            provider_replay: None,
             session_message: None,
         }
     }
@@ -4882,6 +4951,76 @@ mod tests {
         assert_eq!(omitted.thinking_level, "omit");
     }
 
+    /// ADR 0334: `/fast` is stored per session, survives configures that do
+    /// not mention it, and is copied by a fork.
+    #[test]
+    fn session_fast_mode_is_persisted_preserved_and_forked() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        assert!(!session.fast_mode);
+
+        let set = |enabled: Option<bool>, mode: &str| {
+            configure_session_with_fast_mode(
+                &db,
+                &session.id,
+                mode,
+                None,
+                None,
+                None,
+                None,
+                enabled,
+            )
+            .unwrap()
+            .unwrap()
+        };
+        assert!(set(Some(true), "agent").fast_mode);
+        assert!(set(None, "plan").fast_mode);
+        let kept = configure_session(&db, &session.id, "agent", None, None)
+            .unwrap()
+            .unwrap();
+        assert!(kept.fast_mode);
+        assert!(
+            get_session(&db, &session.id)
+                .unwrap()
+                .unwrap()
+                .summary
+                .fast_mode
+        );
+
+        let ForkSessionResult::Created(fork) =
+            fork_session_through(&db, &session.id, None, None).unwrap()
+        else {
+            panic!("expected fork");
+        };
+        assert!(fork.summary.fast_mode);
+        assert!(
+            get_session(&db, &fork.summary.id)
+                .unwrap()
+                .unwrap()
+                .summary
+                .fast_mode
+        );
+
+        assert!(!set(Some(false), "agent").fast_mode);
+
+        let created = create_session_with_options(
+            &db,
+            SessionCreateOptions {
+                fast_mode: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(created.fast_mode);
+        assert!(
+            get_session(&db, &created.id)
+                .unwrap()
+                .unwrap()
+                .summary
+                .fast_mode
+        );
+    }
+
     #[test]
     fn create_session_permission_mode_is_optional_and_validated() {
         let db = test_db();
@@ -5174,6 +5313,7 @@ mod tests {
             permission_mode: "inherit".into(),
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
+            fast_mode: false,
             worktree: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-02T00:00:00Z".into(),
@@ -5227,6 +5367,7 @@ mod tests {
             permission_mode: "inherit".into(),
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
+            fast_mode: false,
             worktree: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
@@ -5339,6 +5480,7 @@ mod tests {
             agent_name: None,
             hosted_search: None,
             model_system: None,
+            provider_replay: None,
             session_message: None,
         };
         append_message(&db, &session.id, &tool, None).unwrap();
@@ -5384,11 +5526,55 @@ mod tests {
             ],
         )
         .unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("m3", "继续", "2025-05-01T00:00:04Z"),
+            None,
+        )
+        .unwrap();
+        let transcript = db
+            .data_dir()
+            .join("sessions")
+            .join(format!("{}.jsonl", session.id));
+        let before_review_update = std::fs::read(&transcript).unwrap();
         assert!(
             update_tool_review_state(&db, &session.id, "m2", "snapshot-1", "rolledBack",).unwrap()
         );
+        let after_review_update = std::fs::read(&transcript).unwrap();
+        assert!(
+            after_review_update.starts_with(&before_review_update),
+            "review state updates must append instead of rewriting retained history"
+        );
+        assert!(after_review_update.len() - before_review_update.len() < 256);
+        assert!(
+            update_tool_review_state(&db, &session.id, "m2", "snapshot-1", "rolledBack").unwrap()
+        );
+        for (message_id, snapshot_id) in [
+            ("missing", "snapshot-1"),
+            ("m2", "wrong"),
+            ("m1", "snapshot-1"),
+        ] {
+            assert!(!update_tool_review_state(
+                &db,
+                &session.id,
+                message_id,
+                snapshot_id,
+                "rolledBack"
+            )
+            .unwrap());
+        }
+        assert_eq!(std::fs::read(&transcript).unwrap(), after_review_update);
         let updated = get_session(&db, &session.id).unwrap().unwrap();
-        assert_eq!(updated.summary.message_count, 2);
+        assert_eq!(updated.summary.message_count, 3);
+        assert_eq!(
+            updated
+                .messages
+                .iter()
+                .map(|message| message.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["m1", "m2", "m3"]
+        );
         assert_eq!(
             updated.messages[1].tool_result,
             Some(json!({
@@ -5412,7 +5598,139 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(last_seq, 2);
+        assert_eq!(last_seq, 3);
+    }
+
+    #[test]
+    fn truncate_from_folds_review_state_into_the_retained_prefix() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let mut tool = user_msg("review-tool", "written", "2025-05-01T00:00:01Z");
+        tool.role = "tool".into();
+        tool.tool_call_id = Some("review-call".into());
+        tool.tool_name = Some("Write".into());
+        tool.tool_result = Some(json!({"details": {"review": {
+            "snapshotId": "snapshot-1", "state": "active"
+        }}}));
+        for message in [
+            user_msg("root", "write", "2025-05-01T00:00:00Z"),
+            tool,
+            user_msg("later-root", "regenerate", "2025-05-01T00:00:02Z"),
+        ] {
+            append_message(&db, &session.id, &message, None).unwrap();
+        }
+        assert!(update_tool_review_state(
+            &db,
+            &session.id,
+            "review-tool",
+            "snapshot-1",
+            "rolledBack"
+        )
+        .unwrap());
+        truncate_from(&db, &session.id, Some("later-root"), None).unwrap();
+        let raw = std::fs::read_to_string(
+            db.data_dir()
+                .join("sessions")
+                .join(format!("{}.jsonl", session.id)),
+        )
+        .unwrap();
+        let lines = raw
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert!(!lines.iter().any(|line| line["type"] == "tool_review_state"));
+        let stored_tool = lines
+            .iter()
+            .find(|line| line["id"] == "review-tool")
+            .unwrap();
+        assert_eq!(
+            stored_tool["blocks"][0]["result"]["details"]["review"]["state"],
+            "rolledBack"
+        );
+        let detail = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(
+            detail
+                .messages
+                .iter()
+                .map(|message| message.id.as_str())
+                .collect::<Vec<_>>(),
+            ["root", "review-tool"]
+        );
+        assert_eq!(
+            detail.messages[1].tool_result.as_ref().unwrap()["details"]["review"]["state"],
+            "rolledBack"
+        );
+    }
+
+    #[test]
+    fn tool_review_state_survives_fork_revision_activation_and_deletion() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let mut tool = user_msg("review-tool", "written", "2025-05-01T00:00:01Z");
+        tool.role = "tool".into();
+        tool.tool_call_id = Some("review-call".into());
+        tool.tool_name = Some("Write".into());
+        tool.tool_result = Some(json!({"details": {"review": {
+            "snapshotId": "snapshot-1", "state": "active"
+        }}}));
+        let mut answer = user_msg("answer", "done", "2025-05-01T00:00:02Z");
+        answer.role = "assistant".into();
+        for message in [
+            user_msg("root", "write", "2025-05-01T00:00:00Z"),
+            tool,
+            answer,
+        ] {
+            append_message(&db, &session.id, &message, None).unwrap();
+        }
+        assert!(update_tool_review_state(
+            &db,
+            &session.id,
+            "review-tool",
+            "snapshot-1",
+            "rolledBack"
+        )
+        .unwrap());
+        let assert_rolled_back = |messages: &[UiMessage]| {
+            let tool = messages
+                .iter()
+                .find(|message| message.role == "tool")
+                .unwrap();
+            assert_eq!(
+                tool.tool_result.as_ref().unwrap()["details"]["review"]["state"],
+                "rolledBack"
+            );
+        };
+        let ForkSessionResult::Created(child) =
+            fork_session_through(&db, &session.id, None, None).unwrap()
+        else {
+            panic!("fork must succeed");
+        };
+        assert_rolled_back(&child.messages);
+
+        truncate_from(&db, &session.id, Some("root"), None).unwrap();
+        let mut replacement = user_msg("other-root", "new variant", "2025-05-01T00:00:03Z");
+        replacement.revision_root_id = Some("root".into());
+        replacement.revision_count = Some(2);
+        replacement.active_revision = Some(2);
+        append_message(&db, &session.id, &replacement, None).unwrap();
+        let restored = activate_message_revision_canonical(&db, &session.id, "root", 1).unwrap();
+        assert_rolled_back(&restored);
+        assert!(delete_message(&db, &session.id, "answer").unwrap().deleted);
+        let path = db.data_dir().join("test.sqlite");
+        drop(db);
+        let reopened = Database::open(&path).unwrap();
+        assert_rolled_back(
+            &get_session(&reopened, &session.id)
+                .unwrap()
+                .unwrap()
+                .messages,
+        );
+        assert_rolled_back(
+            &get_session(&reopened, &child.summary.id)
+                .unwrap()
+                .unwrap()
+                .messages,
+        );
     }
 
     #[test]
@@ -5971,6 +6289,7 @@ mod tests {
             agent_name: None,
             hosted_search: None,
             model_system: None,
+            provider_replay: None,
             session_message: None,
         };
         append_message(&db, &session.id, &assistant, None).unwrap();
@@ -6015,6 +6334,64 @@ mod tests {
     }
 
     #[test]
+    fn assistant_provider_replay_roundtrips_in_record_meta() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let replay = json!({
+            "version": 1,
+            "blocks": [
+                { "type": "thinking", "length": 3, "signature": "sig-a" },
+                { "type": "text", "length": 6 }
+            ]
+        });
+        let assistant: UiMessage = serde_json::from_value(json!({
+            "id": "assistant-replay-1",
+            "role": "assistant",
+            "content": "answer",
+            "thinking": "abc",
+            "createdAt": "2025-05-01T00:00:01Z",
+            "status": "complete",
+            "providerReplay": replay,
+        }))
+        .unwrap();
+        let plain: UiMessage = serde_json::from_value(json!({
+            "id": "assistant-replay-2",
+            "role": "assistant",
+            "content": "plain",
+            "createdAt": "2025-05-01T00:00:02Z",
+            "status": "complete",
+        }))
+        .unwrap();
+        append_message(&db, &session.id, &assistant, None).unwrap();
+        append_message(&db, &session.id, &plain, None).unwrap();
+
+        let records = transcripts::read_transcript(db.data_dir(), &session.id).unwrap();
+        assert_eq!(
+            records[0]
+                .meta
+                .as_ref()
+                .and_then(|m| m.get("providerReplay")),
+            Some(&replay)
+        );
+        // Replay data lives in meta only: the visible blocks are unchanged.
+        assert_eq!(
+            records[0].blocks,
+            json!([{ "type": "thinking", "text": "abc" }, { "type": "text", "text": "answer" }])
+        );
+        assert!(records[1]
+            .meta
+            .as_ref()
+            .and_then(|m| m.get("providerReplay"))
+            .is_none());
+
+        let detail = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(detail.messages[0].provider_replay, Some(replay));
+        assert_eq!(detail.messages[0].thinking.as_deref(), Some("abc"));
+        assert_eq!(detail.messages[0].content, "answer");
+        assert_eq!(detail.messages[1].provider_replay, None);
+    }
+
+    #[test]
     fn assistant_hosted_search_roundtrips_as_canonical_blocks() {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
@@ -6051,6 +6428,7 @@ mod tests {
             nested_parent_tool_call_id: None,
             agent_name: None,
             model_system: None,
+            provider_replay: None,
             hosted_search: Some(json!({
                 "status": "completed",
                 "rounds": [
@@ -6175,6 +6553,7 @@ mod tests {
             permission_mode: "inherit".into(),
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
+            fast_mode: false,
             worktree: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
@@ -6389,70 +6768,6 @@ mod tests {
         assert_eq!(detail.messages[1].content, "next");
     }
 
-    /// Three turns: u1/a1, u2/t2/a2, u3/a3. Deleting a user row on the host
-    /// takes its whole turn and nothing else, so the renderer can delete from a
-    /// paged window without ever holding the transcript it rewrites.
-    fn seed_three_turns(db: &Database) -> String {
-        let session = create_session(db, None, None, None, None, None).unwrap();
-        let rows: [(&str, &str, &str); 7] = [
-            ("u1", "user", "first task"),
-            ("a1", "assistant", "first answer"),
-            ("u2", "user", "second task"),
-            ("t2", "tool", "tool result for second task"),
-            ("a2", "assistant", "second answer"),
-            ("u3", "user", "third task"),
-            ("a3", "assistant", "third answer"),
-        ];
-        for (seq, (id, role, content)) in rows.iter().enumerate() {
-            let mut message = user_msg(id, content, &format!("2025-05-01T00:00:0{seq}Z"));
-            message.role = (*role).into();
-            if *role == "tool" {
-                message.tool_call_id = Some((*id).into());
-                message.tool_name = Some("Read".into());
-                message.tool_status = Some("success".into());
-            }
-            append_message(db, &session.id, &message, None).unwrap();
-        }
-        session.id
-    }
-
-    #[test]
-    fn delete_message_removes_a_user_turn_through_the_next_user_row() {
-        let db = test_db();
-        let session_id = seed_three_turns(&db);
-        let deleted = delete_message(&db, &session_id, "u2").unwrap();
-        assert_eq!(deleted, vec!["u2", "t2", "a2"]);
-        let detail = get_session(&db, &session_id).unwrap().unwrap();
-        let ids: Vec<&str> = detail.messages.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(ids, vec!["u1", "a1", "u3", "a3"]);
-        // The index follows the transcript, so a later read sees the same rows.
-        let count: i64 = db
-            .conn()
-            .query_row(
-                "SELECT COUNT(*) FROM messages WHERE session_id = ?1",
-                params![session_id],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(count, 4);
-    }
-
-    #[test]
-    fn delete_message_removes_a_non_user_row_alone_and_the_last_turn_to_the_end() {
-        let db = test_db();
-        let session_id = seed_three_turns(&db);
-        assert_eq!(delete_message(&db, &session_id, "t2").unwrap(), vec!["t2"]);
-        // The last user turn runs to the end of the transcript: this is the
-        // shape an aborted, unanswered prompt leaves behind.
-        assert_eq!(
-            delete_message(&db, &session_id, "u3").unwrap(),
-            vec!["u3", "a3"]
-        );
-        let detail = get_session(&db, &session_id).unwrap().unwrap();
-        let ids: Vec<&str> = detail.messages.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(ids, vec!["u1", "a1", "u2", "a2"]);
-    }
-
     /// One parent turn whose `Task` call spawned a delegate: u1, the Task row
     /// `task-1`, five delegate rows under it, the assistant answer, and u2. The
     /// top-level space is [u1, task-1, a1, u2]; the delegate space of `task-1`
@@ -6630,41 +6945,6 @@ mod tests {
         )
         .unwrap()
         .is_none());
-    }
-
-    #[test]
-    fn delete_message_with_an_unknown_id_changes_nothing() {
-        let db = test_db();
-        let session_id = seed_three_turns(&db);
-        assert!(delete_message(&db, &session_id, "missing")
-            .unwrap()
-            .is_empty());
-        let detail = get_session(&db, &session_id).unwrap().unwrap();
-        assert_eq!(detail.messages.len(), 7);
-        let error = delete_message(&db, "no-such-session", "u1").unwrap_err();
-        assert!(error.to_string().starts_with("NOT_FOUND"));
-    }
-
-    #[test]
-    fn activate_message_revision_without_a_prefix_refuses_a_root_missing_from_the_transcript() {
-        let db = test_db();
-        let session = create_session(&db, None, None, None, None, None).unwrap();
-        let user = user_msg("u1", "hello", "2025-05-01T00:00:00Z");
-        let mut a1 = user_msg("a1", "first", "2025-05-01T00:00:01Z");
-        a1.role = "assistant".into();
-        save_message_revision(&db, &session.id, "u1", &[user.clone(), a1.clone()], true).unwrap();
-        // The live transcript never held u1. A caller without a complete prefix
-        // must not have the transcript rewritten from an empty one.
-        let error = activate_message_revision(&db, &session.id, "u1", 1, None).unwrap_err();
-        assert!(error.to_string().starts_with("NOT_FOUND"), "{error}");
-        assert!(get_session(&db, &session.id)
-            .unwrap()
-            .unwrap()
-            .messages
-            .is_empty());
-        // A caller that vouches for its (empty) prefix still gets the switch.
-        let activated = activate_message_revision(&db, &session.id, "u1", 1, Some(&[])).unwrap();
-        assert_eq!(activated.len(), 2);
     }
 
     #[test]
@@ -7406,7 +7686,7 @@ mod tests {
         assert_eq!(listed.len(), 2);
         assert!(listed.iter().any(|r| r.revision_index == 1 && !r.is_active));
         assert!(listed.iter().any(|r| r.revision_index == 2 && r.is_active));
-        let activated = activate_message_revision(&db, &session.id, "u1", 1, Some(&[])).unwrap();
+        let activated = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
         assert_eq!(activated.len(), 2);
         assert_eq!(activated[1].content, "first");
         assert_eq!(activated[0].revision_root_id.as_deref(), Some("u1"));
@@ -7418,7 +7698,7 @@ mod tests {
         assert_eq!(detail.messages[0].revision_count, Some(2));
 
         // Switching forward restores the second branch and keeps the family key.
-        let activated2 = activate_message_revision(&db, &session.id, "u1", 2, Some(&[])).unwrap();
+        let activated2 = activate_message_revision(&db, &session.id, "u1", 2, &[]).unwrap();
         assert_eq!(activated2[1].content, "second");
         assert_eq!(activated2[0].active_revision, Some(2));
         assert_eq!(activated2[0].revision_root_id.as_deref(), Some("u1"));
@@ -7678,7 +7958,7 @@ mod tests {
         );
 
         // And the restore still re-attaches every message to its turn.
-        let restored = activate_message_revision(&db, &session.id, "u1", 1, Some(&[])).unwrap();
+        let restored = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
         assert_eq!(restored.len(), 11);
         let with_turn: i64 = db
             .conn()
@@ -7852,7 +8132,7 @@ mod tests {
         ));
 
         // Variant 1 of u1 predates u2, so restoring it drops u2 entirely.
-        let restored = activate_message_revision(&db, &session.id, "u1", 1, Some(&[])).unwrap();
+        let restored = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
         assert_eq!(
             restored.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
             vec!["u1", "a1"]
@@ -7927,7 +8207,7 @@ mod tests {
 
         // Page back to the original, with a deliberately wrong renderer prefix:
         // the durable transcript decides what stays in front of the branch.
-        let back = activate_message_revision(&db, &session.id, "u1", 1, Some(&[])).unwrap();
+        let back = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
         assert_eq!(
             back.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
             vec!["u0", "u1", "a1"],
@@ -7941,7 +8221,7 @@ mod tests {
 
         // Page forward again: the whole grown branch is back, including the
         // failed turn, and the prefix kept its owning turn.
-        let forward = activate_message_revision(&db, &session.id, "u1", 2, Some(&[])).unwrap();
+        let forward = activate_message_revision(&db, &session.id, "u1", 2, &[]).unwrap();
         assert_eq!(
             forward.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
             vec!["u0", "u2", "a2", "u3", "a3"],
@@ -8003,7 +8283,7 @@ mod tests {
         failed.status = Some("error".into());
         append_message(&db, &session.id, &failed, None).unwrap();
 
-        let back = activate_message_revision(&db, &session.id, "u1", 1, Some(&[])).unwrap();
+        let back = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
         assert_eq!(
             back.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
             vec!["u1", "a1"],
@@ -8024,7 +8304,7 @@ mod tests {
             "a1",
             "variant 1 is intact"
         );
-        let forward = activate_message_revision(&db, &session.id, "u1", 2, Some(&[])).unwrap();
+        let forward = activate_message_revision(&db, &session.id, "u1", 2, &[]).unwrap();
         assert_eq!(
             forward.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
             vec!["u2", "a2"],

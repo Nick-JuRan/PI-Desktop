@@ -26,6 +26,7 @@ function harness(t) {
     beginNavigationIntent: () => ++intent,
     navigationIntentIsCurrent: (value) => value === intent,
     cacheSessionTranscript: (id, messages) => cache.set(id, messages),
+    loadFullSessionMessages: () => assert.fail("fork must not hydrate over a live transcript"),
     readSettledTail: () => assert.fail("fork must not hydrate over a live transcript"),
     readActionWindow: () => assert.fail("fork must not hydrate over a live transcript"),
   };

@@ -1,5 +1,33 @@
 # 06. Host RPC Protocol
 
+
+### Bounded existing-history operations (#1868)
+
+The Desktop uses additive Host methods for existing history: `session.deleteMessage`
+takes `sessionId/messageId` and returns `ok/deleted/deletedCount`;
+`session.retractPendingPrompt` takes `sessionId/userMessageId` and optional
+`turnId`, returning `ok/retracted/removedCount` and a refusal `reason` when needed.
+Host verifies canonical message/turn ownership and meaningful reply activity;
+a refused retract leaves history intact. Repeating an already completed deletion
+or retraction does not delete another prompt. No history array is required.
+
+`session.activateRevision` accepts optional `requireCanonicalPrefix: true` to
+require a durable Host prefix; a missing family/anchor fails explicitly. Existing
+explicit-prefix activation, `session.replaceMessages`, `session.saveRevision`
+and their original request/response forms remain supported. Existing edit and
+regenerate continue using `session.truncateFrom`; branch archival and fork
+remain Host-owned. Oversized local requests report the method and UTF-8 byte count without payload
+content; the caller sees a local-transport explanation and the existing session
+Fork recovery path. No identical oversized payload is retried.
+The unchanged 64 MiB limit still applies to arbitrary incoming
+requests, including a genuinely oversized single tool result.
+
+ID mutations use the same session operation lock, rewrite fence and runtime
+disposal boundary. Their outbox drain must confirm all target-session entries
+were written; failure preserves the queue and rejects the mutation. Smart-stop
+restores a draft only after Host confirmation, and exposes failures.
+
+
 ## 1. Goal
 
 Define the local protocol between:
@@ -296,6 +324,8 @@ to later refresh and inference; the vendor picker does not collect them.
   `inheritPermissionFromSessionId`; when present, the host copies the existing
   session's persisted permission mode atomically, while omission preserves the
   existing `inherit` default. Missing/null thinking level defaults to `off`.
+  Optional boolean `fastMode` (ADR 0334) stores the session `/fast` switch;
+  missing/null means `false` and a non-boolean returns `INVALID_PARAMS`.
   Optional `isolated: true` (ADR 0329) also requires `projectPath` and gives
   the new session its own git worktree before it returns; if the worktree
   cannot be created the session is deleted again and the call fails with a
@@ -375,7 +405,9 @@ to later refresh and inference; the vendor picker does not collect them.
 - `session.configure` — atomically persists `mode`, `providerId`, `modelId`,
   and optional `thinkingLevel` (`off|minimal|low|medium|high|xhigh|max|omit`)
   for the next pi turn; omitting/null
-  `thinkingLevel` preserves the current value; invalid modes or levels return
+  `thinkingLevel` preserves the current value; optional boolean `fastMode`
+  (ADR 0334) follows the same rule, and a non-boolean is `INVALID_PARAMS`;
+  invalid modes or levels return
   `INVALID_PARAMS`; mode is `plan | goal | agent` and changing any session
   configuration is allowed only while idle and without a pending/queued/running
   Plan or Goal record
@@ -407,24 +439,15 @@ to later refresh and inference; the vendor picker does not collect them.
   ids and non-negative `tokensBefore`; it does not insert a message/search row
   or change the visible transcript projection
 - `session.replaceMessages` — atomic transcript rewrite (temp-file rename +
-  one index transaction, D119) used by the sidecar for compaction and by
-  `session.deleteMessage` internally; it preserves the
+  one index transaction, D119) used by message delete and unanswered
+  renderer smart-stop undo; it preserves the
   newest checkpoint only while both its boundary and optional first-kept id
   remain valid in the rewritten prefix, and it carries each surviving message's
   owning `turn_id` across the rewrite. It is only safe from a caller that owns
   the whole transcript for the duration of the call: any rewrite from a snapshot
   taken outside the RPC lock can delete a message appended in between.
   Regenerating and retrying use `session.truncateFrom` instead so the kept
-  prefix never crosses the JSON-RPC pipe (ADR 0216); message delete and the
-  unanswered-prompt undo use `session.deleteMessage` for the same reason
-- `session.deleteMessage({ sessionId, messageId }) -> { deletedIds }` — delete
-  one message from the live transcript on the host. A user row takes its whole
-  turn: every following row up to, not including, the next user row; any other
-  row is removed alone. The host reads the transcript, applies that rule and
-  rewrites through the `session.replaceMessages` path, so no message array
-  crosses JSON-RPC in either direction and a paged, display-capped renderer
-  window can never become the next transcript. An unknown `messageId` removes
-  nothing; an unknown session is `NOT_FOUND`
+  prefix never crosses the JSON-RPC pipe (ADR 0216)
 - `session.truncateFrom` — host-owned suffix cut for regenerate / retry /
   edit-resend: `{ sessionId, fromMessageId?, truncateBefore? }`. Identity
   wins; an unknown `fromMessageId` is `NOT_FOUND`. Under the state lock it
@@ -457,11 +480,7 @@ to later refresh and inference; the vendor picker does not collect them.
   never-archived branch as its own variant), so nothing appended since the
   last archive is lost. When the family is present in the durable transcript,
   the prefix in front of the restored branch is taken from there rather than
-  from the caller. `prefix` is optional: a caller that omits it holds no
-  complete copy of the messages before the root (a paged renderer window), and
-  a root the transcript does not carry is then `NOT_FOUND` instead of being
-  rebuilt from an empty or partial prefix. Surviving messages keep their owning
-  `turn_id`
+  from the caller. Surviving messages keep their owning `turn_id`
 - `session.beginTurn({ sessionId, providerId?, modelId?, sessionMessageId? })` —
   starts one durable turn. When `sessionMessageId` is present, host-core
   atomically verifies that the queued collaboration delivery targets this
@@ -1404,6 +1423,14 @@ ScheduledTaskUpdate and ScheduledTaskDelete tools. They run through
 the scheduled RPC domain handlers. List is low risk; mutations require normal
 approval in Ask/Accept Edits. Plan/Goal deny all four even under Auto.
 
+`AppSettings.scheduledTasksEnabled` is an optional boolean, enabled when absent.
+When false, `tools.list` omits all four tools and stale calls are rejected.
+The Host returns no ids from `scheduled.due` and rejects `scheduled.run`,
+create/update/delete with `INVALID_PARAMS` before admission or mutation.
+Read/import/finish-run operations remain available so saved data and in-flight
+completion are preserved. Re-enabling retains per-task enable states and the
+existing no-catch-up due-time policy; no schema or protocol version changes.
+
 The Host rechecks durable session mode and derives project scope from the
 calling session, never the foreground workspace or model-supplied paths.
 Create binds that scope; list filters it; update/delete require matching scope.
@@ -1487,3 +1514,27 @@ metadata. Approval/rejection remain digest-bound. Only the new S3 format is
 supported; there is no old-data detection or migration. Disconnect removes
 only current S3 credentials, keys and local sync metadata/staging; unrelated
 files and remote objects remain intact. See `22-config-sync.md`.
+
+
+## Host file batch admission (version 1)
+
+The sidecar proxy explicitly allows tools.fileBatchCapabilities, tools.fileBatchRegister,
+tools.fileBatchSeal, tools.fileBatchAbandon and tools.fileBatchClose. No wildcard
+method authorization is added. Capabilities takes sessionId and returns
+{version:1,supported:boolean}; remote-workspace sessions return supported:false.
+Register takes sessionId, optional delegationId, batchId, ordinal, toolCallId,
+toolName and args, and returns {ticket}. Only builtin file tool names are
+accepted. Seal/Close take sessionId/batchId; Abandon takes sessionId/ticket.
+The latter methods return {ok:true}. Metadata is bounded (512 calls, 128 per
+batch, 32 MiB retained arguments), process-local and never grants permission.
+
+The additive tools.execute field fileBatchTicket binds the actual request to a
+sealed single-use registration. Session/delegation, call/name and args must
+match; replay, tampering and pre-seal execution fail. Existing callers without
+tickets still receive Host resource exclusion but cannot claim batch source
+order. Runtime only opens write parallelism after the capability handshake.
+Permissions, roots, leases and resource identities are recomputed by Host;
+clients never supply authoritative identities. A changed workspace binding
+reports TOOL_CONTEXT_CHANGED; an identity/address change fails before writing.
+Close/expiry cannot release a running disk task; no failed/uncertain write is
+automatically replayed. See the Host file admission ADR for lifecycle and limits.

@@ -13,7 +13,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `apps/desktop/src/features/chat/transcript/SubagentDetail.tsx` | +47 −9 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/src/features/chat/transcript/ToolRow.tsx` | +24 −4 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/src/features/settings/SettingsPage.tsx` | +4 −2 | hook | fix(voice): pass settings state to voice panel |
-| `apps/desktop/src/lib/api.ts` | +41 −2 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
+| `apps/desktop/src/lib/api.ts` | +29 −0 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
 | `apps/desktop/src/lib/assistant-turns.ts` | +64 −21 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/src/lib/settings-search.ts` | +3 −0 | hook | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/src/lib/subagent-topology.ts` | +103 −13 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
@@ -24,12 +24,12 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `apps/desktop/test/assistant-turns.test.mjs` | +116 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/test/subagent-topology.test.mjs` | +88 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/test/subagent-transcript.test.mjs` | +17 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
-| `crates/host-core/src/rpc/mod.rs` | +167 −5 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
+| `crates/host-core/src/rpc/mod.rs` | +124 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/agent-runtime/src/delegation-chain.test.ts` | +52 −0 | hook | fix(subagents): bound resumable chains per direct parent |
 | `packages/agent-runtime/src/delegation-chain.ts` | +22 −2 | integration point | feat: 引入子代理深度、子代理工具调用选择; fix(subagents): bound resumable chains per direct parent |
 | `packages/agent-runtime/src/delegation-history.ts` | +11 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/agent-runtime/src/runtime.test.ts` | +273 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
-| `packages/agent-runtime/src/runtime.ts` | +300 −50 | integration point | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue; sync 2026-10-27: upstream `3e4bbe123` removed the resumable system-prompt block the depth guard decorated (list now lives in `TaskList`), and upstream `e9f1ca7c1`'s `delegatePrompt` / `scopeDelegateTools(…, applyInstructions)` carry the fork's selection, `parentLabel`, `canDelegate` and trailing `skillIds` |
+| `packages/agent-runtime/src/runtime.ts` | +299 −50 | integration point | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue; sync 2026-10-27: upstream `3e4bbe123` removed the resumable system-prompt block the depth guard decorated (list now lives in `TaskList`), and upstream `e9f1ca7c1`'s `delegatePrompt` / `scopeDelegateTools(…, applyInstructions)` carry the fork's selection, `parentLabel`, `canDelegate` and trailing `skillIds` |
 | `packages/agent-runtime/src/sidecar.ts` | +82 −0 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
 | `packages/agent-runtime/src/subagent.test.ts` | +13 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/agent-runtime/src/subagent.ts` | +19 −3 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
@@ -127,36 +127,38 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 
 ## transcript reads / history pages (bounded renderer reads, top-level history pages, delegate rows on open)
 
+Sync 2026-11-02: upstream re-implemented the host-side delete / unanswered-prompt undo / prefix-free revision activation; the fork now uses upstream's versions of those three paths (B1.2), so `delete-message-preserves-transcript.test.mjs` and `transcript-style.test.mjs` left this table and the rows below shrank. Status note in `docs/spec/90-fork/07`.
+
 Spec: `docs/spec/90-fork/07-transcript-reads-and-history-pages.md`. Islands: `apps/desktop/electron/main/ipc/session-read-bounds.ts`, `apps/desktop/src/lib/conversation-read.ts`, `apps/desktop/src/lib/tool-result-display.ts` and their tests.
 
 | upstream file | +/− vs upstream | kind | introduced by |
 | --- | --- | --- | --- |
-| `apps/desktop/electron/main/ipc/session-ipc.ts` | +40 −18 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `apps/desktop/electron/main/ipc/session-ipc.ts` | +9 −16 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/components/workpanel/SubagentTranscriptTab.tsx` | +15 −0 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/features/chat/transcript/ChatTranscript.tsx` | +7 −4 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/lib/remote-project-session.ts` | +5 −1 | hook | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/lib/subagent-transcript.ts` | +7 −2 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/lib/transcript-reading.ts` | +7 −0 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/stores/app-state.ts` | +6 −0 | hook | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `apps/desktop/src/stores/runtime/session-runtime.ts` | +60 −20 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `apps/desktop/src/stores/runtime/session-runtime.ts` | +64 −11 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/stores/runtime/transcript-action.ts` | +36 −9 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/stores/runtime/transcript-reading-runtime.ts` | +6 −0 | hook | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/stores/slices/events-slice.ts` | +10 −10 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/src/stores/slices/session-slice.ts` | +3 −0 | hook | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `apps/desktop/src/stores/slices/transcript-slice.ts` | +140 −128 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `apps/desktop/test/delete-message-preserves-transcript.test.mjs` | +54 −22 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `apps/desktop/src/stores/slices/transcript-slice.ts` | +69 −6 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/test/native-pi-sessions.test.mjs` | +19 −7 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/test/remote-mvp-renderer.test.mjs` | +1 −1 | hook | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `apps/desktop/test/session-fork-running.test.mjs` | +2 −1 | hook | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `apps/desktop/test/session-fork-running.test.mjs` | +2 −0 | hook | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/test/transcript-reading.test.mjs` | +52 −24 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `apps/desktop/test/transcript-style.test.mjs` | +9 −12 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `crates/host-core/src/sessions.rs` | +398 −19 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `crates/host-core/src/transcripts.rs` | +41 −12 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `crates/host-core/src/transcripts/layout.rs` | +108 −4 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `apps/desktop/test/bounded-history-mutations.test.mjs` | +5 −0 | hook (test whitelist, B4) | sync 2026-11-02: upstream's strict-specifier loader must know the fork modules `transcript-reading`, `session-read-bounds`, `@pi-desktop/shared/fork` |
+| `apps/desktop/test/session-list-runtime.test.mjs` | +1 −0 | hook (test whitelist, B4) | sync 2026-11-02: same for `./session-read-bounds` |
+| `crates/host-core/src/sessions.rs` | +245 −7 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `crates/host-core/src/transcripts.rs` | +42 −15 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `crates/host-core/src/transcripts/layout.rs` | +116 −3 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `crates/host-core/src/transcripts_layout_tests.rs` | +85 −2 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `docs/spec/03-runtime/01-ipc-protocol.md` | +37 −7 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `docs/spec/03-runtime/04-data-storage.md` | +9 −0 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `docs/spec/03-runtime/06-host-rpc-protocol.md` | +28 −6 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `docs/spec/03-runtime/01-ipc-protocol.md` | +22 −6 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `docs/spec/03-runtime/04-data-storage.md` | +10 −1 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `docs/spec/03-runtime/06-host-rpc-protocol.md` | +11 −2 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `scripts/e2e-transcript-cache.mjs` | +25 −2 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 
 ## repository housekeeping
@@ -171,9 +173,9 @@ Not fork features: upstream edits to `.github/workflows/*` that the Dash0 GitHub
 
 | upstream file | +/− vs upstream | what upstream added | since |
 | --- | --- | --- | --- |
-| — | — | none pending | — |
+| `.github/workflows/ci.yml` | +0 −8 | `trusted-extensions-e2e` job, three steps upstream added between 2026-10-27 and 2026-11-01: `Run plugin project enumeration Host/process E2E` (`pnpm test:e2e:plugin-projects`), `Run transcript turn-completion E2E` (`xvfb-run … node scripts/e2e-transcript-turn-completion.mjs`), `Run MCP market owner E2E` (`xvfb-run … node --test apps/desktop/test/mcp-market-owner-user-path.test.mjs`). Apply with `git diff origin/main upstream/main -- .github/workflows/ci.yml`. | sync 2026-11-02 |
 
-Total upstream files touched: 117. `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8).
+Total upstream files touched: 118 (including the pending workflow change). `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8).
 
 Fork E2E islands (never conflict): `scripts/e2e/fork-nested-topology.tsx` + `scripts/e2e-fork-nested-topology.mjs` (run with `node scripts/e2e-fork-nested-topology.mjs`).
 

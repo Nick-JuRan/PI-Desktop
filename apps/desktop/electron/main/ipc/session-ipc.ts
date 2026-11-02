@@ -137,9 +137,9 @@ export function registerSessionIpc({
   };
 
   /**
-   * The one gate for the two transcript-rewrite entrances — replacement and
-   * revision activation rewrite the same host-side transcript rows, so both
-   * go through this boundary instead of each entrance remembering its own
+   * The shared gate for transcript-rewrite entrances — replacement, bounded
+   * mutations and revision activation all rewrite the host-side transcript.
+   * Each entrance uses this boundary rather than remembering its own
    * (#1612, #1613): refuse while a turn is running (consistent with fork and
    * move), serialize overlapping operations per session, and drain the
    * persistence outbox so writes queued before the rewrite land in the old
@@ -155,6 +155,7 @@ export function registerSessionIpc({
     purpose: string,
     currentHost: HostProcess,
     run: () => Promise<T>,
+    options: { strictDrain?: boolean; didRewrite?: (result: T) => boolean } = {},
   ): Promise<T> => {
     rejectNativeMutation(sessionId, purpose);
     const releaseSessionOperation = await acquireSessionOperation(sessionId);
@@ -167,7 +168,11 @@ export function registerSessionIpc({
         );
       }
       rewriteFence = beginTranscriptRewrite(sessionId);
-      await persistenceOutbox.prepareSessionReplacement(sessionId, () => currentHost);
+      if (options.strictDrain) {
+        await persistenceOutbox.prepareSessionMutation(sessionId, () => currentHost);
+      } else {
+        await persistenceOutbox.prepareSessionReplacement(sessionId, () => currentHost);
+      }
       if (sidecar) {
         sidecar.clearProjectInstructionRoot(sessionId);
         sidecar.clearVendorAuthBindings(sessionId);
@@ -176,7 +181,8 @@ export function registerSessionIpc({
           .catch(() => undefined);
       }
       const result = await run();
-      rewriteFence.commit();
+      if (options.didRewrite?.(result) === false) rewriteFence.rollback();
+      else rewriteFence.commit();
       return result;
     } catch (error) {
       rewriteFence?.rollback();
@@ -217,6 +223,7 @@ export function registerSessionIpc({
       : { sessions: [] as RuntimeSession[] };
     return {
       ...result,
+      runningSessionIds: [...activeTurns.keys()],
       sessions: [
         ...result.sessions.map((session) => ({
           ...enrichSession(session, providers, defaults),
@@ -511,23 +518,38 @@ export function registerSessionIpc({
     IPC.invoke.sessionDeleteMessage,
     async (input: { sessionId: string; messageId: string }) => {
       if (!host) throw new Error("host unavailable");
-      const sessionId = String(input?.sessionId || "").trim();
-      const messageId = String(input?.messageId || "").trim();
+      const sessionId = String(input?.sessionId || "");
       if (!sessionId) throw new Error("sessionId required");
-      if (!messageId) throw new Error("messageId required");
       const currentHost = host;
-      // The host applies the turn rule and rewrites the transcript itself; the
-      // renderer only names the row, so a paged window never becomes the next
-      // transcript.
       return runTranscriptRewrite(
         sessionId,
         "message deletion",
         currentHost,
-        () =>
-          currentHost.call<{ deletedIds: string[] }>("session.deleteMessage", {
-            sessionId,
-            messageId,
-          }),
+        () => currentHost.call<{ deleted: boolean }>("session.deleteMessage", {
+          sessionId,
+          messageId: String(input?.messageId || ""),
+        }),
+        { strictDrain: true, didRewrite: (result) => result.deleted },
+      );
+    },
+  );
+  handle(
+    IPC.invoke.sessionRetractPendingPrompt,
+    async (input: { sessionId: string; userMessageId: string; turnId?: string }) => {
+      if (!host) throw new Error("host unavailable");
+      const sessionId = String(input?.sessionId || "");
+      if (!sessionId) throw new Error("sessionId required");
+      const currentHost = host;
+      return runTranscriptRewrite(
+        sessionId,
+        "pending prompt retraction",
+        currentHost,
+        () => currentHost.call<{ retracted: boolean }>("session.retractPendingPrompt", {
+          sessionId,
+          userMessageId: String(input?.userMessageId || ""),
+          ...(input?.turnId === undefined ? {} : { turnId: input.turnId }),
+        }),
+        { strictDrain: true, didRewrite: (result) => result.retracted },
       );
     },
   );
@@ -567,16 +589,13 @@ export function registerSessionIpc({
       rootUserId: string;
       revisionIndex: number;
       prefix?: unknown[];
+      requireCanonicalPrefix?: boolean;
     }) => {
       if (!host) throw new Error("host unavailable");
       const sessionId = String(input?.sessionId || "");
       if (!sessionId) throw new Error("sessionId required");
       const currentHost = host;
-      // The host reads the prefix from the durable transcript; a renderer
-      // prefix is only forwarded when the caller actually sent one. The
-      // rewritten transcript does not come back over IPC: the renderer reloads
-      // a bounded window instead of receiving every message of the session.
-      await runTranscriptRewrite(
+      return runTranscriptRewrite(
         sessionId,
         "revision activation",
         currentHost,
@@ -585,10 +604,12 @@ export function registerSessionIpc({
             sessionId,
             rootUserId: String(input?.rootUserId || ""),
             revisionIndex: Number(input?.revisionIndex || 0),
-            ...(Array.isArray(input?.prefix) ? { prefix: input.prefix } : {}),
+            ...(input?.requireCanonicalPrefix === true
+              ? { requireCanonicalPrefix: true }
+              : { prefix: input?.prefix ?? [] }),
           }),
+        { strictDrain: input?.requireCanonicalPrefix === true },
       );
-      return { ok: true as const };
     },
   );
   handle(IPC.invoke.sessionGetScratchPath, async (input: { sessionId: string }) => {
@@ -628,6 +649,7 @@ export function registerSessionIpc({
         modelId?: string;
         thinkingLevel?: SessionThinkingLevel;
         permissionMode?: "inherit" | "ask" | "accept-edits" | "auto";
+        fastMode?: boolean;
       },
     ) => {
       rejectNativeMutation(id, "configuration");
