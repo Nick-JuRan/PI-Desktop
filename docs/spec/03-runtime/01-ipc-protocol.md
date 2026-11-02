@@ -188,6 +188,8 @@ type SessionConfigureRequest = {
   providerId?: string;
   modelId?: string;
   thinkingLevel: SessionThinkingLevel;
+  /** Session `/fast` switch (ADR 0334); omitted keeps the stored value. */
+  fastMode?: boolean;
 };
 ```
 
@@ -233,12 +235,7 @@ Regenerate history (D109) also uses session channels:
 
 Root user turns may include `revisionRootId`, `revisionCount`, and
 `activeRevision`. Activating a revision replaces the live tail with
-`prefix + archived branch` and disposes the session agent. The prefix is read
-from the durable transcript by the host; the renderer sends only
-`{ sessionId, rootUserId, revisionIndex }`, receives `{ ok: true }` rather than
-the rewritten transcript, and re-reads a bounded newest page. A root the
-transcript no longer carries is refused (`NOT_FOUND`) instead of being rebuilt
-from a partial prefix.
+`prefix + archived branch` and disposes the session agent.
 The sidecar receives only the prepared attachment subset needed for the current
 turn. On a vision runtime, persisted refs are hydrated from session-bound
 attachment/scratch/project roots. The current prompt row is excluded by message
@@ -728,7 +725,7 @@ type AgentEvent =
      willRetry: boolean; fallback?: "retained_tail";
      mark?: { id: string; throughMessageId: string;
               generation: number; summaryTokens: number;
-              summarized: boolean;
+              contextTokens?: number; summarized: boolean;
               fallback?: "retained_tail" };
      error?: { code: string; message: string } }
  | { type: "error"; error: AppError }
@@ -781,7 +778,10 @@ distinguish (D203).
 `compaction_end.mark` is present whenever a checkpoint was installed. It is the
 renderer's whole view of that compaction: `id`, the `throughMessageId` anchor the
 transcript row sits after, `generation` (how many checkpoints this session has
-installed), `summaryTokens` (the summary's estimated context cost), and
+installed), `summaryTokens` (the summary's estimated context cost),
+`contextTokens` (the estimated size of the next request right after the
+checkpoint; the composer context ring shows it until a later request reports
+provider usage, and it is absent on checkpoints written before it existed), and
 `summarized` (`false` when the window rolled over without asking the model for a
 summary), and `fallback` (`"retained_tail"` when summary generation failed and
 the checkpoint carries only a recovery notice plus a retained tail; the row
@@ -1117,15 +1117,6 @@ Minimal interface:
   `session/get` and must never enter the renderer's live transcript cache.
   Both channels are explicitly included in the preload IPC allowlist.
 - `session/delete`
-- `session/deleteMessage({ sessionId, messageId }) -> { deletedIds: string[] }`
-  deletes one message on the host. A user row takes its whole turn with it
-  (every following row up to, not including, the next user row); any other row
-  is removed alone. The host rewrites the transcript itself behind the shared
-  rewrite gate, so the renderer never sends a message array — a paged,
-  display-capped window must not become the next transcript — and reconciles
-  its window with the returned ids. The chat delete action and the undo of an
-  unanswered prompt on Stop both use this channel; the renderer no longer calls
-  `session/replaceMessages` anywhere.
 - `session/rename({ id, title }) -> { ok: boolean }` trims the title and
   accepts 1–80 Unicode code points. Blank or overlong titles are rejected as
   `INVALID_PARAMS`; a successful rename changes only session metadata and does
@@ -2043,6 +2034,33 @@ menu/nativeAction({ action: NativeMenuAction })
   -> { maximized: boolean; fullScreen: boolean }
 ```
 
+When a plugin-contributed `WebContentsView` is active, the renderer sends tab
+context-menu labels and its pointer anchor through one bounded Main-owned
+channel. Main validates the payload, scales CSS coordinates by the sender's
+current zoom factor, clamps them to the window content area, and builds only
+the fixed close actions. The result is the selected action or `null` on cancel
+or window close; the renderer rechecks the session and target tab after this
+async boundary:
+
+```ts
+type WorkPanelTabMenuAction = "closeTab" | "closeOtherTabs" | "closeAllTabs";
+type WorkPanelTabMenuRequest = {
+  closeTabLabel: string;
+  closeOtherTabsLabel: string;
+  closeAllTabsLabel: string;
+  canCloseOthers: boolean;
+  x: number; // renderer CSS pixels
+  y: number; // renderer CSS pixels
+};
+
+workPanel/tabMenu(request: WorkPanelTabMenuRequest)
+  -> WorkPanelTabMenuAction | null
+```
+
+Labels are presentation-only; they cannot select an arbitrary Main action.
+The OS-native menu appearance is a z-order requirement so the menu stays
+above the native view.
+
 Developer tools use a dedicated Main-owned gate rather than a generic native
 menu action:
 
@@ -2234,6 +2252,10 @@ cache cold so the next submit retries the read; a warm cache keeps resolving
 through a source blip.
 
 ### fs/index
+
+Git listings are decoded as a continuous UTF-8 stream. File names, including
+non-ASCII characters split across process output chunks, retain their exact
+spelling in both the index and `fs/search` results.
 
 ```ts
 fs/index() -> { entries: FsIndexEntry[]; truncated: boolean }
@@ -2535,6 +2557,13 @@ startup failure is logged and does not prevent the desktop from launching.
 | `INTERNAL` | Uncategorized internal error |
 
 ## Native Pi session routing (ADR 0254)
+
+The Electron `pi-desktop/session/list` response also includes
+`runningSessionIds`, a snapshot of the Desktop turns still owned by Main after
+the list reads settle. A recreated renderer restores these running flags during
+bootstrap; start/end events already received by that renderer take precedence.
+An older response without this field remains valid. Historical completion
+notifications are not evidence that a currently active turn has finished.
 
 `pi-desktop/session/list` returns both Desktop and native summaries. Each summary
 may carry `source: "desktop" | "pi-native"`, capability flags, and a stable

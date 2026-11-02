@@ -46,7 +46,7 @@ export type SessionConfiguration = Pick<
   SessionSummary,
   "mode" | "providerId" | "modelId" | "thinkingLevel"
 > &
-  Partial<Pick<SessionSummary, "permissionMode">>;
+  Partial<Pick<SessionSummary, "permissionMode" | "fastMode">>;
 
 export type SessionSelection = { id: string; intent: number };
 
@@ -93,6 +93,7 @@ export type SessionRuntime = {
    * (abort, delete, revision switch, failed prompt). Bypasses any detail read
    * still in flight so the caller sees the settled state, and caches it.
    */
+  loadFullSessionMessages: (id: string, cache?: boolean) => Promise<UiMessage[] | null>;
   readSettledTail: (id: string) => Promise<SettledTailRead | null>;
   /**
    * One bounded window centred on `messageId`, whose own text the host keeps
@@ -241,6 +242,17 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
   // Mutations that used to need the whole array (delete, undo an unanswered
   // prompt, revision switch) now name ids to the host, which rewrites the
   // transcript itself.
+  async function loadFullSessionMessages(id: string, cache = true): Promise<UiMessage[] | null> {
+    const detail = await api.getSession(id);
+    if (!detail.session) return null;
+    const messages = detail.session.messages ?? [];
+    if (cache) cacheSessionTranscript(id, messages, {
+        messageStart: 0,
+        hasMoreBefore: false,
+      });
+    return messages;
+  }
+
   async function readSettledTail(id: string): Promise<SettledTailRead | null> {
     const detail = await api.getSession(id, {
       messageLimit: TRANSCRIPT_PAGE_SIZE,
@@ -466,6 +478,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
           0,
     cacheSessionTranscript,
     loadSessionDetail,
+    loadFullSessionMessages,
     readSettledTail,
     readActionWindow,
     insertOptimisticUserMessage,

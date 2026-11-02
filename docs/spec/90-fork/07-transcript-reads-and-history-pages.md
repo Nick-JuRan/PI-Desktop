@@ -1,5 +1,13 @@
 # 90-07. Bounded transcript reads and top-level history pages
 
+Status (sync 2026-11-02): upstream re-implemented the host-side message delete, the
+unanswered-prompt undo (`session.retractPendingPrompt`) and the prefix-free revision
+activation (`requireCanonicalPrefix`) with its own contracts. The fork now uses
+upstream's implementation for those three mutation paths (FORK-STANDARD B1.2); after
+each of them the renderer reloads the full session once, as upstream does. Everything
+else on this page — bounded reads, top-level history pages, delegate rows on demand,
+the layout cache's parent column — remains fork-owned.
+
 Fork feature. The renderer never holds a whole transcript: every read it makes
 is a bounded window, every transcript rewrite is performed by the host, and the
 pages behind the main conversation contain top-level rows only — a
@@ -54,7 +62,7 @@ requires, and the log stays upstream's.
 
 ## 2. History pages are top-level; a delegation's rows are read when it is opened
 
-- The transcript layout cache (format 3) records each message line's delegate
+- The transcript layout cache (format 4; the fork's column) records each message line's delegate
   parent — the `parentToolCallId` in its `meta`, `-` for a top-level row —
   beside its offset. The scan reads it from the line it already has: no key, no
   parsing; a key, parsed ignoring `blocks`; a payload that merely mentions the
@@ -141,7 +149,7 @@ not mistaken for missing features.
   line counts is the "transcript reads / history pages" group of `FORK.md`):
   `crates/host-core/src/sessions.rs` (top-level and delegate windows,
   `session.deleteMessage`), `crates/host-core/src/transcripts/layout.rs`
-  (layout format 3 with the delegate parent), `crates/host-core/src/transcripts.rs`,
+  (layout format 4 with the delegate parent beside upstream's message id), `crates/host-core/src/transcripts.rs`,
   `apps/desktop/electron/main/ipc/session-ipc.ts` (bounded `session/get`,
   `sessionDeleteMessage`), `apps/desktop/src/stores/slices/transcript-slice.ts`
   and `apps/desktop/src/stores/runtime/session-runtime.ts` (top-level reads,

@@ -128,8 +128,8 @@ try {
   let hasDiskCache = false;
   try {
     const cache = await readFile(layoutPath, "utf8");
-    assert.ok(cache.startsWith("PI-DESKTOP-TRANSCRIPT-LAYOUT 3\n"));
-    // Format 3 records the delegate parent of the nested row beside the offsets.
+    assert.ok(cache.startsWith("PI-DESKTOP-TRANSCRIPT-LAYOUT 4\n"));
+    // Format 4 records the delegate parent of the nested row beside the offsets.
     assert.ok(/(^|\s)task-middle-call(\s|$)/.test(cache), "the layout cache must carry the nested row's parent");
     hasDiskCache = true;
   } catch (error) {
@@ -262,7 +262,7 @@ try {
     if (error.code !== "ENOENT") throw error;
   }
   if (hasDiskCache) {
-    assert.ok(rebuiltCache?.startsWith("PI-DESKTOP-TRANSCRIPT-LAYOUT 3\n"));
+    assert.ok(rebuiltCache?.startsWith("PI-DESKTOP-TRANSCRIPT-LAYOUT 4\n"));
   }
 
   const damagedSession = await host.call("session.create", {
