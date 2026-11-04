@@ -1536,6 +1536,12 @@ sklm: {
     "windowTranslucency": "Ventana translúcida",
     "windowTranslucencyDesc": "Mantiene la ventana de macOS translúcida sobre el desenfoque del escritorio; es el valor predeterminado. Usa más GPU mientras la ventana está visible; desactívalo para una ventana opaca con la menor carga en reposo. El cambio se aplica tras reiniciar.",
     "windowTranslucencyRestart": "Reinicia para aplicar",
+    "startupAnimation": "Animación de inicio",
+    "startupAnimationDesc": "Reproduce tu propio vídeo durante el inicio, en lugar de la pantalla de bienvenida. Coloca un vídeo en la carpeta «startup»; llena la ventana, así que mantén el motivo centrado. Pulsa Escape para omitirla. Se aplica en el próximo inicio.",
+    "startupAnimationNone": "No se encontró ningún vídeo",
+    "startupAnimationFolder": "Abrir la carpeta «startup»",
+    "startupAnimationSkipWhenReady": "Terminar antes cuando esté lista",
+    "startupAnimationSkipWhenReadyDesc": "Corta la animación en cuanto la aplicación termina de iniciarse, en lugar de dejarla llegar al último fotograma.",
     "linkOpenTarget": "Destino al abrir enlaces",
     "linkOpenTargetWorkpanel": "Navegador del panel de trabajo",
     "linkOpenTargetExternal": "Navegador predeterminado del sistema",
@@ -2538,7 +2544,10 @@ sklm: {
       "bus.subscribe": "Recibir mensajes de otros complementos",
       "browser.cdp": "Controlar el navegador del panel de trabajo",
       "usage.read": "Leer estadísticas de uso",
-      "session.autoTitle": "Leer el contexto del primer turno y actualizar títulos automáticos"
+      "session.autoTitle": "Leer el contexto del primer turno y actualizar títulos automáticos",
+      "session.read.all": "Leer cualquier conversación, incluidas las tuyas",
+      "session.update.all": "Reescribir cualquier conversación, incluidos sus mensajes",
+      "session.delete.all": "Eliminar cualquier conversación, incluidas las tuyas",
     },
     "permissionHelp": {
       "ui.panel": "Permite que el complemento muestre su propio panel dentro de la aplicación.",
@@ -2584,6 +2593,12 @@ sklm: {
         "Enumera los datos de uso de los turnos completados (contadores de tokens por turno, paginados). No incluye el contenido de los mensajes.",
       "session.autoTitle":
         "Solo puede leer el primer mensaje y la primera respuesta de las sesiones aptas y actualizar el título si nadie lo cambió manualmente. No puede leer la transcripción completa.",
+      "session.read.all":
+        "Puede listar todas las sesiones y leer su título, proyecto, modelo e historial completo de mensajes, incluidas las conversaciones que creaste tú. No puede modificar nada.",
+      "session.update.all":
+        "Puede renombrar cualquier sesión y añadir, reemplazar o eliminar sus mensajes. Reescribe el historial almacenado, así que una conversación puede cambiar sin que envíes un mensaje.",
+      "session.delete.all":
+        "Puede mover cualquier sesión a la papelera o eliminarla de forma permanente, junto con sus archivos de historial. Con límite de frecuencia, pero sin más restricciones.",
     }
   },
   "extensions": {

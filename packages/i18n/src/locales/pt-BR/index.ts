@@ -1509,6 +1509,12 @@ export const ptBR = {
     windowTranslucency: "Janela translúcida",
     windowTranslucencyDesc: "Mantém a janela do macOS translúcida sobre o desfoque da área de trabalho, que é o padrão. Usa mais GPU enquanto a janela está visível; desative para uma janela opaca com a menor carga ociosa. A alteração vale após reiniciar.",
     windowTranslucencyRestart: "Reiniciar para aplicar",
+    startupAnimation: "Animação de inicialização",
+    startupAnimationDesc: "Reproduz seu próprio vídeo durante a inicialização, em vez da tela de abertura da marca. Coloque um vídeo na pasta \"startup\"; ele preenche a janela, então mantenha o assunto centralizado. Pressione Escape para pular. Entra em vigor na próxima inicialização.",
+    startupAnimationNone: "Nenhum vídeo encontrado",
+    startupAnimationFolder: "Abrir a pasta \"startup\"",
+    startupAnimationSkipWhenReady: "Encerrar antes quando estiver pronto",
+    startupAnimationSkipWhenReadyDesc: "Interrompe a animação assim que o aplicativo termina de iniciar, em vez de deixá-la chegar ao último quadro.",
     linkOpenTarget: "Destino ao abrir links",
     linkOpenTargetWorkpanel: "Navegador do painel de trabalho",
     linkOpenTargetExternal: "Navegador padrão do sistema",
@@ -2504,7 +2510,10 @@ export const ptBR = {
       "bus.subscribe": "Receber mensagens de outros plugins",
       "browser.cdp": "Controlar o navegador do painel de trabalho",
       "usage.read": "Ler estatísticas de uso",
-      "session.autoTitle": "Ler o contexto do primeiro turno e atualizar títulos automáticos"
+      "session.autoTitle": "Ler o contexto do primeiro turno e atualizar títulos automáticos",
+      "session.read.all": "Ler qualquer conversa, incluindo as suas",
+      "session.update.all": "Reescrever qualquer conversa, incluindo suas mensagens",
+      "session.delete.all": "Excluir qualquer conversa, incluindo as suas",
     },
     permissionHelp: {
       "ui.panel": "Permite que o plugin exiba seu próprio painel no aplicativo.",
@@ -2549,6 +2558,12 @@ export const ptBR = {
       "browser.cdp": "Pode navegar pelo navegador do painel de trabalho, ler páginas, executar JavaScript e enviar comandos permitidos do Chrome DevTools. Métodos de cookies e armazenamento são bloqueados.",
       "usage.read": "Lista dados de uso de rodadas concluídas (contagens paginadas de tokens e títulos de sessões). Nenhum conteúdo das mensagens é incluído.",
       "session.autoTitle": "Pode ler apenas a primeira solicitação e resposta de sessões elegíveis e atualizar o título se ele não tiver sido alterado manualmente. Não pode ler a transcrição completa.",
+      "session.read.all":
+        "Pode listar todas as sessões e ler título, projeto, modelo e histórico completo de mensagens, incluindo as conversas que você criou. Não pode alterar nada.",
+      "session.update.all":
+        "Pode renomear qualquer sessão e acrescentar, substituir ou remover suas mensagens. Reescreve o histórico armazenado, então uma conversa pode mudar sem você enviar uma mensagem.",
+      "session.delete.all":
+        "Pode mover qualquer sessão para a lixeira ou excluí-la definitivamente, junto com seus arquivos de histórico. Limitado por frequência, mas sem outras restrições.",
     }
   },
   extensions: {

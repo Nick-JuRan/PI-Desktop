@@ -1546,6 +1546,12 @@ sklm: {
     windowTranslucency: "반투명 창",
     windowTranslucencyDesc: "macOS 창을 데스크톱 흐림 위에 반투명하게 유지합니다(기본값). 창이 보이는 동안 GPU를 더 사용하므로, 유휴 부하를 가장 낮추려면 끄세요. 변경 사항은 재시작 후 적용됩니다.",
     windowTranslucencyRestart: "적용하려면 재시작",
+    startupAnimation: "시작 애니메이션",
+    startupAnimationDesc: "브랜드 스플래시 대신 앱이 시작되는 동안 직접 준비한 영상을 재생합니다. startup 폴더에 영상 하나를 넣으면 됩니다. 화면을 가득 채우므로 피사체를 가운데에 두세요. Escape 키로 건너뛸 수 있습니다. 다음 실행부터 적용됩니다.",
+    startupAnimationNone: "영상을 찾을 수 없음",
+    startupAnimationFolder: "startup 폴더 열기",
+    startupAnimationSkipWhenReady: "준비되면 일찍 종료",
+    startupAnimationSkipWhenReadyDesc: "영상을 마지막 프레임까지 재생하지 않고, 앱 시작이 끝나는 즉시 애니메이션을 중단합니다.",
     linkOpenTarget: "링크 열기 위치",
     linkOpenTargetWorkpanel: "작업 패널 브라우저",
     linkOpenTargetExternal: "시스템 기본 브라우저",
@@ -2556,6 +2562,9 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "browser.cdp": "작업 패널 브라우저 제어",
       "usage.read": "사용량 통계 읽기",
       "session.autoTitle": "첫 턴 제목 맥락 읽기 및 자동 제목 업데이트",
+      "session.read.all": "모든 대화 읽기(직접 만든 대화 포함)",
+      "session.update.all": "모든 대화 재작성(메시지 수정 포함)",
+      "session.delete.all": "모든 대화 삭제(직접 만든 대화 포함)",
     },
     permissionHelp: {
       "ui.panel": "플러그인이 앱 안에 자체 패널을 표시할 수 있습니다.",
@@ -2614,6 +2623,12 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
         "완료된 턴의 사용량 팩트를 페이지별로 나열합니다(턴당 토큰 카운터). 메시지 내용은 포함되지 않습니다.",
       "session.autoTitle":
         "대상 세션의 첫 요청과 첫 답변만 읽고, 사용자가 직접 바꾸지 않은 경우에만 자동 제목을 업데이트할 수 있습니다. 전체 대화 기록은 읽을 수 없습니다.",
+      "session.read.all":
+        "모든 세션을 나열하고 제목, 프로젝트, 모델, 전체 메시지 기록을 읽을 수 있으며 사용자가 직접 만든 대화도 포함됩니다. 변경은 할 수 없습니다.",
+      "session.update.all":
+        "모든 세션의 이름을 바꾸고 메시지를 추가·교체·삭제할 수 있습니다. 저장된 기록을 다시 쓰므로 사용자가 메시지를 보내지 않아도 대화가 바뀔 수 있습니다.",
+      "session.delete.all":
+        "모든 세션을 휴지통으로 옮기거나 기록 파일과 함께 영구 삭제할 수 있습니다. 빈도 제한이 있을 뿐 그 밖의 제한은 없습니다.",
     },
   },
   /**

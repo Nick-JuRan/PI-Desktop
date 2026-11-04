@@ -7,8 +7,9 @@
 
 // Fork-only imports (separate statement so upstream import edits never conflict).
 import { IPC } from "@pi-desktop/shared";
-import { app, BrowserWindow } from "electron";
+import { BrowserWindow } from "electron";
 import { randomUUID } from "node:crypto";
+import { onConfirmedQuit } from "./bootstrap/confirmed-quit";
 import { PvRecorderBackend, checkMicrophonePermission, requestMicrophonePermission } from "./audio-backend";
 import type {
   AudioCaptureFactory,
@@ -256,6 +257,8 @@ export function createVoiceService(
   acquireMicrophoneLease?: (token: string) => () => void,
 ): VoiceService {
   const service = new VoiceService(modelCacheDir, getWindow, acquireMicrophoneLease);
-  app.once("before-quit", () => service.dispose());
+  // A cancelled quit keeps the app running, so disposal waits for a committed
+  // quit instead of the cancellable `before-quit`.
+  onConfirmedQuit(() => service.dispose());
   return service;
 }

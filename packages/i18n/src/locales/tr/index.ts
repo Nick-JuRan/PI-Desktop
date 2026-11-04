@@ -1540,6 +1540,12 @@ sklm: {
     windowTranslucency: "Saydam pencere",
     windowTranslucencyDesc: "macOS penceresini masaüstü bulanıklığı üzerinde saydam tutar; varsayılan budur. Pencere görünürken daha fazla GPU kullanır; en düşük boşta yük için kapatın. Değişiklik yeniden başlatmadan sonra uygulanır.",
     windowTranslucencyRestart: "Uygulamak için yeniden başlatın",
+    startupAnimation: "Başlangıç animasyonu",
+    startupAnimationDesc: "Uygulama açılırken marka açılış ekranı yerine kendi videonuzu oynatır. \"startup\" klasörüne bir video bırakmanız yeterli; pencereyi tamamen doldurur, bu yüzden konuyu ortada tutun. Atlamak için Escape'e basın. Bir sonraki açılışta etkili olur.",
+    startupAnimationNone: "Video bulunamadı",
+    startupAnimationFolder: "\"startup\" klasörünü aç",
+    startupAnimationSkipWhenReady: "Hazır olunca erken bitir",
+    startupAnimationSkipWhenReadyDesc: "Animasyonu son kareye kadar oynatmak yerine, uygulamanın açılışı tamamlandığı anda kes.",
     linkOpenTarget: "Bağlantı açma hedefi",
     linkOpenTargetWorkpanel: "Çalışma paneli tarayıcısı",
     linkOpenTargetExternal: "Varsayılan sistem tarayıcısı",
@@ -2550,6 +2556,9 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "browser.cdp": "Çalışma paneli tarayıcısını kontrol et",
       "usage.read": "Kullanım istatistiklerini oku",
       "session.autoTitle": "İlk tur başlık bağlamını oku ve otomatik başlıkları güncelle",
+      "session.read.all": "Sizin oluşturduklarınız dahil her sohbeti oku",
+      "session.update.all": "Sizin oluşturduklarınız dahil her sohbeti, mesajlarıyla birlikte yeniden yaz",
+      "session.delete.all": "Sizin oluşturduklarınız dahil her sohbeti sil",
     },
     permissionHelp: {
       "ui.panel": "Eklentinin uygulama içinde kendi panelini göstermesini sağlar.",
@@ -2608,6 +2617,12 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
         "Tamamlanan turların kullanım verilerini sayfalı olarak listeler (tur başına token sayaçları). Mesaj içeriği dahil değildir.",
       "session.autoTitle":
         "Yalnızca uygun oturumların ilk istemini ve ilk yanıtını okuyabilir; başlık elle değiştirilmemişse otomatik başlığı günceller. Tam dökümü okuyamaz.",
+      "session.read.all":
+        "Tüm oturumları listeleyebilir; başlık, proje, model ve tam mesaj geçmişini okuyabilir — kendi oluşturduğunuz sohbetler dahil. Hiçbir şeyi değiştiremez.",
+      "session.update.all":
+        "Her oturumun adını değiştirebilir; mesajlarını ekleyebilir, değiştirebilir veya kaldırabilir. Kaydedilmiş geçmişi yeniden yazdığı için siz mesaj göndermeden de sohbet değişebilir.",
+      "session.delete.all":
+        "Her oturumu çöp kutusuna taşıyabilir veya geçmiş dosyalarıyla birlikte kalıcı olarak silebilir. Hız sınırı vardır, bunun dışında kısıtlama yoktur.",
     },
   },
   /**

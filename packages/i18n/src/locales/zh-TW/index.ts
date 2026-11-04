@@ -1530,6 +1530,12 @@ sklm: {
     windowTranslucency: "視窗透明效果",
     windowTranslucencyDesc: "讓 macOS 視窗保持透明並顯示桌面模糊背景（預設開啟）。視窗可見時會佔用更多 GPU；關閉後使用不透明視窗，閒置佔用最低。修改後需重新啟動生效。",
     windowTranslucencyRestart: "重新啟動後生效",
+    startupAnimation: "啟動動畫",
+    startupAnimationDesc: "啟動時播放你自己的影片，取代品牌啟動畫面。把一個影片放進 startup 資料夾即可；畫面會鋪滿視窗，請讓主體置中。按 Escape 可略過。下次啟動生效。",
+    startupAnimationNone: "找不到影片",
+    startupAnimationFolder: "開啟 startup 資料夾",
+    startupAnimationSkipWhenReady: "就緒後提前結束",
+    startupAnimationSkipWhenReadyDesc: "應用程式啟動完成後立即結束動畫，而不是等它播到最後一格。",
     linkOpenTarget: "連結開啟位置",
     linkOpenTargetWorkpanel: "工作區瀏覽器",
     linkOpenTargetExternal: "系統預設瀏覽器",
@@ -2533,6 +2539,9 @@ sklm: {
       "browser.cdp": "控制工作面板瀏覽器",
       "usage.read": "讀取用量統計",
       "session.autoTitle": "讀取首輪標題內容並更新自動標題",
+      "session.read.all": "讀取任意工作階段，包括你自己的對話",
+      "session.update.all": "改寫任意工作階段，包括修改其訊息",
+      "session.delete.all": "刪除任意工作階段，包括你自己的對話",
     },
     permissionHelp: {
       "ui.panel": "允許外掛在應用內顯示獨立面板。",
@@ -2580,6 +2589,12 @@ sklm: {
         "分頁列出已完成回合的用量事實（每回合的 token 計數）。不包含任何訊息內容。",
       "session.autoTitle":
         "僅能讀取符合條件工作階段的首則提示和首則回覆，並只在標題未被手動修改時更新；無法讀取完整對話記錄。",
+      "session.read.all":
+        "可以列出全部工作階段並讀取其標題、專案、模型與完整訊息記錄，包括你自己建立的對話。但不能修改任何內容。",
+      "session.update.all":
+        "可以重新命名任意工作階段，並附加、替換或刪除其訊息。它會重寫已儲存的工作階段記錄，因此無需你送出訊息也能改變對話內容。",
+      "session.delete.all":
+        "可以把任意工作階段移入回收筒或永久刪除，並同時刪除其記錄檔案。受頻率限制，除此之外不受其他限制。",
     },
   },
   extensions: {
