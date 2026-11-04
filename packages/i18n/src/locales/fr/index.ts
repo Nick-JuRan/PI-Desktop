@@ -1536,6 +1536,12 @@ sklm: {
     "windowTranslucency": "Fenêtre translucide",
     "windowTranslucencyDesc": "Garde la fenêtre macOS translucide sur le flou du bureau ; c'est le réglage par défaut. Consomme plus de GPU tant que la fenêtre est visible ; désactivez pour une fenêtre opaque et une charge au repos minimale. Le changement s'applique après un redémarrage.",
     "windowTranslucencyRestart": "Redémarrer pour appliquer",
+    "startupAnimation": "Animation de démarrage",
+    "startupAnimationDesc": "Lit votre propre vidéo au démarrage, à la place de l'écran de lancement. Déposez une vidéo dans le dossier « startup » ; elle remplit la fenêtre, gardez donc le sujet centré. Appuyez sur Échap pour la passer. Prend effet au prochain démarrage.",
+    "startupAnimationNone": "Aucune vidéo trouvée",
+    "startupAnimationFolder": "Ouvrir le dossier « startup »",
+    "startupAnimationSkipWhenReady": "Terminer dès que l'app est prête",
+    "startupAnimationSkipWhenReadyDesc": "Interrompt l'animation dès que l'application a fini de démarrer, au lieu de la laisser aller jusqu'à la dernière image.",
     "linkOpenTarget": "Destination d'ouverture des liens",
     "linkOpenTargetWorkpanel": "Navigateur du panneau de travail",
     "linkOpenTargetExternal": "Navigateur par défaut du système",
@@ -2538,7 +2544,10 @@ sklm: {
       "bus.subscribe": "Recevoir des messages d'autres plugins",
       "browser.cdp": "Contrôler le navigateur du panneau de travail",
       "usage.read": "Lire les statistiques d'utilisation",
-      "session.autoTitle": "Lire le contexte du premier tour et modifier les titres automatiques"
+      "session.autoTitle": "Lire le contexte du premier tour et modifier les titres automatiques",
+      "session.read.all": "Lire n'importe quelle conversation, y compris les vôtres",
+      "session.update.all": "Réécrire n'importe quelle conversation, y compris ses messages",
+      "session.delete.all": "Supprimer n'importe quelle conversation, y compris les vôtres",
     },
     "permissionHelp": {
       "ui.panel": "Permet au plugin d'afficher son propre panneau dans l'application.",
@@ -2584,6 +2593,12 @@ sklm: {
         "Liste les données d'utilisation des tours terminés (compteurs de tokens par tour, paginés). Aucun contenu de message n'est inclus.",
       "session.autoTitle":
         "Peut lire uniquement le premier message et la première réponse des sessions admissibles, puis modifier le titre s'il n'a pas été changé manuellement. Ne peut pas lire la transcription complète.",
+      "session.read.all":
+        "Peut lister toutes les sessions et lire leur titre, projet, modèle et historique complet des messages, y compris les conversations que vous avez créées. Il ne peut rien modifier.",
+      "session.update.all":
+        "Peut renommer n'importe quelle session et ajouter, remplacer ou supprimer ses messages. Il réécrit l'historique stocké : une conversation peut donc changer sans que vous envoyiez un message.",
+      "session.delete.all":
+        "Peut déplacer n'importe quelle session dans la corbeille ou la supprimer définitivement, avec ses fichiers d'historique. Limité en fréquence, mais sans autre restriction.",
     }
   },
   "extensions": {

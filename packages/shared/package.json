@@ -18,6 +18,10 @@
       "types": "./dist/theme.d.ts",
       "import": "./dist/theme.js"
     },
+    "./startup-animation": {
+      "types": "./dist/startup-animation.d.ts",
+      "import": "./dist/startup-animation.js"
+    },
     "./fork": {
       "types": "./dist/fork/index.d.ts",
       "import": "./dist/fork/index.js"

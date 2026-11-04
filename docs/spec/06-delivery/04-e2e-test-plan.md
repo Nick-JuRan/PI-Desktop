@@ -273,6 +273,13 @@
   future and proves a conflicting write cannot acquire until that body finishes.
   Closing/abandoning metadata must not release running work. Snapshot/finalize
   and later rollback participate in the same Host file domain.
+- Independent identified writes with validated tickets may use two session
+  slots. Per-file native gates must observe both blocking bodies before either
+  is released, and retain the cancelled body's lease. Budget regressions cover
+  legacy/coordinated admission in both orders, conservative waiter draining,
+  reversed source order, global limits and cancellation after reservation.
+  Runtime E2E must preserve distinct snapshots and rollback for both writes;
+  this is correctness evidence, not a wall-clock throughput claim.
 - Runtime/pi integration tests cover parent/delegate registration, preparation
   order, validation/mode failures, Stop and model result order. Protocol adapter
   tests cover sealing, cleanup, remote/legacy fallback and equal provider IDs in
@@ -943,6 +950,18 @@
 - **Status:** Automated in `node scripts/e2e-scheduled.mjs`; run against the
   request candidate per AGENTS.md, with tested head and base recorded.
 
+
+#### Scheduled execution-status wording (English / Simplified Chinese)
+
+- Open Scheduled with a normally ended session whose transcript reports that
+  the requested work could not be completed. Verify that the rail, history and
+  selected-run header say **Session ended** / **会话已结束**, not unqualified
+  task completion. The history hint states that session completion does not
+  confirm task success and asks the reader to verify task evidence.
+- Running, interrupted and error labels also identify the session. No task
+  outcome is inferred, persisted or backfilled by this copy-only correction.
+- Copy validation checks both catalog entries and the existing shared label
+  mapping. Existing Scheduled component/user-path coverage is unchanged.
 
 
 ### E2E-PLUGIN-appearance-extension-lifecycle
@@ -2171,6 +2190,13 @@ identify the platform validation still needed.
   Stopping the pending Write cancels its permission;
   approving the stale request fails and creates no file. A mutating operation
   that already started is not reported stopped before its Host result arrives.
+  On a headless Host, hold durable-turn creation, user-row append, and sidecar
+  history restoration in turn, then request abort during each hold. Release the
+  hold and confirm abort settles the runtime before acknowledging cancellation;
+  a follow-up input completes under a new durable turn. Repeat with an approved
+  plan still being admitted, and ensure its execution settles as interrupted.
+  An old turn's delayed abort must leave a newer turn alone, and admission in
+  another session must not wait for this session's cancellation.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`,
   `03-runtime/03-tools-and-permissions.md`, `03-runtime/06-host-rpc-protocol.md`,
   ADR `tool-abort-abandons-host-call`
@@ -2184,7 +2210,12 @@ identify the platform validation still needed.
   `node scripts/e2e-read-only-stop.mjs` runs the production sidecar bundle and
   a localhost provider, holding execution and cancellation responses at the Host
   edge. It verifies follow-up prompts and the Write settlement boundary;
-  rendered Electron interaction remains
+  `packages/host-runtime/src/runtime-service.test.ts` covers headless admission,
+  approved-plan startup, stale aborts, and independent sessions. After building
+  host-runtime and the sidecar bundle, `node scripts/e2e-headless-startup-abort.mjs`
+  exercises the production RuntimeService, stdio transport, sidecar, and local
+  provider through startup cancellation and a successful follow-up.
+  Rendered Electron interaction remains
   a manual validation run.
 
 #### E2E-171: Streaming reply survives quit, crash, and stop
@@ -5287,19 +5318,26 @@ window; opening a normal panel afterward must still work.
   primary project HTML, secondary project-folder HTML, project scratch HTML
   and an isolated session's worktree HTML. Repeat with a `file:` URL containing
   Unicode/spaces. Interact with each rendered page using native pointer input.
-  Try a missing file, an outside file and a positioned HTML
-  source reference. Send a prompt that invokes BrowserPreview through the real
+  Try a missing file, an outside HTML file, an outside text file whose folder
+  and name contain spaces and CJK characters, an outside file under a `.ssh`
+  folder, an outside extensionless file and the extensionless `.ssh/config`,
+  and a positioned HTML source reference. Send a prompt that invokes BrowserPreview through the real
   sidecar in ordinary, project and isolated conversations. Disable Browser and click
   again. Switch conversations between cases.
 - **Expected**: Valid pages render and execute in the side browser at their
-  canonical path. Missing/restricted files report errors without guest loads.
+  canonical path. A missing file reports an error without a guest load. The
+  outside HTML, text, `.ssh`, and extensionless files open in the host file
+  view (HTML as source, never executed) (ADR 0339).
   A line reference opens source, not execution. Disabled Browser remains
   disabled and reports an error. BrowserPreview uses its originating session's
   roots and delivers a valid resource tab. No visible-project fallback.
 - **Automation**: `node scripts/e2e-chat-html-artifacts.mjs`, after building
   Host, runtime and Electron. Captures and synthetic profiles are retained in
   `PI_TEST_OUTPUT` (or the OS temporary directory).
-- **Status**: Electron user-path covered on Windows; other OSes pending.
+- **Status**: Electron user-path covered on Windows and macOS (on macOS set
+  `PI_TEST_OUTPUT` to a real-path directory such as `/private/tmp/...`; the
+  `/var` → `/private/var` alias of the default temporary directory makes guest
+  URL matching miss); Linux pending.
 
 #### E2E-BROWSER-capture-resize: Capture preserves live placement and restores the latest viewport
 
@@ -7043,7 +7081,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   - Escape and outside click dismiss the menu without creating anything.
 
 #### E2E-076: Startup splash appears then yields to the main shell
-- **Status**: Partially automated (`startup-splash-motion.test.mjs` covers splash markup, motion tokens, reduced-motion, and catalog keys; `macos-sidebar-vibrancy.test.mjs` covers the darwin glass splash and shell cross-fade; full window timing remains Draft)
+- **Status**: Partially automated (`startup-splash-motion.test.mjs` covers splash markup, motion tokens, reduced-motion, and catalog keys; `macos-sidebar-vibrancy.test.mjs` covers the darwin glass splash and shell cross-fade; `startup-animation.test.mjs` and `packages/shared/src/startup-animation.test.ts` cover the D679 animation's bounds, phase machine, discovery, surface, and boot-surface ranking; `pnpm test:e2e:startup-animation` boots the real app against a generated video and asserts `pi-startup:` decoding, advancing playback, the reveal, and that an unplayable file still yields the shell; full window timing remains Draft)
 - **Priority**: P1
 - **Covers**: A, Quality / US-UI shell polish
 - **Preconditions**: App launch path available (dev or packaged).
@@ -7054,11 +7092,25 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   4. Repeat with OS `prefers-reduced-motion: reduce` when available.
   5. On macOS, compare the splash surface with the sidebar glass after the shell appears.
   6. Repeat with `bootstrap` held unanswered past the watchdog bounds, and observe the boot surface at 30s and after 180s (issue #831).
+  7. Drop a short playable video into `<dataDir>/startup/` and relaunch (D679).
+  8. Replace it with an unplayable file (for example a renamed text file) and relaunch.
+  9. With the animation present, relaunch under `prefers-reduced-motion: reduce`, then reload the renderer, then close the window and reopen it from the tray or Dock.
 - **Expected**:
   - Before ready: full-window splash with brand mark, shell name, tagline, and accessible starting status (`data-testid="startup-splash"`).
   - After ready: splash exits with a short fade (or instantly under reduced motion) and the main shell (or settings page) is interactive underneath.
   - If the initial state never arrives, the splash is replaced rather than held: the boot surface gains logs, diagnostics, and quit at 30s (`STARTUP_SLOW_HINT_MS`) without reporting a failure, and at 180s (`STARTUP_STALLED_MS`) becomes the recovery surface, which also offers a retry (`data-testid="startup-recovery"`); every action works without a backend, the renderer-drawn window controls stay above the surface on Windows/Linux, and quit goes through `pi-desktop/app/quit`.
   - On macOS the splash uses the same glass tint and sheen as the sidebar over native `sidebar` vibrancy; the mounted shell stays hidden until the splash exit fade, then cross-fades in. Other platforms keep the opaque `--ds-bg-primary` fill.
+  - Use a six-second playable fixture with skip-when-ready off. Observe advancing
+    playback beyond the two-second first-frame bound and through at least 5.75s
+    before reveal. A `playing` event must retire the first-frame timeout even
+    if `loadeddata` was missed. The native fixture also suppresses that event
+    in a fresh test renderer to exercise this path deterministically; it resets
+    only the temporary window’s one-play mark before that test reload. Keep
+    corrupt-media recovery coverage.
+  - With a video in `<dataDir>/startup/` (D679): `data-testid="startup-animation"` replaces the splash in the first painted frame, plays over opaque black with no controls and no audio, then holds the same black until bootstrap finishes, then fades out over about a second with the shell already clickable during the fade. A boot slower than the video shows an indeterminate bar after 3s of black. `Escape` jumps straight to that fade.
+  - An unplayable file never holds the launch: the animation ends within 2s (no first frame) or on `error`, and the reveal runs exactly as it does after a clean finish.
+  - The animation is not played under reduced motion, on a renderer reload, or on a window reopened from the tray or Dock; the brand splash is used instead. Settings → General → Appearance names the resolved file, offers the folder, and applies a toggled switch on the next launch only.
+  - A boot held past the watchdog bounds replaces the animation with the recovery surface — it is never left behind the opaque mask.
   - No plain unbranded “Starting…” centered text as the only boot UI.
   - Overlay/dialog enter motion uses shared tokens; reduced motion keeps state changes without decorative duration.
   - If a non-settings bootstrap request fails while the settings read is still
@@ -7066,7 +7118,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     settings request itself fails, the active section shows a loading/failure
     state and retry action rather than a blank content pane; retrying after the
     local service recovers restores the controls without leaving Settings.
-- **Specs linked**: `04-ux/07-ui-design-system.md` §8, `04-ux/02-i18n-english-first.md`, decisions-log D146 / D304 / D348
+- **Specs linked**: `04-ux/07-ui-design-system.md` §8, `04-ux/02-i18n-english-first.md`, `04-ux/09-interaction-patterns.md` §1.12, ADR 0338, decisions-log D146 / D304 / D348 / D679
 - **Acceptance**: A (app startup), Quality
 - **Milestone**: M5
 
@@ -7850,9 +7902,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   6. If the task uses a dedicated worktree outside the advertised workspace,
      verify its guarded Bash edit and resulting `git diff`.
 - **Expected**:
-  - Read/search calls may overlap, but only one `Write`/`Edit` executes for a
-    session at a time; queued mutations do not consume another global
-    mutation slot while waiting.
+  - Read/search calls may overlap. A session may execute two independent
+    identified local writes with validated batch tickets; conservative writes
+    remain exclusive within the session. Queued mutations consume no global
+    mutation capacity while waiting; total running writes stay bounded by two.
   - The stale-tag edit fails without changing the file and returns
     `EDIT_TAG_MISMATCH` carrying the live tag and current content at the
     anchors; the overlapping-range payload fails with `EDIT_RANGE_INVALID`
@@ -13296,6 +13349,13 @@ This test plan spec is accepted when:
 
 #### E2E-155: Subagent lifetime is parent-judged; runtime delivers reports
 
+- Abort the parent while it is waiting for a provider response and while it is
+  idle waiting for two delegates. Hold delegate teardown at the provider edge;
+  retire the parent and one child first. Abort must remain pending, status must
+  remain busy and a new prompt must be rejected until the last child retires.
+  Concurrent abort requests share cleanup. A follow-up prompt is accepted after
+  abort resolves, with no old-turn continuation or tool execution.
+
 - **Preconditions**: A project-bound Agent session with a Bash-capable
   `explorer` definition and a mocked provider stream.
 - **Steps**: 1) Start a delegate and let the parent stop calling tools while
@@ -13449,6 +13509,41 @@ This test plan spec is accepted when:
 - **Status**: Unit-covered (`transcript-window.test.mjs`,
   `conversation-minimap.test.mjs`, `interaction-performance.test.mjs`); rendered
   desktop journey and the low-memory Windows measurement pending
+
+#### E2E-CHAT-history-loading-holds-viewport
+
+- **Preconditions**: A built Desktop checkout and existing compatible Electron
+  dependencies. Use the isolated synthetic fixture, never a live user profile.
+- **Steps**:
+  1. Start `node scripts/e2e-transcript-history-loading.mjs --manual` and click
+     **Load earlier (hold)**. Note the visible turn and its viewport offset.
+  2. Continuously roll the wheel upward, then downward while the page is held.
+     Click **Complete page**. Repeat without scrolling during the held interval.
+  3. Repeat with **Fail page**. Confirm the indicator ends and new input can
+     scroll or retry, without an automatic loop at the unchanged boundary.
+  4. While loading, return to latest; complete the old page and confirm it does
+     not pull the viewport back. Verify nested scrolling, editable keys, title
+     activation and zoom still belong to their original controls.
+- **Expected**: The visible message remains at its viewport offset during
+  loading, committed projection, delayed row measurements and label removal.
+  Transcript-directed wheel/touch/scroll-key input is discarded, not queued;
+  ordinary scrolling resumes on settlement. Page IO remains single-flight;
+  explicit navigation, hide and unmount release the hold and restore styles.
+- **Automation**: `node scripts/e2e-transcript-history-loading.mjs`, also run by
+  `e2e-transcript-render.mjs`. Production React and styles, native Electron wheel
+  bursts, per-frame anchor samples with 2 CSS-pixel rounding tolerance, tail
+  updates, delayed row geometry, rejection, hide/reveal and latest navigation.
+  The production `SessionPane` and real store path additionally paginate a small
+  tail across continuous assistant-answer boundaries, sample actual message
+  positions, and click the real latest button during/after Host reads for both
+  standalone rows and grouped answers. Only external Host IPC is controlled.
+  Run with normal animation; do not force reduced motion to hide smooth-scroll
+  races. Assert latest navigation stays at bottom without opening another page.
+  Manual procedures: `tests/history-loading-scroll-test-cases.md`.
+- **Specs linked**: `04-ux/09-interaction-patterns.md` §9.1, ADR 0130.
+- **Acceptance**: C (conversation), Quality.
+- **Status**: Isolated Windows Electron regression covered; other OS/hardware
+  combinations and the user's existing conversations require manual validation.
 
 #### E2E-160: Dragging the window across displays keeps the dropped position
 
@@ -14201,8 +14296,8 @@ are withdrawn with ADR 0165.
   side file view; no path is truncated to its suffix or redirected to the
   same-name file. The Windows Markdown link keeps a valid sanitized address
   and reaches the existing file opener with the original drive path. The outside
-  path opens nothing and reports the access limit, while a missing in-root file
-  reports that no file matches.
+  path opens that exact file in the host file view (ADR 0339), dotfile folders
+  such as `.ssh` included, while a missing file reports that no file matches.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md` § fs,
   `04-ux/08-component-spec.md` §8.3.
 - **Acceptance**: C (conversation & stream), D (workspace), Quality
@@ -18613,6 +18708,11 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Scenario:** Workspace identity.
 - **Expected:** Stored workspace bindings use the existing project canonicalization contract on both write and read. On Windows, slash direction, case, trailing separators and extended path prefixes do not hide a task from its own project's conversation. The distinction between missing legacy bindings and explicit null remains unchanged. Foreign-project tools cannot list or mutate bound tasks.
 - **Automation:** `node --experimental-strip-types scripts/e2e-scheduled-paths.mjs` uses an isolated real Host and SQLite profile. Inference is not sent to a live provider.
+### E2E-SCHEDULED-cancelled-quit-keeps-runner
+
+- **Scenario:** Cancelled quit and automatic runs (issue #2048, D363).
+- **Expected:** An explicit quit that the user cancels in the quit confirmation leaves the app running with no `app shutdown` lifecycle entry and no scheduled-runner stop. A task that becomes due afterwards still runs automatically, and its `nextRunAt` advances. A later quit prompts again; Confirm runs the ordered shutdown, the process exits with code 0, and the runtime log records `scheduled runner stopped` exactly once. Only the shutdown handler listens to `before-quit`; services that must survive a cancelled quit stop through `onConfirmedQuit`.
+- **Automation:** `pnpm test:e2e:scheduled-quit-cancel` (`scripts/e2e-scheduled-quit-cancel.mjs`) drives the built desktop, preload, real Host SQLite and agent sidecar over CDP in an isolated profile, clicking the in-app confirmation with real pointer input. Only the model is a local SSE fixture; the due instant is set through `configJson.nextRunAt` instead of waiting for the wall clock. Requires `apps/desktop/out` and a host-core debug binary.
 
 ### E2E-MARKDOWN-table-actions
 
@@ -19201,6 +19301,54 @@ host-created files. The full app's file-preview viewer is covered separately.
   `ui.view` gating, panel-bridge channel) and the wiring contract in
   `apps/desktop/test/main-wiring-contract.test.mjs`; the interactive Electron
   scenario remains a manual validation run.
+
+### E2E-268: A plugin reads and rewrites a session the user created
+
+- **Preconditions**: A development plugin that declares
+  `session.read.all`, `session.update.all`, and `session.delete.all`, and whose
+  commands call `pi.session.list()`, `pi.session.get()`,
+  `pi.session.listMessages()`, `pi.session.rename()`,
+  `pi.session.appendMessage()`, `pi.session.replaceMessages()`,
+  `pi.session.deleteMessage()`, and `pi.session.truncateFrom()`. One ordinary
+  session the user created and typed two prompts into, plus the same manifest
+  edited down to only the `.own` grants.
+- **Steps**:
+  1. Install the `.all` build and run each read command against the user's own
+     session.
+  2. Run `rename`, then check the session title in the sidebar and whether the
+     auto-title plugin can still rename it.
+  3. Run `appendMessage` while the session is idle, and again while a turn is
+     running.
+  4. Run `replaceMessages`, `deleteMessage`, and `truncateFrom` on the same
+     session, watching the open transcript between calls.
+  5. Reinstall the `.own`-only build and repeat steps 1 and 4, including a call
+     that passes `scope: "all"` itself.
+  6. Check the app log for one audit line per call.
+- **Expected**: With `.all`, `list` returns the user's session with
+  `originKind: "created"`, `source: "desktop"`, `externalId: null`, the real
+  `modelId`/`providerId`/`bound.model`, and messages reporting
+  `origin: "desktop"`; `get` and `listMessages` agree with it. `rename`
+  succeeds and the auto-title plugin can no longer replace that title.
+  `appendMessage` adds one row while idle and returns its `messageId`; a repeat
+  with the same id adds nothing. While a turn runs, `appendMessage` still
+  appends and the three transcript rewrites fail with `TURN_RUNNING`.
+  `replaceMessages` and `truncateFrom` repaint the open transcript without
+  reselecting the session, `deleteMessage` on a user prompt removes the prompt
+  and its replies, and a repeated delete reports `deleted: false`. With `.own`
+  the same session is `NOT_FOUND` for every call, nothing in the transcript
+  changes, and the plugin's own `scope: "all"` is ignored — the call still runs
+  as `own`. Every audited line names the scope that authorised it.
+- **Specs linked**: `07-plugins/03-plugin-api.md` §plugin-owned and host-wide
+  sessions; `07-plugins/13-plugin-permissions-matrix.md` §2;
+  `07-plugins/04-plugin-security.md` §5; ADR 0340, ADR 0200 (amendment).
+- **Acceptance**: A plugin that declares the `.all` grants can read and rewrite
+  the user's own conversations, the user sees the result in the open transcript,
+  and a plugin that declares only `.own` keeps exactly the ADR 0200 reach.
+- **Status**: Draft. Host-core coverage in the `plugin_sessions` and
+  `plugin_session` tests, broker policy in
+  `apps/desktop/test/plugin-session-access.test.mjs`, and the plugin-process
+  path in `apps/desktop/test/plugin-session-api.test.mjs`; the interactive
+  Electron scenario remains a manual validation run.
 
 ### E2E-FAST-MODE: `/fast` asks for the priority tier only on an allowed model
 
