@@ -8189,3 +8189,163 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `apps/desktop/test/plugin-session-api.test.mjs`. See ADR 0340, ADR 0200's
   amendment, ADR 0323's corrected alternative, `03-plugin-api.md` §plugin-owned
   and host-wide sessions, `13-plugin-permissions-matrix.md` §2, and E2E-268.
+
+## 2026-11-04 — Computer use is a host-owned capability behind a scope grant (D681)
+
+- D681 / ADR 0342 accepts bounded native application control as a design. The
+  agent could already drive the embedded browser guest over allowlisted CDP and
+  nothing else; there is no screen capture, synthetic input, window enumeration,
+  or accessibility client anywhere in the repository. This decision records the
+  contract, not an implementation: no code ships with it.
+- The capability lives in `crates/host-core` as a `computer.*` domain and
+  reaches the agent as one high-risk builtin tool, `Computer`. It is deliberately
+  not a plugin host API, so the most dangerous privilege in the product cannot be
+  requested by a third-party manifest. Electron main stays thin — the picker, the
+  indicator, and the `tools.execute` relay — and the sidecar needs no new
+  `host.proxy` method.
+- Authority is one user-minted scope grant naming one window or application,
+  with a revision, an action budget, an idle expiry, an input policy, and a
+  capture mode. The model cannot name, enumerate, or widen a target; there is at
+  most one active grant per desktop instance; grants are never persisted.
+- Identity is accessibility-first: `inspect` returns roles, names, bounds and
+  per-grant opaque `uid`s, and `act` dispatches platform accessibility actions.
+  Coordinates exist only against a `basis` minted by a capture of the same
+  scope, re-validated immediately before synthesis, so a blind click is
+  unexpressible and a moved window fails closed.
+- Two refusals hold under every mode, setting and grant option: the capability
+  never targets PI-Desktop's own windows, because synthetic input into this app
+  is a permission-broker bypass, and both capture and synthesis refuse under a
+  secure input state or a focused password field. The built-in
+  credential-surface denylist entries cannot be removed.
+- Permission mode governs the grant rather than each keystroke. Minting is
+  always an explicit desktop-UI decision with no deadline; `auto` mints nothing
+  and a spoken request cannot. Within a grant, inspection auto-allows and input
+  follows `confirm-each` (the only policy under `ask`) or an opt-in
+  `autonomous-in-scope`. Plan and Goal hard-deny the tool, and no
+  `allow-session` grant exists for it.
+- Computer use carries **its own model binding** — one `{ providerId, modelId }`
+  the user picks from the existing provider rows, following `imageGeneration`.
+  A bounded perceive-decide-act loop in `packages/computer-use` turns one
+  instruction into validated steps against a strict action schema; the
+  conversation model never drives the machine and there is no silent fallback
+  to it. The agent-facing tool therefore takes an instruction, not a `uid` or a
+  coordinate, and returns a bounded summary rather than the inner transcript.
+- The loop and the capture run in Electron main, not host-core: the loop needs
+  a model provider and the capture needs Chromium, and host-core holds neither.
+  host-core keeps everything that can refuse — targets, accessibility,
+  synthesis, the grant broker, per-action re-validation, audit — and `Computer`
+  follows the `GenerateImages` shape, where `tools.execute` performs the
+  permission evaluation and main executes only after the host authorises.
+- **The agent's cursor is drawn, not stolen.** Actions go through accessibility
+  actions or window-targeted events, so the real pointer never warps and the
+  user keeps their mouse while the agent works; a path that could only act by
+  warping is refused. A frameless, transparent, click-through, always-on-top
+  overlay draws the agent's own cursor, owns no part of the action, cannot
+  receive input, and is never the source of truth for where an action landed.
+- Voice is specified and deliberately unwired in the first release: the agent
+  is the only caller. When stage 3 lands it, a spoken request will reach
+  `Computer` only as a work request on the bound session through the existing
+  delegate/classifier path, as task delegation rather than teleoperation.
+- All three desktop platforms are in scope. Capture is `desktopCapturer`
+  everywhere, so only inspection and input are platform work: macOS
+  (`AXUIElement` actions, `CGEventPostToPid` keys, hand-declared framework FFI
+  with no new crates) is stage 1; Windows (UIA, window-targeted messages,
+  higher-integrity targets refused) and Linux/X11 (AT-SPI, best effort) are
+  stage 2; Wayland refuses input and keeps portal capture. Every unsupported
+  path has its own code, never a hang or a silent no-op, and a partial-fidelity
+  backend declares it instead of returning an empty tree.
+- Non-goal 9 is amended rather than deleted: browser takeover, unattended
+  full-desktop control, and any model-chosen target remain non-goals.
+- Contract pages: `03-runtime/computer-use.md`, `08-error-codes.md` §3.10
+  (`COMPUTER_*`), `05-host-core-rust.md` §2/§5b/§6,
+  `05-security/01-security.md` §13, and `03-tools-and-permissions.md` §0/§2/§6.
+- Stage 1 shipped with the decision: `packages/shared/src/computer-use.ts`,
+  `crates/host-core/src/computer/` with the macOS backend and
+  `rpc/computer_rpc.rs`, `packages/computer-use/`,
+  `apps/desktop/electron/main/computer-use/`, and the picker, indicator,
+  settings card, and drawn cursor in the renderer. Covered by the host-core
+  `computer::` tests, `packages/computer-use` unit tests, the shared
+  validators, and `apps/desktop/test/computer-use-service.test.mjs`. No real
+  application was driven and the five `E2E-COMPUTER-USE-*` gates remain
+  `NOT RUN`; see `docs/implementation/computer-use-evidence.md`.
+
+## 2026-11-05 — Computer use grants the whole desktop automatically (D682)
+
+- D682 / ADR 0344 amends ADR 0342 §4 and §6. The user-picked window grant made
+  a two-application task a sequence of dialogs, so the picker is removed: a
+  `Grant` now carries `scope`, the `Computer` tool handler mints a
+  `desktop`-scope grant itself on a session's first call, and enabling the
+  feature in Settings is the consent. A `window` grant stays expressible and is
+  no longer minted by any UI.
+- A desktop grant binds exactly one window at a time, starting at the frontmost
+  window the host does not refuse. `computer.inspect` takes an optional
+  `targetId`; binding re-runs the self-target, denylist, and elevation checks
+  against a fresh enumeration and always moves the revision, so every `uid` and
+  `basis` from the previous window stops validating. `computer.act` never binds.
+- A closed window does not end a desktop grant: it falls back to the frontmost
+  usable window, and an action aimed at the window that disappeared is refused
+  `COMPUTER_STALE_REVISION` even with no `expectedRevision` supplied. A window
+  grant is revoked instead, as before.
+- The loop sees the host's window list with refusals attached and gains one
+  answer kind, `{"kind":"switch","window":"<id>"}`. A switch spends a loop step
+  and no action budget, a refused switch is reported to the model as a step
+  instead of ending the run, and a switch is never counted as work done.
+- Runs are autonomous by default: `COMPUTER_USE_DEFAULTS.inputPolicy` becomes
+  `autonomous-in-scope` and applies under every permission mode. `confirm-each`
+  stays in the contract but has no approval card behind it, so the Settings row
+  offering it is removed rather than left to imply a control that narrows
+  nothing. Capture stays `a11y-only` by default, and the handler now actually
+  passes the user's capture, budget, and expiry settings to the grant.
+- Stop ends the run: the indicator revokes the grant and aborts the turn that
+  holds it, and host-core refuses an `origin: agent` mint for
+  `AGENT_REGRANT_COOLDOWN` (30s) with the new `COMPUTER_STOPPED_BY_USER`.
+  Without that, the next tool call in the same turn would simply re-grant.
+- The renderer loses the window-enumeration and grant-minting IPC channels
+  entirely; it reads capabilities and the grant, and revokes. Audit records the
+  scope and the minting origin, and appends `computer.grant.rebound` with the
+  application identity on every move.
+- Covered by the new host-core `computer::` tests (frontmost bind, no usable
+  window, rebind refusals, window-grant rebind refusal, closed-window fallback,
+  Stop cooldown), `packages/computer-use` switch tests, the shared defaults
+  test, and `apps/desktop/test/computer-use-service.test.mjs` (automatic mint,
+  Stop refusal, switch call shape). Still device-unverified: the
+  `E2E-COMPUTER-USE-*` gates remain `NOT RUN`.
+
+## 2026-11-05 — The accessibility window is joined by window id, not geometry (D683)
+
+- D683 records a device finding and the private symbol that fixes it. The first
+  real-device run of computer use (macOS 15, Stage Manager active) refused every
+  window except the one on stage: `window_matches` joined the `CGWindowList`
+  entry to its `AXUIElement` by geometry, and the window server reports an
+  off-stage window at its Stage Manager *thumbnail* frame while accessibility
+  reports the real one — measured as `37,607 121x137` against
+  `219,44 1568x1125` for the same window. Geometry is therefore not an identity
+  on this platform, and the capability was unusable in practice.
+- The join is now the window id from `_AXUIElementGetWindow`, which is the same
+  number `CGWindowList` supplies. It is undocumented, has existed since 10.5,
+  and is what every window manager on the platform uses. It is resolved through
+  `dlsym` rather than linked, so a release that drops it degrades to the
+  geometry match instead of failing to launch; a readable id that disagrees is
+  definitive and refuses. No new crate, and the rest of the FFI surface is
+  unchanged.
+- A grant now carries accessibility's window frame rather than the window
+  server's, because element bounds, the coordinate clamp, the `basis`, the drawn
+  cursor, and the capture crop are all in that frame. `measure` keeps taking
+  identity (`appKey`, title) from `CGWindowList` and falls back to its geometry
+  when the window cannot be opened.
+- Two smaller consequences of the same run: the automatic grant now prefers a
+  window whose tree can actually be opened (`Desktop::can_open`, a one-node
+  probe), because the window server lists Stage Manager surfaces in front of
+  the user's windows and binding one wastes a turn; and a failed read no longer
+  leaves the grant on the window it could not read (`policy::inspect_bound`
+  restores the previous binding and keeps the revision bump).
+- The probe itself is `scripts/e2e-computer-use-device.mjs`, opt-in behind
+  `PI_DESKTOP_COMPUTER_USE_DEVICE=1` because it reads the operator's screen and
+  can type into one of their windows. Window titles are withheld unless
+  `--titles` is passed. Re-run it after a macOS upgrade: if `_AXUIElementGetWindow`
+  ever disappears, this is the check that notices.
+- Covered by `computer::tests::an_automatic_grant_skips_a_window_whose_tree_cannot_be_opened`
+  and `a_window_that_cannot_be_read_does_not_become_the_bound_one`; the join
+  itself is platform code and is covered only by the device probe. See
+  `docs/implementation/computer-use-evidence.md` for what the run proved and
+  what it did not.
