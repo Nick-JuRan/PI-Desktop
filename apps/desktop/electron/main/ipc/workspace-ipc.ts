@@ -1,3 +1,5 @@
+import { clipboard } from "electron";
+import { readComposerClipboardDirectories } from "../composer-clipboard-directories";
 import { BrowserWindow, dialog, shell, type OpenDialogOptions } from "electron";
 import { dirname } from "node:path";
 import { homedir } from "node:os";
@@ -40,6 +42,7 @@ import {
   resolveRealOpenablePath,
   resolveUserOpenablePath,
 } from "@pi-desktop/host-runtime";
+import { openReviewedFile } from "../reviewed-file-open";
 import { openableMp4Path } from "../open-attachment-video";
 import { isChatRefOutsideRoots, resolveChatFileRef, resolveExternalChatRef } from "../chat-ref-resolve";
 import { rebaseWorktreeRef, type WorktreeRefContext } from "../worktree-ref";
@@ -634,7 +637,12 @@ export function registerWorkspaceIpc({
     },
   );
 
-  handleWithEvent(
+  handleWithEvent(IPC.invoke.composerReadClipboardDirectories, async (event) => {
+  assertMainWindowSender(event);
+  return readComposerClipboardDirectories(clipboard, paths => rememberComposerPickerSelection(paths, event.sender.id));
+});
+
+handleWithEvent(
     IPC.invoke.composerPasteFiles,
     async (event, input: { sessionId?: unknown; files?: unknown } = {}) => {
       assertMainWindowSender(event);
@@ -688,6 +696,16 @@ export function registerWorkspaceIpc({
     }
     return collectWorkspaceDiff(cwd);
   });
+  for (const [channel, method] of [
+    [IPC.invoke.workspaceReviewTurns, "review.turns"],
+    [IPC.invoke.workspaceReviewChanges, "review.changes"],
+    [IPC.invoke.workspaceReviewContext, "review.context"],
+  ] as const) {
+    handle(channel, async (input: unknown) => {
+      if (!host) throw new Error("host unavailable");
+      return host.call(method, input);
+    });
+  }
   handle(
     IPC.invoke.workspaceReviewRollback,
     async (input: { sessionId: string; snapshotId: string }) => {
@@ -695,6 +713,23 @@ export function registerWorkspaceIpc({
       return host.call("review.rollback", input);
     },
   );
+
+  handle(IPC.invoke.workspaceReviewRollbackFile, async (input: unknown) => {
+    if (!host) throw new Error("host unavailable");
+    return host.call("review.rollbackFile", input);
+  });
+  handleWithEvent(IPC.invoke.workspaceReviewOpenFile, async (event, input: unknown) => {
+    assertMainWindowSender(event);
+    const owner = getHost();
+    if (!owner) throw new Error("host unavailable");
+    return openReviewedFile(input, {
+      target: (sessionId, snapshotId) => owner.call<{ path: string }>("review.fileTarget", { sessionId, snapshotId }),
+      isCurrent: () => getHost() === owner,
+      stripPrefix: stripWinLongPrefix,
+      openPath: path => shell.openPath(path),
+      reveal: path => shell.showItemInFolder(path),
+    });
+  });
 
   handle(
     IPC.invoke.statsGetTokenUsageHistory,

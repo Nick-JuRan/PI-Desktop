@@ -23,7 +23,7 @@ export async function openRemoteProjectSession(
 ): Promise<void> {
   const scope = `remote-project:${JSON.stringify([project.hostKey, project.projectId])}`;
   const pending = runtime.pendingNewSessionRequests.get(scope);
-  if (pending) return pending;
+  if (pending) { await pending; return; }
   const intent = runtime.beginNavigationIntent();
   const request = (async () => {
     const state = get();
@@ -43,7 +43,7 @@ export async function openRemoteProjectSession(
         messageLimit: TRANSCRIPT_PAGE_SIZE,
         contentLimit: TRANSCRIPT_CONTENT_LIMIT,
       });
-      if (!runtime.navigationIntentIsCurrent(intent)) return;
+      if (!runtime.navigationIntentIsCurrent(intent)) return null;
       const current = get();
       const candidate = current.sessions.find((session) => session.id === latest.id);
       if (candidate && !sessionIsArchived(candidate.id, current.sessionMeta)
@@ -53,7 +53,7 @@ export async function openRemoteProjectSession(
         submitted: runtime.submittedComposerDrafts.has(latest.id),
       })) {
         await get().selectSession(latest.id, { navigationIntent: intent });
-        return;
+        return runtime.navigationIntentIsCurrent(intent) ? latest.id : null;
       }
     }
     const result = await api.createRemoteSession({ hostKey: project.hostKey,
@@ -61,8 +61,9 @@ export async function openRemoteProjectSession(
     const session = safeSessionSummary(result.session);
     // Preserve a successful creation even if the user navigated away while it ran.
     set((current) => ({ sessions: [session, ...current.sessions.filter((item) => item.id !== session.id)] }));
-    if (!runtime.navigationIntentIsCurrent(intent)) return;
+    if (!runtime.navigationIntentIsCurrent(intent)) return null;
     await get().selectSession(session.id, { navigationIntent: intent });
+    return runtime.navigationIntentIsCurrent(intent) ? session.id : null;
   })();
   runtime.pendingNewSessionRequests.set(scope, request);
   try { await request; }
