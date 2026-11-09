@@ -14,6 +14,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `apps/desktop/src/features/chat/transcript/ToolRow.tsx` | +24 −4 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/src/features/settings/SettingsPage.tsx` | +4 −2 | hook | fix(voice): pass settings state to voice panel |
 | `apps/desktop/src/lib/api.ts` | +29 −0 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
+| `apps/desktop/test/mode-definitions-renderer.test.mjs` | +2 −0 | hook (test whitelist, B4) | sync 2026-11-09: upstream's new strict-specifier loader for `api.ts` must know `@pi-desktop/shared/fork` |
 | `apps/desktop/src/lib/assistant-turns.ts` | +64 −21 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/src/lib/settings-search.ts` | +3 −0 | hook | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/src/lib/subagent-topology.ts` | +103 −13 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
@@ -175,7 +176,7 @@ Not fork features: upstream edits to `.github/workflows/*` that the Dash0 GitHub
 | --- | --- | --- | --- |
 | `.github/workflows/ci.yml` | +0 −15 | `trusted-extensions-e2e` job, five steps upstream added between 2026-10-27 and 2026-11-09: `Run staged mode Host/process E2E` (`PI_SCRATCH_DIR=${{ runner.temp }} node scripts/e2e-mode-definitions.mjs`), `Run plugin project enumeration Host/process E2E` (`pnpm test:e2e:plugin-projects`), `Run transcript turn-completion E2E` (`xvfb-run … node scripts/e2e-transcript-turn-completion.mjs`), `Run MCP market owner E2E` (`xvfb-run … node --test apps/desktop/test/mcp-market-owner-user-path.test.mjs`), `Run File Manager directory location E2E` (`xvfb-run … pnpm test:e2e:file-manager-directory`). Apply with `git diff origin/main upstream/main -- .github/workflows/ci.yml`. | sync 2026-11-02, extended sync 2026-11-09 |
 
-Total upstream files touched: 118 (including the pending workflow change). `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8).
+Total upstream files touched: 119 (including the pending workflow change). `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8).
 
 Fork E2E islands (never conflict): `scripts/e2e/fork-nested-topology.tsx` + `scripts/e2e-fork-nested-topology.mjs` (run with `node scripts/e2e-fork-nested-topology.mjs`).
 

@@ -18,6 +18,7 @@ const runModel = await import("../src/features/modes/mode-run-model.ts");
 const store = await import("../src/features/modes/modes-store.ts");
 const modesApi = await import("../src/features/modes/modes-api.ts");
 const settingsModel = await import("../src/features/modes/modes-settings-model.ts");
+const sharedFork = await import("@pi-desktop/shared/fork"); // fork
 const planning = await import("../src/stores/helpers/planning-projection.ts");
 const safety = await import("../src/lib/remote-session-safety.ts");
 
@@ -270,6 +271,7 @@ function loadApi(bridge) {
   });
   const imports = {
     "@pi-desktop/shared": shared,
+    "@pi-desktop/shared/fork": sharedFork, // fork
     "./plan-history": { projectPlanHistory: (messages) => messages },
     "./remote-session-safety": safety,
     "./remote-ipc-safety": { guardRemoteInvocation() {} },
