@@ -1,6 +1,7 @@
 // Fork-only imports (separate statement so upstream import edits never conflict).
 import { boundSessionRead } from "./session-read-bounds";
 import { shell } from "electron";
+import type { ModeCatalogService } from "../runtime/mode-catalog";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { mkdirSync } from "node:fs";
 import {
@@ -107,6 +108,8 @@ export type SessionIpcDependencies = {
   };
   forgetTranscriptRewriteHistory: (sessionId: string) => void;
   stripWinLongPrefix: (path: string) => string;
+  /** Resolves the definition snapshot attached to a mode selection. */
+  modeCatalog: Pick<ModeCatalogService, "snapshotFor">;
 };
 
 export function registerSessionIpc({
@@ -125,6 +128,7 @@ export function registerSessionIpc({
   beginTranscriptRewrite,
   forgetTranscriptRewriteHistory,
   stripWinLongPrefix,
+  modeCatalog,
 }: SessionIpcDependencies): void {
   let host: HostProcess | null = null;
   let sidecar: AgentSidecar | null = null;
@@ -364,6 +368,20 @@ export function registerSessionIpc({
       });
     }
     return readSessionCollaboration(host, sidecar, sessionId);
+  });
+  handle(IPC.invoke.sessionUsageCost, async (input?: { sessionId?: unknown }) => {
+    const sessionId = typeof input?.sessionId === "string" ? input.sessionId.trim() : "";
+    if (!sessionId || sessionId.length > 256) {
+      throw Object.assign(new Error("sessionId must be a non-empty string of at most 256 characters"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
+    // Imported native Pi sessions have no Desktop turn ledger to roll up.
+    if (sessionId.startsWith("native-pi:")) {
+      return { sessionId, turnCount: 0, requestCount: 0, providers: [] };
+    }
+    if (!host) throw new Error("host unavailable");
+    return host.call("session.usageCost", { sessionId });
   });
   handle(IPC.invoke.sessionOpen, async (rawSessionId: string) => {
     if (!host) throw new Error("host unavailable");
@@ -654,9 +672,12 @@ export function registerSessionIpc({
     ) => {
       rejectNativeMutation(id, "configuration");
       if (!host) throw new Error("host unavailable");
+      // Every mode other than the builtin Agent and Plan carries the parsed
+      // definition; the Host persists it as the session's policy snapshot.
+      const modeSnapshot = await modeCatalog.snapshotFor(config.mode);
       const result = await host.call<{ session?: RuntimeSession | null }>(
         "session.configure",
-        { id, ...config },
+        { id, ...config, ...(modeSnapshot ? { modeSnapshot } : {}) },
       );
       if (!result.session) return result;
       const { providers, defaults } = await sessionCapabilityContext();

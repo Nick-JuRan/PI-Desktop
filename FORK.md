@@ -29,8 +29,8 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `packages/agent-runtime/src/delegation-chain.ts` | +22 −2 | integration point | feat: 引入子代理深度、子代理工具调用选择; fix(subagents): bound resumable chains per direct parent |
 | `packages/agent-runtime/src/delegation-history.ts` | +11 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/agent-runtime/src/runtime.test.ts` | +273 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
-| `packages/agent-runtime/src/runtime.ts` | +299 −50 | integration point | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue; sync 2026-10-27: upstream `3e4bbe123` removed the resumable system-prompt block the depth guard decorated (list now lives in `TaskList`), and upstream `e9f1ca7c1`'s `delegatePrompt` / `scopeDelegateTools(…, applyInstructions)` carry the fork's selection, `parentLabel`, `canDelegate` and trailing `skillIds` |
-| `packages/agent-runtime/src/sidecar.ts` | +82 −0 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
+| `packages/agent-runtime/src/runtime.ts` | +302 −51 | integration point | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue; sync 2026-10-27: upstream `3e4bbe123` removed the resumable system-prompt block the depth guard decorated (list now lives in `TaskList`), and upstream `e9f1ca7c1`'s `delegatePrompt` / `scopeDelegateTools(…, applyInstructions)` carry the fork's selection, `parentLabel`, `canDelegate` and trailing `skillIds`; sync 2026-11-09: upstream `f96c59629` wraps `TaskWait` / `TaskList` / `TaskStop` in `buildJobTools(...)` (background Bash jobs) and declares them without subagents — the fork passes its `ROOT_DELEGATION_SCOPE` tools as the delegates and keeps the depth-0 gate around the whole list |
+| `packages/agent-runtime/src/sidecar.ts` | +81 −0 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules; sync 2026-11-09 dropped the fork's unused `MAX_INLINE_IMAGE_BYTES` import when upstream removed `normalizeMode` from the same import list |
 | `packages/agent-runtime/src/subagent.test.ts` | +13 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/agent-runtime/src/subagent.ts` | +19 −3 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/host-runtime/src/agent-sidecar.ts` | +9 −4 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
@@ -100,7 +100,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `apps/desktop/test/extensions-page.test.mjs` | +4 −1 | hook | fix(desktop): make Windows build and test gates portable |
 | `apps/desktop/test/helpers/domain-source.mjs` | +6 −2 | hook | fix(desktop): make Windows build and test gates portable |
 | `apps/desktop/test/icon-tooltip.test.mjs` | +1 −1 | hook | fix(test): tolerate CRLF in tooltip source check |
-| `apps/desktop/test/macos-release-verification.test.mjs` | +11 −9 | integration point | fix(desktop): make Windows build and test gates portable |
+| `apps/desktop/test/macos-release-verification.test.mjs` | +13 −11 | integration point | fix(desktop): make Windows build and test gates portable; sync 2026-11-09 wrapped upstream's two new `stapler validate` retry tests in `macosTest` like every other test in the file |
 | `apps/desktop/test/macos-signing-diagnostics.test.mjs` | +8 −6 | integration point | fix(desktop): make Windows build and test gates portable |
 | `apps/desktop/test/macos-signing-watchdog.test.mjs` | +14 −12 | integration point | fix(desktop): make Windows build and test gates portable |
 | `apps/desktop/test/plugin-websocket.test.mjs` | +13 −4 | integration point | fix(desktop): make Windows build and test gates portable |
@@ -153,7 +153,7 @@ Spec: `docs/spec/90-fork/07-transcript-reads-and-history-pages.md`. Islands: `ap
 | `apps/desktop/test/bounded-history-mutations.test.mjs` | +5 −0 | hook (test whitelist, B4) | sync 2026-11-02: upstream's strict-specifier loader must know the fork modules `transcript-reading`, `session-read-bounds`, `@pi-desktop/shared/fork` |
 | `apps/desktop/test/session-list-runtime.test.mjs` | +1 −0 | hook (test whitelist, B4) | sync 2026-11-02: same for `./session-read-bounds` |
 | `crates/host-core/src/sessions.rs` | +245 −7 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
-| `crates/host-core/src/transcripts.rs` | +42 −15 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `crates/host-core/src/transcripts.rs` | +43 −16 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages); sync 2026-11-09 ported upstream `32b86f49d`'s tail-window fix (`window_end = file_len` when the window ends at the last message) onto the fork's positions-based `read_transcript_lines_with_layout` |
 | `crates/host-core/src/transcripts/layout.rs` | +116 −3 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `crates/host-core/src/transcripts_layout_tests.rs` | +85 −2 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `docs/spec/03-runtime/01-ipc-protocol.md` | +22 −6 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
@@ -173,7 +173,7 @@ Not fork features: upstream edits to `.github/workflows/*` that the Dash0 GitHub
 
 | upstream file | +/− vs upstream | what upstream added | since |
 | --- | --- | --- | --- |
-| `.github/workflows/ci.yml` | +0 −8 | `trusted-extensions-e2e` job, three steps upstream added between 2026-10-27 and 2026-11-01: `Run plugin project enumeration Host/process E2E` (`pnpm test:e2e:plugin-projects`), `Run transcript turn-completion E2E` (`xvfb-run … node scripts/e2e-transcript-turn-completion.mjs`), `Run MCP market owner E2E` (`xvfb-run … node --test apps/desktop/test/mcp-market-owner-user-path.test.mjs`). Apply with `git diff origin/main upstream/main -- .github/workflows/ci.yml`. | sync 2026-11-02 |
+| `.github/workflows/ci.yml` | +0 −15 | `trusted-extensions-e2e` job, five steps upstream added between 2026-10-27 and 2026-11-09: `Run staged mode Host/process E2E` (`PI_SCRATCH_DIR=${{ runner.temp }} node scripts/e2e-mode-definitions.mjs`), `Run plugin project enumeration Host/process E2E` (`pnpm test:e2e:plugin-projects`), `Run transcript turn-completion E2E` (`xvfb-run … node scripts/e2e-transcript-turn-completion.mjs`), `Run MCP market owner E2E` (`xvfb-run … node --test apps/desktop/test/mcp-market-owner-user-path.test.mjs`), `Run File Manager directory location E2E` (`xvfb-run … pnpm test:e2e:file-manager-directory`). Apply with `git diff origin/main upstream/main -- .github/workflows/ci.yml`. | sync 2026-11-02, extended sync 2026-11-09 |
 
 Total upstream files touched: 118 (including the pending workflow change). `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8).
 
