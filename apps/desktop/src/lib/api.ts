@@ -175,6 +175,7 @@ import {
   defaultCommandShellForPlatform,
   IPC,
   isCommandShellId,
+  normalizeBuiltinMode,
   normalizeLargePasteThreshold,
   normalizeMode,
   normalizeNetworkProxy,
@@ -470,7 +471,8 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
       : "fully-folded",
     autoCollapseSettledGroups: settings.autoCollapseSettledGroups !== false,
     autoCollapseThinking: settings.autoCollapseThinking !== false,
-    defaultMode: normalizeMode((settings as { defaultMode?: unknown }).defaultMode),
+    // The default mode stays a builtin; user modes are chosen per session.
+    defaultMode: normalizeBuiltinMode((settings as { defaultMode?: unknown }).defaultMode),
     infiniteProviderRetry:
       (settings as { infiniteProviderRetry?: unknown }).infiniteProviderRetry === true,
     jevEnabled: (settings as { jevEnabled?: unknown }).jevEnabled === true,
@@ -865,6 +867,8 @@ export const api = {
     })),
   getSessionCollaboration: (sessionId: string) =>
     invoke<SessionCollaborationSummary>(IPC.invoke.sessionCollaboration, { sessionId }),
+  getSessionUsageCost: (sessionId: string) =>
+    invoke<import("@pi-desktop/shared").SessionUsageCost>(IPC.invoke.sessionUsageCost, { sessionId }),
   deleteSession: (id: string) => invoke(IPC.invoke.sessionDelete, id),
   getSessionScratchPath: (sessionId: string) =>
     invoke<{ path: string }>(IPC.invoke.sessionGetScratchPath, { sessionId }),
@@ -1085,6 +1089,8 @@ export const api = {
     invoke<{ ok: boolean }>(IPC.invoke.providersOauthDelete, providerId),
   getProject: () =>
     invoke<{ workspace: ProjectWorkspace | null }>(IPC.invoke.projectGet),
+  getSidebarPreferences: () => invoke<unknown>(IPC.invoke.sidebarPreferencesGet),
+  setSidebarPreferences: (value: unknown) => invoke<void>(IPC.invoke.sidebarPreferencesSet, value),
   listProjects: () =>
     invoke<{ projects: ProjectRecord[] }>(IPC.invoke.projectList),
   listProjectGroups: () =>
@@ -1764,6 +1770,8 @@ export const api = {
       ...(sessionId ? { sessionId } : {}),
     }),
   fsReveal: (path: string, sessionId?: string) => invoke(IPC.invoke.fsReveal, { path, ...(sessionId ? { sessionId } : {}) }),
+  fsRevealDirectory: (path: string, sessionId: string) =>
+    invoke(IPC.invoke.fsReveal, { path, sessionId, directory: true }),
   fsOpen: (path: string, mimeType?: string, sessionId?: string) =>
     invoke(IPC.invoke.fsOpen, { path, mimeType, ...(sessionId ? { sessionId } : {}) }),
   fsIndex: (sessionId?: string) => invoke<FsIndexResult>(IPC.invoke.fsIndex, { ...(sessionId ? { sessionId } : {}) }),
@@ -1772,12 +1780,19 @@ export const api = {
   /**
    * Complete a file reference from chat text to a real file (D320 follow-up).
    * The main process owns the root order — project, session scratch,
-   * attachments — because only it can see the scratch store.
+   * attachments — because only it can see the scratch store. `allowDirectory`
+   * lets an exact reference name a real directory (issue #2113); shorthand
+   * resolution keeps answering files only.
    */
-  fsResolveRef: (ref: string, sessionId?: string) =>
+  fsResolveRef: (
+    ref: string,
+    sessionId?: string,
+    options?: { allowDirectory?: boolean },
+  ) =>
     invoke<FsChatRefResolveResult>(IPC.invoke.fsResolveRef, {
       ref,
       ...(sessionId ? { sessionId } : {}),
+      ...(options?.allowDirectory ? { allowDirectory: true } : {}),
     }),
   composerCommands: () =>
     invoke<{ commands: ComposerCommand[] }>(IPC.invoke.composerCommands),

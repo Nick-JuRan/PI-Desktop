@@ -88,7 +88,8 @@ test("paste uses native directory paths even when Chromium exposes no File", asy
   assert.equal(run.drafts.length, 1);
   assert.equal(run.drafts[0].references[0].kind, "directory");
   assert.equal(run.drafts[0].references[0].path, folder.path);
-  assert.equal(run.drafts[0].text, "before \ue001after");
+  assert.equal(run.drafts[0].text, "before after");
+  assert.equal(run.drafts[0].references[0].token, undefined);
   assert.equal(run.imported.length, 0);
   assert.equal(run.transfers.length, 0);
   assert.deepEqual(run.errors, []);
@@ -99,6 +100,7 @@ test("mixed native folders and files preserve their order and use the existing i
   await run.paste();
   assert.equal(run.drafts.length, 1);
   assert.deepEqual(Array.from(run.drafts[0].references, reference => reference.kind), ["directory", "file"]);
+  assert.equal(run.drafts[0].text, "before \ue001after");
   assert.deepEqual(run.imported, [{ session: "source", token: "native-selection" }]);
 });
 
@@ -123,7 +125,7 @@ test("directory paste preserves edits made while native metadata is pending", as
   run.edit("newer edits remain");
   resume();
   await pending;
-  assert.equal(run.drafts[0].text, "newer e\ue001dits remain");
+  assert.equal(run.drafts[0].text, "newer edits remain");
 });
 
 test("native directory paste never reads browser directory bytes", async () => {
@@ -171,4 +173,14 @@ test("Word text plus a generated image keeps text paste without a native file re
   assert.deepEqual(run.errors, []);
   assert.deepEqual(run.nativeReads, []);
   assert.deepEqual(run.textInsertions, ["Copied text from Word"]);
+});
+
+test("screenshot-only paste transfers image bytes without waiting for native directory discovery", async () => {
+  const image = new File(["screenshot bytes"], "image.png", { type: "image/png" });
+  const run = harness(null, { files: [image] });
+  await run.paste();
+  assert.deepEqual(run.errors, []);
+  assert.deepEqual(run.nativeReads, []);
+  assert.equal(run.transfers.length, 1);
+  assert.equal(new TextDecoder().decode(run.transfers[0][0].data), "screenshot bytes");
 });
