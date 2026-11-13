@@ -153,6 +153,7 @@ Spec: `docs/spec/90-fork/07-transcript-reads-and-history-pages.md`. Islands: `ap
 | `apps/desktop/test/transcript-reading.test.mjs` | +52 −24 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/test/bounded-history-mutations.test.mjs` | +5 −0 | hook (test whitelist, B4) | sync 2026-11-02: upstream's strict-specifier loader must know the fork modules `transcript-reading`, `session-read-bounds`, `@pi-desktop/shared/fork` |
 | `apps/desktop/test/session-list-runtime.test.mjs` | +1 −0 | hook (test whitelist, B4) | sync 2026-11-02: same for `./session-read-bounds` |
+| `apps/desktop/test/mode-session-create.test.mjs` | +1 −0 | hook (test whitelist, B4) | sync 2026-11-13: upstream's new strict-specifier loader for `session-ipc.ts` must know `./session-read-bounds` |
 | `crates/host-core/src/sessions.rs` | +245 −7 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `crates/host-core/src/transcripts.rs` | +43 −16 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages); sync 2026-11-09 ported upstream `32b86f49d`'s tail-window fix (`window_end = file_len` when the window ends at the last message) onto the fork's positions-based `read_transcript_lines_with_layout` |
 | `crates/host-core/src/transcripts/layout.rs` | +116 −3 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
@@ -176,7 +177,7 @@ Not fork features: upstream edits to `.github/workflows/*` that the Dash0 GitHub
 | --- | --- | --- | --- |
 | `.github/workflows/ci.yml` | +0 −15 | `trusted-extensions-e2e` job, five steps upstream added between 2026-10-27 and 2026-11-09: `Run staged mode Host/process E2E` (`PI_SCRATCH_DIR=${{ runner.temp }} node scripts/e2e-mode-definitions.mjs`), `Run plugin project enumeration Host/process E2E` (`pnpm test:e2e:plugin-projects`), `Run transcript turn-completion E2E` (`xvfb-run … node scripts/e2e-transcript-turn-completion.mjs`), `Run MCP market owner E2E` (`xvfb-run … node --test apps/desktop/test/mcp-market-owner-user-path.test.mjs`), `Run File Manager directory location E2E` (`xvfb-run … pnpm test:e2e:file-manager-directory`). Apply with `git diff origin/main upstream/main -- .github/workflows/ci.yml`. | sync 2026-11-02, extended sync 2026-11-09 |
 
-Total upstream files touched: 119 (including the pending workflow change). `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8).
+Total upstream files touched: 120 (including the pending workflow change). `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8).
 
 Fork E2E islands (never conflict): `scripts/e2e/fork-nested-topology.tsx` + `scripts/e2e-fork-nested-topology.mjs` (run with `node scripts/e2e-fork-nested-topology.mjs`).
 
