@@ -1580,9 +1580,11 @@ Project drag/drop follows these patterns:
   path on every surface that names it. Unpositioned `.html` and `.htm`
   references also offer an **Open with** submenu containing File Manager,
   built-in browser, and default browser. Each choice completes the reference
-  first and opens that exact resolved file. Other file types keep the copy
-  actions only; the transcript menu has no **Show in folder** action. A file
-  outside the project has no relative path to copy and reports that fact.
+  first and opens that exact resolved file. In a session that may use local
+  files, every reference also offers **Show in folder**, which completes the
+  reference the same way and reveals that resolved file in the system file
+  manager; a remote workspace keeps the copy actions only. A file outside the
+  project has no relative path to copy and reports that fact.
 - In the host `file:` tab, a conversation MP4 that cannot be previewed because
   it is binary or exceeds the text preview limit offers **Open with default
   application**. This applies to named `.mp4` files and extensionless
@@ -1665,6 +1667,16 @@ Project drag/drop follows these patterns:
   whose total heights cancel. Corrections run in the current layout/resize
   delivery, not in a later painted frame, and unchanged/subpixel alignment does
   not write `scrollTop` and interrupt native smooth scrolling.
+- Reading displacement excludes the browser's mandatory boundary clamp after
+  content/viewport shrinkage; that clamp must not shift the intended text offset
+  a second time. Native input in the same layout delivery still advances the
+  reading target. An unreachable target degrades to the legal scroll boundary.
+  Where parser-owned source positions exist, the anchor identifies the message,
+  source block, exact rendered text version, and visible character rather than
+  treating a DOM node as identity. Reconstructed unchanged content is re-resolved,
+  including line wrapping within a long paragraph. Changed/missing content falls
+  back to the message anchor without inventing an equivalent sentence. Boundary
+  fallback rebases the held target so repeated restores do not repeat writes.
 - All paging paths leave `overflow-y` and input untouched, including the
   `<= 120px` hard edge, explicit earlier-history actions, and the underfilled
   top-boundary observer. Wheel/trackpad, touch and keyboard input continue
