@@ -42,6 +42,7 @@ import {
   isPendingPlan,
   mergePlanCheckpoint,
 } from "../../lib/plan-mode-state";
+import { withTranscriptTurnId } from "../../lib/transcript-turn-id";
 import type { AppState } from "../app-state";
 import { modeAfterPlanningUpdate, visiblePlanningState } from "../helpers/planning-projection";
 import type { SessionRuntime } from "../runtime/session-runtime";
@@ -231,6 +232,7 @@ export function createEventsSlice({
     },
 
     handleAgentEvent: (envelope) => {
+      envelope = withTranscriptTurnId(envelope);
       if (envelope.event.type === "message_end") {
         const checkpoint = historyCheckpoints.get(envelope.sessionId);
         if (checkpoint) {
@@ -594,6 +596,7 @@ export function createEventsSlice({
               ...state.messages,
               {
                 id: event.toolCallId,
+                ...(envelope.turnId ? { turnId: envelope.turnId } : {}),
                 role: "tool",
                 content: "",
                 createdAt: new Date(envelope.ts).toISOString(),
@@ -639,6 +642,7 @@ export function createEventsSlice({
             const display = capToolResultForDisplay(event.result);
             const completed = {
               id: event.toolCallId,
+              ...(envelope.turnId ? { turnId: envelope.turnId } : {}),
               role: "tool" as const,
               content: display.content,
               createdAt: toolStart?.createdAt ?? completedAt,
