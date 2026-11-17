@@ -48,7 +48,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `apps/desktop/electron/main/ipc/register.ts` | +2 −0 | hook | fix(voice): complete local dictation integration |
 | `apps/desktop/electron/main/ipc/skills-ipc.ts` | +9 −0 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
 | `apps/desktop/electron/main/plugin-runtime.ts` | +10 −6 | integration point | feat(subagents): discover trusted extension tools dynamically |
-| `apps/desktop/electron/main/runtime/session-launch.ts` | +169 −1 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules; sync 2026-10-26 restored upstream's `../oauth` import position (the fork had moved it, which conflicted) |
+| `apps/desktop/electron/main/runtime/session-launch.ts` | +167 −0 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules; sync 2026-10-26 restored upstream's `../oauth` import position (the fork had moved it, which conflicted); sync 2026-11-17: upstream re-sorted its imports, so the fork's `TrustedExtensionLoadReport` / `TrustedExtensionSpec` types and the `AgentExtensionBridge` import moved into the fork-only import block at the top of the file (B3) |
 | `apps/desktop/electron/main/runtime/sidecar.ts` | +9 −1 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/src/components/settings/AgentSubagentsPage.tsx` | +75 −4 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
 | `apps/desktop/src/components/settings/SubagentEditorSheet.tsx` | +213 −27 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
@@ -111,7 +111,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `apps/desktop/test/session-message-presentation.test.mjs` | +1 −0 | hook | fix(test): stub transcript timestamp in presentation fixture |
 | `apps/pi-host/src/config.test.ts` | +4 −4 | integration point | fix(desktop): make Windows build and test gates portable |
 | `apps/pi-host/src/host-operations.test.ts` | +2 −2 | hook | fix(desktop): make Windows build and test gates portable |
-| `apps/pi-host/src/host-operations.ts` | +9 −1 | integration point | fix(desktop): make Windows build and test gates portable |
+| `apps/pi-host/src/host-operations.ts` | +6 −1 | integration point | fix(desktop): make Windows build and test gates portable; sync 2026-11-17: upstream reformatted the `REMOTE_PATH_FORBIDDEN` throw, the fork keeps its `relative()`/`sep` containment check |
 | `crates/host-core/src/mcp_servers/tests.rs` | +2 −1 | hook | fix(desktop): make Windows build and test gates portable |
 | `crates/host-core/src/sessions/fork_files.rs` | +6 −1 | hook | merge resolution |
 | `crates/host-core/src/user_skills/tests.rs` | +1 −1 | hook | fix(desktop): make Windows build and test gates portable |
