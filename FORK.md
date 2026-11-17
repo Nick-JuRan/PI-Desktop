@@ -58,7 +58,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `apps/desktop/test/subagent-editor-presets.test.mjs` | +7 −3 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/test/subagent-model-launch.test.mjs` | +1 −0 | hook | feat(subagents): discover trusted extension tools dynamically |
 | `apps/desktop/test/subagent-wiring.test.mjs` | +32 −0 | integration point | feat(subagents): discover trusted extension tools dynamically |
-| `crates/host-core/src/user_subagents.rs` | +36 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
+| `crates/host-core/src/user_subagents.rs` | +89 −1 | integration point | feat: 引入子代理深度、子代理工具调用选择; feat(subagents): raise MAX_SUBAGENT_BYTES to 64 KiB — the one replaced upstream line is the constant (upstream 32 KiB), the rest is its regression test |
 | `packages/shared/package.json` | +4 −0 | hook | refactor(fork): isolate subagent-depth into fork-owned modules |
 | `packages/shared/src/index.ts` | +1 −0 | hook | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/shared/src/protocol.ts` | +3 −0 | hook | feat: 引入子代理深度、子代理工具调用选择 |

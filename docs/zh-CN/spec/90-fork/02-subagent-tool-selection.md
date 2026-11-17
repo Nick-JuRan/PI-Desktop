@@ -24,6 +24,8 @@ fork 功能。扩展 `03-runtime/02-agent-runtime.md` §5f（子代理工具）�
 
 子智能体文档在已有的 frontmatter `tools` 数组中持久化动态能力授权（`skill:<id>`、`mcp:<server-id>` 或完整插件工具名）。host-core 在归一化时保留这些带命名空间的条目（`crates/host-core/src/user_subagents.rs`）；实时的 Electron/sidecar 目录在委派时校验它们，因此新增选择器不需要数据库或文档版本迁移。
 
+host-core 接受最大 64 KiB 的子智能体文档（`crates/host-core/src/user_subagents.rs` 中的 `MAX_SUBAGENT_BYTES`；upstream 的上限是 32 KiB）。同一个常量约束目录扫描、`agents.create`、`agents.update` 和 `agents.read`，因此 32 KiB 到 64 KiB 之间的任务简报现在会出现在子智能体列表中并能从编辑器保存，而不是被扫描跳过或以 `SUBAGENT_INVALID: document exceeds 32768 bytes` 拒绝；超过 64 KiB 的文档在每条路径上仍被拒绝。其他边界不变：运行时解析 host-core 交给它的任何文档，同步的配置实体可达 512 KiB，host RPC 单行可达 64 MiB。正文是子代理的系统提示词，因此更长的简报会在每次委派时消耗更多提示词 token。
+
 ## 5. 设置界面
 
 在 **可用工具** 下，编辑面板保留七个稳定的内置工具复选框，并增加一个独立的 **高级** 折叠区。其中的分组显示当前工作区活动的 Skill、用户 MCP 服务器和插件智能体工具。选择器保持紧凑：Skill 和插件工具只显示名称，MCP 行显示名称和已加载工具数；折叠区旁显示已选数量。选中一个 Skill 只把该 Skill 授予子代理，选中一个 MCP 服务器授予该服务器发现的全部工具，插件工具逐个选择。加载状态与空状态替代空白面板显示。面板打开时刷新目录，被范围禁用的能力不出现在列表中。文案位于每个语言文件顶部的 fork 块（`extensions.subagents.toolCatalog*`、`extensions.subagents.mcp*`）。
