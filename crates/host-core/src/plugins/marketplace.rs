@@ -272,6 +272,11 @@ impl PluginManager {
 
     pub fn refresh_market(&self, force: bool) -> Result<Value> {
         let catalog = self.refresh_catalog_from_remote(force)?;
+        // A refresh the user asked for must not be answered by a page cached
+        // before it.
+        if force {
+            super::market_browse::clear_browse_cache();
+        }
         Ok(json!({
             "providerId": catalog.provider_id,
             "name": catalog.name,
@@ -298,7 +303,7 @@ impl PluginManager {
     /// A snapshot left by a different source is skipped rather than deleted,
     /// so its package URLs and checksums cannot be paired with the official
     /// catalog.
-    fn load_cached_catalog(&self) -> Result<MarketCatalogFile> {
+    pub(crate) fn load_cached_catalog(&self) -> Result<MarketCatalogFile> {
         if self.cached_catalog_matches_source(&self.market_source_url()) {
             if let Ok(raw) = fs::read_to_string(self.catalog_path()) {
                 if let Ok(catalog) = serde_json::from_str::<MarketCatalogFile>(&raw) {
@@ -324,6 +329,25 @@ impl PluginManager {
             Ok(catalog) => Ok(catalog),
             Err(_) => self.load_catalog(),
         }
+    }
+
+    /// Turn an entry's category ids into the labels the cards show, keeping the
+    /// ids for filtering.
+    ///
+    /// A catalog that predates the vocabulary carries no labels, and then the
+    /// id is what the reader sees — the same fallback the website uses.
+    pub(crate) fn localize_categories(
+        &self,
+        entry: &MarketCatalogEntry,
+        summary: &mut MarketPluginSummary,
+        labels: &CategoryLabels,
+    ) {
+        summary.category_ids = entry.categories.clone();
+        summary.categories = entry
+            .categories
+            .iter()
+            .map(|id| category_label(labels, id, &self.locale))
+            .collect();
     }
 
     pub fn market_search(
@@ -355,22 +379,26 @@ impl PluginManager {
                     continue;
                 }
             }
-            out.push(self.to_market_summary(&entry));
+            let mut summary = self.to_market_summary(&entry);
+            self.localize_categories(&entry, &mut summary, &catalog.category_labels);
+            out.push(summary);
         }
         Ok(out)
     }
 
     pub fn market_get(&self, plugin_id: &str) -> Result<MarketPluginDetail> {
         let catalog = self.load_catalog()?;
-        let mut entry = catalog
-            .plugins
-            .into_iter()
-            .find(|p| p.id == plugin_id)
-            .ok_or_else(|| anyhow!("PLUGIN_NOT_FOUND: {plugin_id}"))?;
+        // A card from a remote page can be newer than the snapshot; its entry
+        // is what the user just clicked, so the detail reads it from there.
+        let mut entry =
+            super::market_browse::cached_browse_entry(&self.market_source_url(), plugin_id)
+                .or_else(|| catalog.plugins.into_iter().find(|p| p.id == plugin_id))
+                .ok_or_else(|| anyhow!("PLUGIN_NOT_FOUND: {plugin_id}"))?;
         entry
             .versions
             .sort_by(|a, b| compare_plugin_versions(&b.version, &a.version));
-        let summary = self.to_market_summary(&entry);
+        let mut summary = self.to_market_summary(&entry);
+        self.localize_categories(&entry, &mut summary, &catalog.category_labels);
         let permissions = latest_market_version(&entry.versions)
             .map(|v| v.permissions.clone())
             .unwrap_or_default();
@@ -541,6 +569,7 @@ impl PluginManager {
         let installed = self.get(&entry.id);
         let catalog_url = self.market_source_url();
         MarketPluginSummary {
+            category_ids: Vec::new(),
             id: entry.id.clone(),
             name: localized_field(entry.i18n.as_ref(), &self.locale, |text| text.name.as_ref())
                 .cloned()
@@ -630,6 +659,30 @@ impl PluginManager {
     fn is_trusted_channel(&self) -> bool {
         self.market_source_url() == OFFICIAL_CHANNEL_CATALOG_URL
     }
+}
+
+/// Label for one category id in one locale.
+///
+/// The exact locale wins; then the same language with another region
+/// (`zh-TW` reads `zh-CN`); then English; then the id itself.
+pub(crate) fn category_label(labels: &CategoryLabels, id: &str, locale: &str) -> String {
+    let Some(by_locale) = labels.get(id) else {
+        return id.to_string();
+    };
+    if let Some(text) = by_locale.get(locale).filter(|text| !text.trim().is_empty()) {
+        return text.clone();
+    }
+    let language = locale.split(['-', '_']).next().unwrap_or(locale);
+    if let Some((_, text)) = by_locale
+        .iter()
+        .find(|(key, text)| !text.trim().is_empty() && key.starts_with(language))
+    {
+        return text.clone();
+    }
+    if let Some(text) = by_locale.get("en").filter(|text| !text.trim().is_empty()) {
+        return text.clone();
+    }
+    id.to_string()
 }
 
 pub(crate) fn host_supports_version(version: &MarketVersion) -> bool {

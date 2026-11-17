@@ -2546,28 +2546,57 @@
   padding-left: 14px;
 }
 
+/* Fork (90-fork/01): every card sits in a branch wrapper that also holds the
+   card's nested children, so the branch, not the card, is the list item whose
+   first/last position ends a stem. The stem is still built from upstream's
+   per-card segments; it continues past a card's children to the next branch,
+   and a nested list hangs its own stem from the parent card's bottom edge. */
 .subagent-topology-branch {
   min-width: 0;
+}
+
+.subagent-topology-branch > .subagent-topology-node {
+  margin: 0;
 }
 
 .subagent-topology-children {
   position: relative;
   display: grid;
   min-width: 0;
-  gap: 10px;
+  gap: var(--subagent-node-gap);
   margin-left: 24px;
-  padding: 10px 0 0 14px;
+  padding: var(--subagent-node-gap) 0 0 14px;
 }
 
-.subagent-topology-children::before {
+.subagent-topology-agents .subagent-topology-branch > .subagent-topology-node::after {
+  top: calc(var(--subagent-node-gap) / -2);
+  bottom: calc(var(--subagent-node-gap) / -2);
+}
+
+.subagent-topology-agents .subagent-topology-branch:first-child > .subagent-topology-node::after {
+  top: 50%;
+}
+
+.subagent-topology-agents .subagent-topology-branch:last-child > .subagent-topology-node::after {
+  bottom: 50%;
+}
+
+.subagent-topology-children::after {
   position: absolute;
-  top: 0;
-  bottom: 36px;
-  left: 0;
+  top: calc(var(--subagent-node-gap) / 2);
+  bottom: calc(var(--subagent-node-gap) / -2);
+  left: -38px;
   width: 2px;
-  border-radius: var(--radius-full);
   background: var(--ds-tile-deep);
   content: "";
+}
+
+.subagent-topology-agents .subagent-topology-branch:last-child > .subagent-topology-children::after {
+  content: none;
+}
+
+.subagent-topology-agents .subagent-topology-children > .subagent-topology-branch:first-child > .subagent-topology-node::after {
+  top: calc(-1 * var(--subagent-node-gap));
 }
 
 .subagent-topology-node {
@@ -2878,6 +2907,14 @@
 
   .subagent-topology-children {
     margin-left: 14px;
+  }
+
+  .subagent-topology-children::after {
+    left: -28px;
+  }
+
+  .subagent-topology-agents > .subagent-topology-branch:first-child > .subagent-topology-node::after {
+    top: 0;
   }
 }
 

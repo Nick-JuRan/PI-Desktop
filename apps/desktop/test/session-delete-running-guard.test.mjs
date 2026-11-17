@@ -5,6 +5,7 @@ import test from "node:test";
 import ts from "typescript";
 import { ErrorCodes } from "../../../packages/shared/src/errors.ts";
 import { IPC } from "../../../packages/shared/src/protocol.ts";
+const sessionReadBounds = await import("../electron/main/ipc/session-read-bounds.ts"); // fork
 
 function load(relative, imports) {
   const file = new URL(relative, import.meta.url);
@@ -58,6 +59,7 @@ function buildHarness({ hostCall, sidecarCall }) {
     "../importers": {},
     "../services/session-collaboration": {},
     "../bootstrap/remote-hosts.js": { getActiveRemoteHostsBoot: () => null },
+    "./session-read-bounds": sessionReadBounds, // fork
     "../services/session-search": {
       searchSessionsAcrossSources: async () => ({ hits: [], nextOffset: null }),
     },

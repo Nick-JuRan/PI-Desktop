@@ -287,7 +287,7 @@ test("nested Task rows render as connected topology nodes with tab behavior", ()
   assert.match(messagesCss, /\.subagent-topology-children \{[^}]*margin-left: 24px/);
   assert.match(
     messagesCss,
-    /\.subagent-topology-children::before \{[^}]*background: var\(--ds-tile-deep\)/,
+    /\.subagent-topology-children::after \{[^}]*background: var\(--ds-tile-deep\)/,
   );
 });
 

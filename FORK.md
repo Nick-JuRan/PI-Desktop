@@ -20,11 +20,11 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `apps/desktop/src/lib/subagent-topology.ts` | +103 −13 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/src/lib/turn-process.ts` | +11 −1 | integration point | fix(merge): restore activity issue projection import |
 | `apps/desktop/src/styles/extensions.css` | +116 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
-| `apps/desktop/src/styles/messages.css` | +30 −2 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
+| `apps/desktop/src/styles/messages.css` | +67 −2 | integration point | feat: 引入子代理深度、子代理工具调用选择; fix 2026-11-17: upstream `1e7239640` (#2350) replaced the full-height `.subagent-topology-agents::before` stem with per-card `.subagent-topology-node::after` segments, so the fork's branch/children rules were rebuilt on those segments (branch-level first/last ends, a `.subagent-topology-children::after` continuation past nested lists, nested first child reaching the parent card); verified with a headless-browser port of upstream's `test/fixtures/subagent-connector-layout.html` for the fork's wrapper DOM |
 | `apps/desktop/test/agent-capability-settings.test.mjs` | +4 −1 | hook | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue |
 | `apps/desktop/test/assistant-turns.test.mjs` | +116 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/test/subagent-topology.test.mjs` | +88 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
-| `apps/desktop/test/subagent-transcript.test.mjs` | +17 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
+| `apps/desktop/test/subagent-transcript.test.mjs` | +17 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择; fix 2026-11-17: the nested-stem assertion follows the rebuilt rule (`.subagent-topology-children::after`) |
 | `crates/host-core/src/rpc/mod.rs` | +124 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/agent-runtime/src/delegation-chain.test.ts` | +52 −0 | hook | fix(subagents): bound resumable chains per direct parent |
 | `packages/agent-runtime/src/delegation-chain.ts` | +22 −2 | integration point | feat: 引入子代理深度、子代理工具调用选择; fix(subagents): bound resumable chains per direct parent |
@@ -48,7 +48,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `apps/desktop/electron/main/ipc/register.ts` | +2 −0 | hook | fix(voice): complete local dictation integration |
 | `apps/desktop/electron/main/ipc/skills-ipc.ts` | +9 −0 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
 | `apps/desktop/electron/main/plugin-runtime.ts` | +10 −6 | integration point | feat(subagents): discover trusted extension tools dynamically |
-| `apps/desktop/electron/main/runtime/session-launch.ts` | +169 −1 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules; sync 2026-10-26 restored upstream's `../oauth` import position (the fork had moved it, which conflicted) |
+| `apps/desktop/electron/main/runtime/session-launch.ts` | +167 −0 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules; sync 2026-10-26 restored upstream's `../oauth` import position (the fork had moved it, which conflicted); sync 2026-11-17: upstream re-sorted its imports, so the fork's `TrustedExtensionLoadReport` / `TrustedExtensionSpec` types and the `AgentExtensionBridge` import moved into the fork-only import block at the top of the file (B3) |
 | `apps/desktop/electron/main/runtime/sidecar.ts` | +9 −1 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/src/components/settings/AgentSubagentsPage.tsx` | +75 −4 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
 | `apps/desktop/src/components/settings/SubagentEditorSheet.tsx` | +213 −27 | integration point | refactor(fork): isolate subagent-depth into fork-owned modules |
@@ -111,7 +111,7 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `apps/desktop/test/session-message-presentation.test.mjs` | +1 −0 | hook | fix(test): stub transcript timestamp in presentation fixture |
 | `apps/pi-host/src/config.test.ts` | +4 −4 | integration point | fix(desktop): make Windows build and test gates portable |
 | `apps/pi-host/src/host-operations.test.ts` | +2 −2 | hook | fix(desktop): make Windows build and test gates portable |
-| `apps/pi-host/src/host-operations.ts` | +9 −1 | integration point | fix(desktop): make Windows build and test gates portable |
+| `apps/pi-host/src/host-operations.ts` | +6 −1 | integration point | fix(desktop): make Windows build and test gates portable; sync 2026-11-17: upstream reformatted the `REMOTE_PATH_FORBIDDEN` throw, the fork keeps its `relative()`/`sep` containment check |
 | `crates/host-core/src/mcp_servers/tests.rs` | +2 −1 | hook | fix(desktop): make Windows build and test gates portable |
 | `crates/host-core/src/sessions/fork_files.rs` | +6 −1 | hook | merge resolution |
 | `crates/host-core/src/user_skills/tests.rs` | +1 −1 | hook | fix(desktop): make Windows build and test gates portable |
@@ -148,11 +148,13 @@ Spec: `docs/spec/90-fork/07-transcript-reads-and-history-pages.md`. Islands: `ap
 | `apps/desktop/src/stores/slices/transcript-slice.ts` | +69 −6 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/test/native-pi-sessions.test.mjs` | +19 −7 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/test/remote-mvp-renderer.test.mjs` | +1 −1 | hook | PR #51–#56 (bounded transcript reads, top-level history pages) |
+| `apps/desktop/test/mode-run-elapsed.test.mjs` | +1 −1 | hook (esbuild alias, B4) | sync 2026-11-17: upstream's esbuild-bundled renderer test aliases `@pi-desktop/shared` to the source tree, so the fork's `@pi-desktop/shared/fork` subpath needs its own alias (as `remote-mvp-renderer.test.mjs` already has; left failing by the 2026-11-16 sync) |
 | `apps/desktop/test/session-fork-running.test.mjs` | +2 −0 | hook | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/test/transcript-reading.test.mjs` | +52 −24 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `apps/desktop/test/bounded-history-mutations.test.mjs` | +5 −0 | hook (test whitelist, B4) | sync 2026-11-02: upstream's strict-specifier loader must know the fork modules `transcript-reading`, `session-read-bounds`, `@pi-desktop/shared/fork` |
 | `apps/desktop/test/session-list-runtime.test.mjs` | +1 −0 | hook (test whitelist, B4) | sync 2026-11-02: same for `./session-read-bounds` |
 | `apps/desktop/test/mode-session-create.test.mjs` | +1 −0 | hook (test whitelist, B4) | sync 2026-11-13: upstream's new strict-specifier loader for `session-ipc.ts` must know `./session-read-bounds` |
+| `apps/desktop/test/session-delete-running-guard.test.mjs` | +2 −0 | hook (test whitelist, B4) | sync 2026-11-17: same for upstream's `session-ipc.ts` loader test added in #2292 (left failing by the 2026-11-16 sync) |
 | `crates/host-core/src/sessions.rs` | +245 −7 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
 | `crates/host-core/src/transcripts.rs` | +43 −16 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages); sync 2026-11-09 ported upstream `32b86f49d`'s tail-window fix (`window_end = file_len` when the window ends at the last message) onto the fork's positions-based `read_transcript_lines_with_layout` |
 | `crates/host-core/src/transcripts/layout.rs` | +116 −3 | integration point | PR #51–#56 (bounded transcript reads, top-level history pages) |
@@ -177,7 +179,7 @@ Not fork features: upstream edits to `.github/workflows/*` that the Dash0 GitHub
 | `.github/workflows/ci.yml` | +0 −19 | `trusted-extensions-e2e` job, five steps upstream added between 2026-10-27 and 2026-11-16: `Run staged mode and Goal Host/process E2E` (`PI_SCRATCH_DIR=${{ runner.temp }}`, then `pnpm --filter @pi-desktop/agent-runtime bundle`, `node scripts/e2e-mode-definitions.mjs`, `node scripts/e2e-goal-run-repairs.mjs`, `node scripts/e2e-goal-completion.mjs` — extended from `Run staged mode Host/process E2E` in the 2026-11-16 sync), `Run plugin project enumeration Host/process E2E` (`pnpm test:e2e:plugin-projects`), `Run transcript turn-completion E2E` (`xvfb-run … node scripts/e2e-transcript-turn-completion.mjs`), `Run MCP market owner E2E` (`xvfb-run … node --test apps/desktop/test/mcp-market-owner-user-path.test.mjs`), `Run File Manager directory location E2E` (`xvfb-run … pnpm test:e2e:file-manager-directory`). Apply with `git diff origin/main upstream/main -- .github/workflows/ci.yml`. | sync 2026-11-02, extended sync 2026-11-09 and 2026-11-16 |
 | `.github/workflows/windows-native-snap.yml` | +0 −115 (file absent in fork) | upstream's new `Windows native snap acceptance` workflow (`workflow_dispatch` + path-filtered push/PR on the window-snap E2E scripts and window sources; runs the interactive baseline/candidate/frame-pixel probe on `windows-latest`). The push token cannot create workflow files, so the sync dropped it. Apply by creating the file from `git show upstream/main:.github/workflows/windows-native-snap.yml`. | sync 2026-11-16 |
 
-Total upstream files touched: 119 (including the pending workflow change). `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8). `docs/zh-CN/spec/NAV.md` left the list in the 2026-11-16 sync: upstream deleted the Chinese spec NAV (docs tree slimming, ADR chinese-docs-entry-points-only), so the fork's 10-line 90-fork hook went with it; the zh-CN `90-fork/` island pages stay and satisfy the new `verifyChineseMirrors` check (FORK-STANDARD C2.8).
+Total upstream files touched: 121 (including the pending workflow change). `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8). `docs/zh-CN/spec/NAV.md` left the list in the 2026-11-16 sync: upstream deleted the Chinese spec NAV (docs tree slimming, ADR chinese-docs-entry-points-only), so the fork's 10-line 90-fork hook went with it; the zh-CN `90-fork/` island pages stay and satisfy the new `verifyChineseMirrors` check (FORK-STANDARD C2.8).
 
 Fork E2E islands (never conflict): `scripts/e2e/fork-nested-topology.tsx` + `scripts/e2e-fork-nested-topology.mjs` (run with `node scripts/e2e-fork-nested-topology.mjs`).
 
