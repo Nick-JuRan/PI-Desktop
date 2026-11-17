@@ -39,7 +39,7 @@ await build({
   jsx: "automatic",
   define: { "import.meta.env": "{}" },
   loader: { ".css": "empty" },
-  alias: { "@pi-desktop/shared": join(root, "packages/shared/src/index.ts") },
+  alias: { "@pi-desktop/shared": join(root, "packages/shared/src/index.ts"), "@pi-desktop/shared/fork": join(root, "packages/shared/src/fork/index.ts") }, // fork
   logLevel: "silent",
 });
 const require = createRequire(import.meta.url);
