@@ -20,11 +20,11 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | `apps/desktop/src/lib/subagent-topology.ts` | +103 −13 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/src/lib/turn-process.ts` | +11 −1 | integration point | fix(merge): restore activity issue projection import |
 | `apps/desktop/src/styles/extensions.css` | +116 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
-| `apps/desktop/src/styles/messages.css` | +30 −2 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
+| `apps/desktop/src/styles/messages.css` | +67 −2 | integration point | feat: 引入子代理深度、子代理工具调用选择; fix 2026-11-17: upstream `1e7239640` (#2350) replaced the full-height `.subagent-topology-agents::before` stem with per-card `.subagent-topology-node::after` segments, so the fork's branch/children rules were rebuilt on those segments (branch-level first/last ends, a `.subagent-topology-children::after` continuation past nested lists, nested first child reaching the parent card); verified with a headless-browser port of upstream's `test/fixtures/subagent-connector-layout.html` for the fork's wrapper DOM |
 | `apps/desktop/test/agent-capability-settings.test.mjs` | +4 −1 | hook | docs(fork): move fork specs to 90-fork, add island AGENTS.md, FORK.md, drop merge residue |
 | `apps/desktop/test/assistant-turns.test.mjs` | +116 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `apps/desktop/test/subagent-topology.test.mjs` | +88 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
-| `apps/desktop/test/subagent-transcript.test.mjs` | +17 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
+| `apps/desktop/test/subagent-transcript.test.mjs` | +17 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择; fix 2026-11-17: the nested-stem assertion follows the rebuilt rule (`.subagent-topology-children::after`) |
 | `crates/host-core/src/rpc/mod.rs` | +124 −0 | integration point | feat: 引入子代理深度、子代理工具调用选择 |
 | `packages/agent-runtime/src/delegation-chain.test.ts` | +52 −0 | hook | fix(subagents): bound resumable chains per direct parent |
 | `packages/agent-runtime/src/delegation-chain.ts` | +22 −2 | integration point | feat: 引入子代理深度、子代理工具调用选择; fix(subagents): bound resumable chains per direct parent |
