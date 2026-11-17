@@ -83,6 +83,17 @@ tool name). Host-core preserves these namespaced entries during normalization
 validates them at delegation time, so adding the selectors does not require a
 database or document-version migration.
 
+Host-core accepts a subagent document of up to 64 KiB (`MAX_SUBAGENT_BYTES` in
+`crates/host-core/src/user_subagents.rs`; upstream caps it at 32 KiB). The one
+constant bounds the directory scan, `agents.create`, `agents.update`, and
+`agents.read`, so a brief between 32 KiB and 64 KiB now appears in the
+Subagents list and saves from the editor instead of being skipped by the scan
+or refused with `SUBAGENT_INVALID: document exceeds 32768 bytes`; a document
+above 64 KiB is still refused on every path. No other bound changes: the
+runtime parses whatever host-core hands in, a synced config entity may be
+512 KiB, and a host RPC line 64 MiB. The body is the delegate's system prompt,
+so a longer brief costs more prompt tokens on every delegation.
+
 ## 5. Settings UI
 
 Under **Available tools**, the sheet keeps the seven stable built-in tool

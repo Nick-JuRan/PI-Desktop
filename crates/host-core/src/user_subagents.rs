@@ -13,7 +13,12 @@ use std::fs;
 use std::path::Path;
 
 const MAX_USER_SUBAGENTS: usize = 64;
-pub const MAX_SUBAGENT_BYTES: usize = 32 * 1024;
+// Fork: raised from upstream's 32 KiB so a long delegate brief (the patent
+// `searcher` definition passed 32 KiB) still loads instead of vanishing from the
+// registry; see docs/spec/90-fork/02-subagent-tool-selection.md §4. The only
+// consumers are the four checks in this file, and every downstream bound
+// (config sync entities 512 KiB, host RPC lines 64 MiB) is far above it.
+pub const MAX_SUBAGENT_BYTES: usize = 64 * 1024;
 const MAX_NAME_CHARS: usize = 40;
 const MAX_DESCRIPTION_CHARS: usize = 400;
 /// Mirrors `MAX_SUBAGENT_MAX_TOKENS` in `packages/shared`. No published model
@@ -812,6 +817,53 @@ mod tests {
         let error = registry.set_builtin_enabled("   ", false).unwrap_err();
         assert!(error.to_string().contains("SUBAGENT_INVALID"));
         assert!(registry.disabled_builtins().is_empty());
+    }
+
+    #[test]
+    fn documents_up_to_64_kib_load_and_larger_ones_are_refused() {
+        // Fork: the cap is 64 KiB (upstream: 32 KiB). A brief between the two
+        // used to vanish from the scan and be refused by create/update; above
+        // the new cap both paths must still refuse, so the bound stays a bound.
+        use crate::agent_capabilities::test_support;
+
+        let head = "---\nname: searcher\ndescription: Long brief.\ntools: [Read]\n---\n\n";
+        let body_of = |total: usize| "x".repeat(total - head.len() - 1);
+        let within = format!("{head}{}\n", body_of(48 * 1024));
+        let beyond = format!("{head}{}\n", body_of(MAX_SUBAGENT_BYTES + 1));
+        assert!(within.len() > 32 * 1024 && within.len() <= MAX_SUBAGENT_BYTES);
+        assert_eq!(beyond.len(), MAX_SUBAGENT_BYTES + 1);
+
+        let dir = tempdir().unwrap();
+        let state = CapabilityState::new(dir.path(), SUBAGENT_KIND);
+        let path = dir.path().join("searcher.md");
+        fs::write(&path, &within).unwrap();
+        let record = parse_record(&path, &state).expect("a 48 KiB document must load");
+        assert_eq!(record.size_bytes, within.len() as u64);
+        fs::write(&path, &beyond).unwrap();
+        assert!(parse_record(&path, &state).is_none());
+
+        let agents = tempdir().unwrap();
+        let mut registry = UserSubagentRegistry::new(dir.path());
+        test_support::with_global_agents(agents.path(), || {
+            let input = |body: &str| UserSubagentInput {
+                name: Some("searcher".into()),
+                description: Some("Long brief.".into()),
+                body: Some(body.to_string()),
+                ..UserSubagentInput::default()
+            };
+            let error = registry
+                .create(input(&body_of(MAX_SUBAGENT_BYTES + 1)))
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("document exceeds 65536 bytes"),
+                "error = {error}"
+            );
+            let created = registry
+                .create(input(&body_of(48 * 1024)))
+                .expect("a 48 KiB brief must save");
+            assert!(created.size_bytes > 32 * 1024);
+            assert!(registry.read("searcher").unwrap().is_some());
+        });
     }
 
     #[test]
