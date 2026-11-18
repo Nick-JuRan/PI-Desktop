@@ -24,7 +24,7 @@ fork 功能。扩展 `03-runtime/02-agent-runtime.md` §5f（子代理工具）�
 
 子智能体文档在已有的 frontmatter `tools` 数组中持久化动态能力授权（`skill:<id>`、`mcp:<server-id>` 或完整插件工具名）。host-core 在归一化时保留这些带命名空间的条目（`crates/host-core/src/user_subagents.rs`）；实时的 Electron/sidecar 目录在委派时校验它们，因此新增选择器不需要数据库或文档版本迁移。
 
-host-core 接受最大 64 KiB 的子智能体文档（`crates/host-core/src/user_subagents.rs` 中的 `MAX_SUBAGENT_BYTES`；upstream 的上限是 32 KiB）。同一个常量约束目录扫描、`agents.create`、`agents.update` 和 `agents.read`，因此 32 KiB 到 64 KiB 之间的任务简报现在会出现在子智能体列表中并能从编辑器保存，而不是被扫描跳过或以 `SUBAGENT_INVALID: document exceeds 32768 bytes` 拒绝；超过 64 KiB 的文档在每条路径上仍被拒绝。其他边界不变：运行时解析 host-core 交给它的任何文档，同步的配置实体可达 512 KiB，host RPC 单行可达 64 MiB。正文是子代理的系统提示词，因此更长的简报会在每次委派时消耗更多提示词 token。
+host-core 接受最大 64 KiB 的子智能体文档（`crates/host-core/src/user_subagents.rs` 中的 `MAX_SUBAGENT_BYTES`；upstream 的上限是 32 KiB）。同一个常量约束目录扫描、`agents.create`、`agents.update` 和 `agents.read`，因此 32 KiB 到 64 KiB 之间的任务简报现在会出现在子智能体列表中并能从编辑器保存，而不是被扫描跳过或以 `SUBAGENT_INVALID: document exceeds 32768 bytes` 拒绝；超过 64 KiB 的文档在每条路径上仍被拒绝。其他边界不变：运行时解析 host-core 交给它的任何文档，同步的配置实体可达 512 KiB，host RPC 单行可达 64 MiB。正文是子代理的系统提示词，因此更长的简报会在每次委派时消耗更多提示词 token。子智能体编辑器在自己的 `MAX_SUBAGENT_BYTES`（`apps/desktop/src/components/settings/SubagentEditorSheet.tsx`）中携带同一个值：`已用 / 上限 KB` 计数器显示 `… / 64 KB`，编辑面板只在超过 64 KiB 时拒绝保存，`apps/desktop/test/fork-subagent-document-cap.test.mjs` 会在编辑器与 host-core 的字面量不一致时失败。编辑器只度量正文，而 host-core 度量渲染后的整个文档，因此与上限只差几百字节的正文可能通过编辑面板却仍被 host 拒绝，这一点与之前相同。
 
 ## 5. 设置界面
 

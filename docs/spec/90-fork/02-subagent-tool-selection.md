@@ -92,7 +92,15 @@ or refused with `SUBAGENT_INVALID: document exceeds 32768 bytes`; a document
 above 64 KiB is still refused on every path. No other bound changes: the
 runtime parses whatever host-core hands in, a synced config entity may be
 512 KiB, and a host RPC line 64 MiB. The body is the delegate's system prompt,
-so a longer brief costs more prompt tokens on every delegation.
+so a longer brief costs more prompt tokens on every delegation. The Subagents
+editor carries the same value in its own `MAX_SUBAGENT_BYTES`
+(`apps/desktop/src/components/settings/SubagentEditorSheet.tsx`): the
+`used / max KB` counter reads `… / 64 KB` and the sheet refuses to save only
+above 64 KiB, and `apps/desktop/test/fork-subagent-document-cap.test.mjs`
+fails whenever the editor's and host-core's literals differ. The editor
+measures the body alone while host-core measures the rendered document, so a
+body within a few hundred bytes of the cap can pass the sheet and still be
+refused by the host, as before.
 
 ## 5. Settings UI
 

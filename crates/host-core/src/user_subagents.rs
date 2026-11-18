@@ -17,7 +17,9 @@ const MAX_USER_SUBAGENTS: usize = 64;
 // `searcher` definition passed 32 KiB) still loads instead of vanishing from the
 // registry; see docs/spec/90-fork/02-subagent-tool-selection.md §4. The only
 // consumers are the four checks in this file, and every downstream bound
-// (config sync entities 512 KiB, host RPC lines 64 MiB) is far above it.
+// (config sync entities 512 KiB, host RPC lines 64 MiB) is far above it. The
+// editor mirrors the value in `SubagentEditorSheet.tsx` (`MAX_SUBAGENT_BYTES`);
+// `apps/desktop/test/fork-subagent-document-cap.test.mjs` keeps the two equal.
 pub const MAX_SUBAGENT_BYTES: usize = 64 * 1024;
 const MAX_NAME_CHARS: usize = 40;
 const MAX_DESCRIPTION_CHARS: usize = 400;
