@@ -44,7 +44,10 @@ import { SettingsMenuSelect } from "./SettingsMenuSelect";
 import { subagentPresetCopyKey } from "./subagent-presets";
 
 /** Hard cap host-core enforces on a definition document. */
-export const MAX_SUBAGENT_BYTES = 32 * 1024;
+// Fork: 64 KiB, mirroring `MAX_SUBAGENT_BYTES` in
+// `crates/host-core/src/user_subagents.rs` (upstream: 32 KiB on both sides).
+// `apps/desktop/test/fork-subagent-document-cap.test.mjs` keeps the two in step.
+export const MAX_SUBAGENT_BYTES = 64 * 1024;
 
 export type SubagentDraft = {
   id: string;
