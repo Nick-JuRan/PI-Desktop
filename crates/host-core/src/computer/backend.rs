@@ -136,6 +136,9 @@ pub trait Desktop: Send + Sync {
     /// of the answer, and it is discovered here rather than supplied by a
     /// request, so no caller can shrink this set.
     fn self_pids(&self) -> Vec<i32> {
+        // Fork: the vector only grows inside the `cfg(unix)` block below, so on
+        // Windows the `mut` is unused and `pnpm dev` printed an `unused_mut` warning.
+        #[cfg_attr(not(unix), allow(unused_mut))]
         let mut pids = vec![std::process::id() as i32];
         #[cfg(unix)]
         {

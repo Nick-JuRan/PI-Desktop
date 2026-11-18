@@ -125,6 +125,12 @@ Feature pages: `docs/spec/90-fork/`. Generated against `upstream/main` = `8c7cfd
 | --- | --- | --- | --- |
 | `apps/desktop/electron/main/voice-service.ts` | +4 −2 | hook | fix(voice): complete local dictation integration |
 
+## build hygiene (upstream warning fixes — candidates to send upstream)
+
+| upstream file | +/− vs upstream | kind | introduced by |
+| --- | --- | --- | --- |
+| `crates/host-core/src/computer/backend.rs` | +3 −0 | hook | fix(host-core): allow unused_mut in Desktop::self_pids off unix — upstream's `let mut pids` only grows inside `cfg(unix)`, so the Windows dev build printed `unused_mut`; drop the hook once upstream fixes it |
+
 ## transcript reads / history pages (bounded renderer reads, top-level history pages, delegate rows on open)
 
 Sync 2026-11-02: upstream re-implemented the host-side delete / unanswered-prompt undo / prefix-free revision activation; the fork now uses upstream's versions of those three paths (B1.2), so `delete-message-preserves-transcript.test.mjs` and `transcript-style.test.mjs` left this table and the rows below shrank. Status note in `docs/spec/90-fork/07`.
@@ -179,7 +185,7 @@ Not fork features: upstream edits to `.github/workflows/*` that the Dash0 GitHub
 | `.github/workflows/ci.yml` | +0 −19 | `trusted-extensions-e2e` job, five steps upstream added between 2026-10-27 and 2026-11-16: `Run staged mode and Goal Host/process E2E` (`PI_SCRATCH_DIR=${{ runner.temp }}`, then `pnpm --filter @pi-desktop/agent-runtime bundle`, `node scripts/e2e-mode-definitions.mjs`, `node scripts/e2e-goal-run-repairs.mjs`, `node scripts/e2e-goal-completion.mjs` — extended from `Run staged mode Host/process E2E` in the 2026-11-16 sync), `Run plugin project enumeration Host/process E2E` (`pnpm test:e2e:plugin-projects`), `Run transcript turn-completion E2E` (`xvfb-run … node scripts/e2e-transcript-turn-completion.mjs`), `Run MCP market owner E2E` (`xvfb-run … node --test apps/desktop/test/mcp-market-owner-user-path.test.mjs`), `Run File Manager directory location E2E` (`xvfb-run … pnpm test:e2e:file-manager-directory`). Apply with `git diff origin/main upstream/main -- .github/workflows/ci.yml`. | sync 2026-11-02, extended sync 2026-11-09 and 2026-11-16 |
 | `.github/workflows/windows-native-snap.yml` | +0 −115 (file absent in fork) | upstream's new `Windows native snap acceptance` workflow (`workflow_dispatch` + path-filtered push/PR on the window-snap E2E scripts and window sources; runs the interactive baseline/candidate/frame-pixel probe on `windows-latest`). The push token cannot create workflow files, so the sync dropped it. Apply by creating the file from `git show upstream/main:.github/workflows/windows-native-snap.yml`. | sync 2026-11-16 |
 
-Total upstream files touched: 121 (including the pending workflow change). `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8). `docs/zh-CN/spec/NAV.md` left the list in the 2026-11-16 sync: upstream deleted the Chinese spec NAV (docs tree slimming, ADR chinese-docs-entry-points-only), so the fork's 10-line 90-fork hook went with it; the zh-CN `90-fork/` island pages stay and satisfy the new `verifyChineseMirrors` check (FORK-STANDARD C2.8).
+Total upstream files touched: 122 (including the pending workflow change). `packages/host-runtime/src/launch-resolver.test.ts` left the list in the 2026-10-23 sync: upstream `ee2f4fd0c` made the same `join()` change, so the fork line was dropped (FORK-STANDARD C2.8). `docs/zh-CN/spec/NAV.md` left the list in the 2026-11-16 sync: upstream deleted the Chinese spec NAV (docs tree slimming, ADR chinese-docs-entry-points-only), so the fork's 10-line 90-fork hook went with it; the zh-CN `90-fork/` island pages stay and satisfy the new `verifyChineseMirrors` check (FORK-STANDARD C2.8).
 
 Fork E2E islands (never conflict): `scripts/e2e/fork-nested-topology.tsx` + `scripts/e2e-fork-nested-topology.mjs` (run with `node scripts/e2e-fork-nested-topology.mjs`).
 
