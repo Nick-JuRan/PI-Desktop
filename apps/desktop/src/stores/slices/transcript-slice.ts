@@ -558,6 +558,25 @@ export function createTranscriptSlice({
         }));
         // Bypass in-flight pre-abort detail reads; request settled source state.
         const settled = await runtime.readSettledTail(sessionId);
+        // A turn that started while this settled-state read was in flight owns
+        // the transcript now: the composer unlocked at the isRunning clear
+        // above, so the user can already be streaming a new prompt. Its
+        // optimistic rows are newer than any snapshot this read can return,
+        // and forcing isRunning false would mute the new turn's spinner —
+        // leave the newer state alone; the live flow reconciles from here.
+        const stateAfterRead = get();
+        const turnOwnsTranscript =
+          stateAfterRead.runningSessions[sessionId] === true ||
+          runtime.liveSessionTranscripts?.has(sessionId) === true ||
+          (stateAfterRead.activeSessionId === sessionId &&
+            stateAfterRead.isRunning === true);
+        if (turnOwnsTranscript) {
+          // The fork's readSettledTail cached the settled snapshot before this
+          // guard could see the new turn; drop it so nothing from this read
+          // lands (the live turn's projection re-caches its own messages).
+          runtime.sessionTranscriptCache?.delete(sessionId);
+          return;
+        }
         const messages = settled?.messages;
         set((current) => ({
           runningSessions: { ...current.runningSessions, [sessionId]: false },
