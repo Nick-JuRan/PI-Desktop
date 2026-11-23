@@ -17,6 +17,7 @@ try {
     outfile: join(temp, "renderer.js"), bundle: true, platform: "browser", format: "esm", jsx: "automatic",
     define: { "process.env.NODE_ENV": '"production"', "import.meta.env": '{"DEV":false,"MODE":"production"}' },
     loader: { ".css": "empty" }, alias: {
+      "@pi-desktop/shared/fork": join(root, "packages/shared/src/fork/index.ts"), // fork
       "@pi-desktop/shared": join(root, "packages/shared/src/index.ts"),
       "@pi-desktop/i18n": join(root, "packages/i18n/src/index.ts"),
       react: join(root, "apps/desktop/node_modules/react"), "react-dom": join(root, "apps/desktop/node_modules/react-dom") },

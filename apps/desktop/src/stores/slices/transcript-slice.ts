@@ -570,7 +570,13 @@ export function createTranscriptSlice({
           runtime.liveSessionTranscripts?.has(sessionId) === true ||
           (stateAfterRead.activeSessionId === sessionId &&
             stateAfterRead.isRunning === true);
-        if (turnOwnsTranscript) return;
+        if (turnOwnsTranscript) {
+          // The fork's readSettledTail cached the settled snapshot before this
+          // guard could see the new turn; drop it so nothing from this read
+          // lands (the live turn's projection re-caches its own messages).
+          runtime.sessionTranscriptCache?.delete(sessionId);
+          return;
+        }
         const messages = settled?.messages;
         set((current) => ({
           runningSessions: { ...current.runningSessions, [sessionId]: false },
